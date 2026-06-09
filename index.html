@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Play</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #1a1a2e;
+      background: linear-gradient(180deg, #87CEEB 0%, #B0E0FF 45%, #FFE4B5 100%);
+      background-attachment: fixed;
+    }
+
+    body {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 24px 64px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+      max-width: 720px;
+    }
+
+    h1 {
+      font-size: clamp(2.25rem, 5vw, 3.5rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+      background: linear-gradient(90deg, #FF6B6B, #FFA500, #6BCB77, #4D96FF, #B388FF);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .subtitle {
+      font-size: 1.1rem;
+      color: #3a3a5e;
+      opacity: 0.85;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      width: 100%;
+      max-width: 880px;
+    }
+
+    .card {
+      display: flex;
+      flex-direction: column;
+      padding: 28px 24px;
+      background: rgba(255, 255, 255, 0.92);
+      border-radius: 20px;
+      text-decoration: none;
+      color: inherit;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+      border: 2px solid transparent;
+    }
+
+    .card:hover, .card:focus-visible {
+      transform: translateY(-4px);
+      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.14);
+      border-color: rgba(255, 255, 255, 1);
+      outline: none;
+    }
+
+    .emoji {
+      font-size: 3.5rem;
+      line-height: 1;
+      margin-bottom: 16px;
+    }
+
+    .card h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .card p {
+      font-size: 0.98rem;
+      color: #4a4a6e;
+      line-height: 1.45;
+    }
+
+    footer {
+      margin-top: auto;
+      padding-top: 48px;
+      font-size: 0.85rem;
+      color: #3a3a5e;
+      opacity: 0.6;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Play</h1>
+    <p class="subtitle">A little arcade of homemade games. Pick one and have fun.</p>
+  </header>
+
+  <main>
+    <a class="card" href="balloon%20pop/">
+      <div class="emoji">🎈</div>
+      <h2>Balloons Pop</h2>
+      <p>Tap the balloons before they drift away.</p>
+    </a>
+
+    <a class="card" href="math%20mine/">
+      <div class="emoji">⛏️</div>
+      <h2>Times Tables Mine</h2>
+      <p>Dig through multiplication problems to strike gold.</p>
+    </a>
+
+    <a class="card" href="claudecraft/">
+      <div class="emoji">🟩</div>
+      <h2>Claudecraft</h2>
+      <p>Mine, craft, and conquer three worlds in a 25-minute quest.</p>
+    </a>
+  </main>
+
+  <footer>Made with care · play</footer>
+</body>
+</html>

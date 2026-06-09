@@ -1,0 +1,1873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#3a8e3a" />
+<title>Times Tables Mine</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' fill='%233a8e3a'/%3E%3Crect x='2' y='3' width='3' height='3' fill='%23fff'/%3E%3Crect x='3' y='4' width='1' height='1' fill='%23000'/%3E%3Crect x='9' y='3' width='3' height='3' fill='%23fff'/%3E%3Crect x='10' y='4' width='1' height='1' fill='%23000'/%3E%3C/svg%3E" />
+<style>
+  :root {
+    --grass-light: #7cbd5b;
+    --grass-mid: #5a9a3a;
+    --grass-dark: #3a8e3a;
+    --dirt-light: #a87844;
+    --dirt-mid: #876036;
+    --dirt-dark: #5d4424;
+    --stone-light: #a8a8a8;
+    --stone-mid: #828282;
+    --stone-dark: #5a5a5a;
+    --wood-light: #c89968;
+    --wood-mid: #9a6e3e;
+    --wood-dark: #6e4d2a;
+    --diamond: #5cdef0;
+    --diamond-dark: #2a9bb5;
+    --gold: #fcd84a;
+    --gold-dark: #c89a18;
+    --redstone: #d62a2a;
+    --emerald: #50c878;
+    --iron: #d8d8d8;
+    --coal: #2a2a2a;
+    --tnt: #d63a2a;
+    --creeper: #4a8848;
+    --text: #ffffff;
+    --text-dark: #1a1a1a;
+    --shadow: rgba(0,0,0,0.4);
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    color: var(--text);
+    font-family: 'Courier New', 'Monaco', monospace;
+    font-weight: bold;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    height: 100%;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+  }
+  body {
+    background:
+      linear-gradient(180deg, #87ceeb 0%, #87ceeb 60%, var(--grass-light) 60%, var(--grass-mid) 65%, var(--dirt-light) 65%, var(--dirt-mid) 100%);
+    background-attachment: fixed;
+    display: flex; flex-direction: column;
+    min-height: 100vh; min-height: 100dvh;
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    text-shadow: 2px 2px 0 var(--shadow);
+  }
+
+  /* pixelated cloud decorations */
+  .clouds {
+    position: fixed; inset: 0; top: 0; height: 50%;
+    pointer-events: none; z-index: 0;
+    overflow: hidden;
+  }
+  .cloud {
+    position: absolute;
+    width: 60px; height: 20px;
+    background: white;
+    opacity: 0.85;
+    box-shadow:
+      20px -10px 0 white,
+      40px 0 0 white,
+      -20px 0 0 white;
+    animation: drift linear infinite;
+  }
+  @keyframes drift {
+    from { transform: translateX(-100px); }
+    to { transform: translateX(calc(100vw + 100px)); }
+  }
+
+  input { font-family: inherit; }
+  button { font-family: inherit; cursor: pointer; }
+
+  /* ===== HUD ===== */
+  .hud {
+    position: relative; z-index: 5;
+    padding: 8px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px;
+    background: linear-gradient(180deg, var(--grass-mid), var(--grass-dark));
+    border-bottom: 4px solid var(--dirt-dark);
+    box-shadow: 0 4px 0 var(--dirt-mid), 0 8px 12px rgba(0,0,0,0.3);
+  }
+  .logo {
+    font-size: 18px; letter-spacing: 1px;
+    text-shadow: 2px 2px 0 var(--text-dark), 3px 3px 0 var(--shadow);
+    color: white;
+  }
+  .inv {
+    display: flex; gap: 6px; align-items: center;
+  }
+  .inv-slot {
+    background: linear-gradient(180deg, var(--stone-light), var(--stone-mid));
+    border: 2px solid var(--stone-dark);
+    border-right-color: white;
+    border-bottom-color: white;
+    padding: 4px 8px;
+    display: flex; align-items: center; gap: 4px;
+    font-size: 13px;
+    color: white;
+    text-shadow: 1px 1px 0 var(--text-dark);
+    min-width: 50px;
+    justify-content: center;
+  }
+  .inv-icon {
+    width: 16px; height: 16px;
+    display: inline-block;
+  }
+  .pop { animation: pop 0.4s ease; }
+  @keyframes pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.4) rotate(8deg); }
+    100% { transform: scale(1); }
+  }
+
+  /* ===== TIER BAR ===== */
+  .tier-bar {
+    position: relative; z-index: 5;
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.5), rgba(0,0,0,0.7));
+    border-bottom: 2px solid var(--dirt-dark);
+    color: white;
+    font-size: 11px;
+  }
+  .tier-label {
+    display: flex; align-items: center; gap: 6px;
+    flex-shrink: 0;
+    color: var(--gold);
+    text-shadow: 1px 1px 0 var(--text-dark);
+  }
+  .tier-pick { font-size: 16px; }
+  .tier-progress-track {
+    flex: 1;
+    height: 12px;
+    background: var(--text-dark);
+    border: 2px solid var(--text-dark);
+    box-shadow: inset 1px 1px 0 #555, inset -1px -1px 0 #000;
+    overflow: hidden;
+  }
+  .tier-progress-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(180deg, var(--diamond), var(--diamond-dark));
+    transition: width 0.4s ease;
+    border-right: 1px solid rgba(255,255,255,0.4);
+  }
+  .tier-pct {
+    flex-shrink: 0;
+    color: white;
+    text-shadow: 1px 1px 0 var(--text-dark);
+    min-width: 30px;
+    text-align: right;
+  }
+  .tier-bar.unlocking {
+    animation: unlockFlash 1.2s ease;
+  }
+  @keyframes unlockFlash {
+    0%, 100% { background: linear-gradient(180deg, rgba(0,0,0,0.5), rgba(0,0,0,0.7)); }
+    25%, 75% { background: linear-gradient(180deg, rgba(252,216,74,0.6), rgba(200,154,24,0.7)); }
+  }
+
+  /* ===== TABS = HOTBAR ===== */
+  .hotbar {
+    position: relative; z-index: 5;
+    display: flex; gap: 3px; padding: 6px;
+    background: linear-gradient(180deg, var(--dirt-mid), var(--dirt-dark));
+    border-bottom: 4px solid var(--text-dark);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .hotbar::-webkit-scrollbar { display: none; }
+  .slot {
+    flex: 1 0 auto;
+    padding: 8px 10px;
+    background: linear-gradient(180deg, var(--stone-light), var(--stone-mid));
+    border: 3px solid;
+    border-color: var(--stone-dark) var(--text-dark) var(--text-dark) var(--stone-dark);
+    color: var(--text-dark);
+    font-size: 11px;
+    text-align: center;
+    text-shadow: 1px 1px 0 rgba(255,255,255,0.3);
+    min-width: 64px;
+    transition: transform 0.1s;
+  }
+  .slot.active {
+    background: linear-gradient(180deg, var(--gold), var(--gold-dark));
+    border-color: white var(--gold-dark) var(--gold-dark) white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 0 var(--gold-dark);
+  }
+  .slot:active { transform: translateY(1px); }
+  .slot-icon { font-size: 20px; display: block; margin-bottom: 2px; line-height: 1; }
+
+  /* ===== MAIN ===== */
+  main {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    position: relative; z-index: 5;
+    padding: 12px;
+  }
+  .panel { display: none; }
+  .panel.active { display: block; animation: pop-in 0.25s ease; }
+  @keyframes pop-in {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  /* ===== CRAFTING-TABLE STYLE CARD ===== */
+  .craft-card {
+    background: linear-gradient(180deg, var(--wood-light), var(--wood-mid));
+    border: 4px solid;
+    border-color: var(--wood-light) var(--wood-dark) var(--wood-dark) var(--wood-light);
+    border-radius: 0;
+    padding: 14px;
+    margin-bottom: 12px;
+    box-shadow: 0 6px 0 var(--wood-dark), 0 8px 16px rgba(0,0,0,0.4);
+    position: relative;
+  }
+
+  /* ===== STEVE / CHARACTER ===== */
+  .steve-area {
+    height: 90px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    margin-bottom: 8px;
+  }
+  .steve {
+    width: 56px; height: 72px;
+    position: relative;
+    image-rendering: pixelated;
+    transition: transform 0.2s;
+  }
+  /* Steve face = head + body in CSS pixels */
+  .steve-head {
+    width: 32px; height: 32px;
+    background: #b58863;
+    margin: 0 auto;
+    position: relative;
+    border: 2px solid var(--text-dark);
+    box-sizing: content-box;
+  }
+  .steve-hair {
+    position: absolute; top: -2px; left: -2px; right: -2px;
+    height: 8px;
+    background: #4a2e1c;
+  }
+  .eye {
+    position: absolute;
+    width: 4px; height: 6px;
+    background: white;
+    top: 12px;
+  }
+  .eye::after {
+    content: '';
+    position: absolute;
+    width: 2px; height: 6px;
+    background: #2050a0;
+    right: 0;
+  }
+  .eye.l { left: 6px; }
+  .eye.r { right: 6px; }
+  .mouth {
+    position: absolute;
+    width: 12px; height: 2px;
+    background: var(--text-dark);
+    bottom: 6px; left: 50%;
+    transform: translateX(-50%);
+  }
+  .mouth.smile { height: 4px; border-radius: 0 0 50% 50% / 0 0 100% 100%; background: transparent; border-bottom: 2px solid var(--text-dark); border-left: 2px solid var(--text-dark); border-right: 2px solid var(--text-dark); }
+  .mouth.frown { width: 14px; border-top: 2px solid var(--text-dark); border-left: 2px solid var(--text-dark); border-right: 2px solid var(--text-dark); border-bottom: none; height: 4px; background: transparent; bottom: 4px; }
+  .steve-body {
+    width: 32px; height: 28px;
+    background: #2980d6;
+    margin: 2px auto 0;
+    border: 2px solid var(--text-dark);
+    box-sizing: content-box;
+  }
+  .steve-arms-l, .steve-arms-r {
+    position: absolute;
+    width: 8px; height: 24px;
+    background: #b58863;
+    border: 2px solid var(--text-dark);
+    top: 38px;
+    box-sizing: content-box;
+  }
+  .steve-arms-l { left: 0; }
+  .steve-arms-r { right: 0; }
+  .steve.happy { animation: stHappy 0.6s infinite; }
+  .steve.sad { animation: stSad 0.5s; }
+  .steve.idle { animation: stIdle 2.5s infinite; }
+  @keyframes stHappy {
+    0%, 100% { transform: translateY(0) rotate(-2deg); }
+    50% { transform: translateY(-10px) rotate(2deg); }
+  }
+  @keyframes stSad {
+    0%, 100% { transform: translateY(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+  @keyframes stIdle {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-2px); }
+  }
+
+  .bubble {
+    position: absolute;
+    top: -4px; right: 10%;
+    background: white;
+    color: var(--text-dark);
+    padding: 6px 10px;
+    font-size: 12px;
+    border: 2px solid var(--text-dark);
+    box-shadow: 4px 4px 0 var(--shadow);
+    text-shadow: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    max-width: 60%;
+    text-align: center;
+  }
+  .bubble.show { opacity: 1; }
+
+  /* ===== METER ===== */
+  .meta-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px;
+    margin-bottom: 6px;
+    color: white;
+  }
+  .meta-row .val {
+    color: var(--gold);
+    font-size: 15px;
+    text-shadow: 2px 2px 0 var(--text-dark);
+  }
+
+  /* hearts/timer bar */
+  .heart-bar {
+    height: 18px;
+    background: var(--text-dark);
+    border: 2px solid var(--text-dark);
+    box-shadow: inset 2px 2px 0 #555, inset -2px -2px 0 #000;
+    margin-bottom: 12px;
+    position: relative;
+    overflow: hidden;
+  }
+  .heart-fill {
+    height: 100%; width: 100%;
+    background: linear-gradient(180deg, #5cef5c, #2a9b2a);
+    transition: width 0.1s linear, background 0.2s;
+    border-right: 2px solid rgba(255,255,255,0.4);
+  }
+  .heart-fill.warn { background: linear-gradient(180deg, #ffd84a, #c89a18); }
+  .heart-fill.danger { background: linear-gradient(180deg, #ff5c5c, #b02020); animation: pulse 0.4s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+  /* ===== QUESTION as a BLOCK ===== */
+  .question-block {
+    background:
+      repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(0,0,0,0.05) 8px, rgba(0,0,0,0.05) 16px),
+      linear-gradient(180deg, var(--stone-light), var(--stone-mid));
+    border: 4px solid;
+    border-color: var(--stone-light) var(--stone-dark) var(--stone-dark) var(--stone-light);
+    color: var(--text-dark);
+    text-shadow: 2px 2px 0 rgba(255,255,255,0.4);
+    font-size: clamp(40px, 12vw, 64px);
+    text-align: center;
+    padding: 16px 8px;
+    margin: 8px 0 12px;
+    letter-spacing: 2px;
+    box-shadow: 0 6px 0 var(--stone-dark), 0 8px 12px rgba(0,0,0,0.3);
+  }
+  .question-block.cracked { animation: shake 0.4s; }
+  .question-block.broken {
+    animation: explode 0.5s forwards;
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+  @keyframes explode {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.15) rotate(2deg); opacity: 1; }
+    100% { transform: scale(0.9); opacity: 0; }
+  }
+
+  /* answer chest */
+  .answer-chest {
+    background: linear-gradient(180deg, var(--wood-mid), var(--wood-dark));
+    border: 4px solid;
+    border-color: var(--wood-light) var(--text-dark) var(--text-dark) var(--wood-light);
+    color: var(--gold);
+    font-size: 32px;
+    text-align: center;
+    padding: 14px 8px;
+    margin-bottom: 8px;
+    text-shadow: 2px 2px 0 var(--text-dark);
+    min-height: 60px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 0 var(--text-dark);
+  }
+  .answer-chest.empty { color: rgba(255,215,74,0.4); font-size: 28px; }
+  .answer-chest.correct { background: linear-gradient(180deg, #50c878, #2a8848); border-color: #80f8a8 var(--text-dark) var(--text-dark) #80f8a8; }
+  .answer-chest.wrong { background: linear-gradient(180deg, #d63a3a, #a02020); border-color: #ff7a7a var(--text-dark) var(--text-dark) #ff7a7a; }
+
+  .feedback {
+    text-align: center;
+    font-size: 16px;
+    min-height: 22px;
+    margin: 6px 0 8px;
+    color: white;
+  }
+  .feedback.correct { color: var(--emerald); text-shadow: 2px 2px 0 var(--text-dark); }
+  .feedback.wrong { color: #ff7a7a; text-shadow: 2px 2px 0 var(--text-dark); }
+
+  /* ===== KEYPAD = STONE BLOCKS ===== */
+  .keypad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .key {
+    height: 56px;
+    background: linear-gradient(180deg, var(--stone-light), var(--stone-mid));
+    border: 3px solid;
+    border-color: white var(--stone-dark) var(--stone-dark) white;
+    color: var(--text-dark);
+    font-size: 24px;
+    font-family: inherit;
+    font-weight: bold;
+    text-shadow: 1px 1px 0 rgba(255,255,255,0.3);
+    transition: transform 0.05s;
+    box-shadow: 0 4px 0 var(--stone-dark);
+  }
+  .key:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 var(--stone-dark);
+  }
+  .key.action {
+    background: linear-gradient(180deg, var(--emerald), #2a8848);
+    border-color: #80f8a8 #1a5828 #1a5828 #80f8a8;
+    color: white;
+    text-shadow: 2px 2px 0 var(--text-dark);
+    box-shadow: 0 4px 0 #1a5828;
+  }
+  .key.del {
+    background: linear-gradient(180deg, #c44, #822);
+    border-color: #f88 #500 #500 #f88;
+    color: white;
+    box-shadow: 0 4px 0 #500;
+  }
+
+  /* ===== BUTTONS ===== */
+  .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+  .btn {
+    flex: 1;
+    padding: 14px;
+    border: 3px solid;
+    background: linear-gradient(180deg, var(--stone-light), var(--stone-mid));
+    border-color: white var(--stone-dark) var(--stone-dark) white;
+    color: var(--text-dark);
+    font-size: 14px;
+    font-family: inherit;
+    font-weight: bold;
+    text-shadow: 1px 1px 0 rgba(255,255,255,0.3);
+    box-shadow: 0 4px 0 var(--stone-dark);
+    transition: transform 0.05s;
+  }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--stone-dark); }
+  .btn-primary {
+    background: linear-gradient(180deg, var(--emerald), #2a8848);
+    border-color: #80f8a8 #1a5828 #1a5828 #80f8a8;
+    color: white;
+    text-shadow: 2px 2px 0 var(--text-dark);
+    box-shadow: 0 4px 0 #1a5828;
+  }
+  .btn-tnt {
+    background: linear-gradient(180deg, #d63a2a, #a02020);
+    border-color: #ff7a6a #501010 #501010 #ff7a6a;
+    color: white;
+    text-shadow: 2px 2px 0 var(--text-dark);
+    box-shadow: 0 4px 0 #501010;
+  }
+
+  /* ===== STATS ===== */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 12px;
+  }
+  .stat {
+    background: linear-gradient(180deg, rgba(0,0,0,0.4), rgba(0,0,0,0.6));
+    border: 2px solid var(--text-dark);
+    padding: 8px 4px;
+    text-align: center;
+    color: white;
+  }
+  .stat-label { font-size: 10px; color: var(--gold); margin-bottom: 2px; }
+  .stat-val { font-size: 20px; text-shadow: 2px 2px 0 var(--text-dark); }
+
+  /* ===== HINT ===== */
+  .hint {
+    background: rgba(0,0,0,0.5);
+    border: 2px solid var(--gold-dark);
+    padding: 8px;
+    font-size: 11px;
+    text-align: center;
+    color: var(--gold);
+    margin-top: 10px;
+    line-height: 1.5;
+  }
+
+  /* ===== RHYTHM TRACK ===== */
+  .rhythm-track {
+    position: relative;
+    height: 280px;
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 19px, rgba(0,0,0,0.1) 19px, rgba(0,0,0,0.1) 20px),
+      linear-gradient(180deg, #87ceeb 0%, #87ceeb 70%, var(--grass-mid) 70%, var(--dirt-mid) 100%);
+    border: 4px solid var(--text-dark);
+    overflow: hidden;
+    margin-bottom: 10px;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.3);
+  }
+  .rhythm-line {
+    position: absolute;
+    left: 64px; top: 0; bottom: 0;
+    width: 4px;
+    background: repeating-linear-gradient(0deg, var(--tnt) 0 8px, transparent 8px 12px);
+    z-index: 2;
+  }
+  .lava-floor {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 24px;
+    background:
+      repeating-linear-gradient(90deg, #ff5a1a 0 8px, #ff8a3a 8px 16px, #ffaa5a 16px 24px);
+    border-top: 3px solid #d62a1a;
+    z-index: 1;
+  }
+  .rhythm-q {
+    position: absolute;
+    padding: 8px 12px;
+    background:
+      repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(0,0,0,0.1) 6px, rgba(0,0,0,0.1) 12px),
+      linear-gradient(180deg, var(--stone-light), var(--stone-mid));
+    border: 3px solid;
+    border-color: var(--stone-light) var(--stone-dark) var(--stone-dark) var(--stone-light);
+    color: var(--text-dark);
+    font-size: 18px;
+    font-weight: bold;
+    text-shadow: 1px 1px 0 rgba(255,255,255,0.3);
+    box-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+    transition: opacity 0.15s;
+  }
+  .rhythm-q.danger {
+    background:
+      repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(0,0,0,0.2) 6px, rgba(0,0,0,0.2) 12px),
+      linear-gradient(180deg, #ff8a4a, #d63a2a);
+    border-color: #ffaa6a #802010 #802010 #ffaa6a;
+    color: white;
+    text-shadow: 1px 1px 0 var(--text-dark);
+  }
+  .rhythm-q.popping { animation: blockBreak 0.3s forwards; }
+  @keyframes blockBreak {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1.6) rotate(20deg); opacity: 0; }
+  }
+
+  /* ===== CUBE GRID ===== */
+  .cube-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    margin: 8px 0 12px;
+    padding: 8px;
+    background: linear-gradient(180deg, var(--dirt-dark), var(--text-dark));
+    border: 4px solid;
+    border-color: var(--dirt-light) var(--text-dark) var(--text-dark) var(--dirt-light);
+  }
+  .cube-cell {
+    aspect-ratio: 1;
+    background:
+      repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0.08) 8px),
+      linear-gradient(180deg, var(--stone-light), var(--stone-mid));
+    border: 3px solid;
+    border-color: white var(--stone-dark) var(--stone-dark) white;
+    color: var(--text-dark);
+    display: flex; align-items: center; justify-content: center;
+    font-size: clamp(13px, 3.8vw, 18px);
+    font-weight: bold;
+    text-shadow: 1px 1px 0 rgba(255,255,255,0.3);
+    transition: all 0.15s;
+    text-align: center;
+    padding: 4px;
+  }
+  .cube-cell.active {
+    background: linear-gradient(180deg, var(--gold), var(--gold-dark));
+    border-color: white var(--gold-dark) var(--gold-dark) white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+  }
+  .cube-cell.solved {
+    background: linear-gradient(180deg, var(--diamond), var(--diamond-dark));
+    border-color: white var(--diamond-dark) var(--diamond-dark) white;
+    color: white;
+    text-shadow: 1px 1px 0 var(--text-dark);
+  }
+  .cube-cell.wrong { animation: shake 0.3s; }
+
+  /* ===== CREEPER (boss) ===== */
+  .creeper-banner {
+    background:
+      repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(0,0,0,0.1) 8px, rgba(0,0,0,0.1) 16px),
+      linear-gradient(180deg, #6abc6a, var(--creeper));
+    border: 4px solid;
+    border-color: #8edb8e var(--text-dark) var(--text-dark) #8edb8e;
+    padding: 12px;
+    text-align: center;
+    margin-bottom: 12px;
+    color: white;
+    font-size: 16px;
+    text-shadow: 2px 2px 0 var(--text-dark);
+    position: relative;
+  }
+  .creeper-face {
+    display: inline-block;
+    width: 32px; height: 32px;
+    background: var(--creeper);
+    position: relative;
+    margin-right: 8px;
+    vertical-align: middle;
+    border: 2px solid var(--text-dark);
+  }
+  .creeper-face::before {
+    content: '';
+    position: absolute;
+    width: 6px; height: 8px;
+    background: var(--text-dark);
+    top: 6px; left: 6px;
+    box-shadow: 14px 0 0 var(--text-dark);
+  }
+  .creeper-face::after {
+    content: '';
+    position: absolute;
+    width: 8px; height: 4px;
+    background: var(--text-dark);
+    top: 18px; left: 12px;
+    box-shadow: 0 4px 0 var(--text-dark), -4px 4px 0 var(--text-dark), 4px 4px 0 var(--text-dark);
+  }
+
+  /* ===== HEATMAP ===== */
+  .heat-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .heatmap {
+    display: grid;
+    gap: 2px;
+    min-width: 360px;
+    padding: 6px;
+    background: var(--text-dark);
+    border: 3px solid;
+    border-color: var(--stone-dark) var(--text-dark) var(--text-dark) var(--stone-dark);
+  }
+  .heat-label {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--gold);
+    font-size: 11px;
+  }
+  .heat-cell {
+    aspect-ratio: 1;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px;
+    background: var(--coal);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .heat-cell.fast { background: linear-gradient(180deg, var(--diamond), var(--diamond-dark)); color: white; }
+  .heat-cell.ok { background: linear-gradient(180deg, var(--gold), var(--gold-dark)); color: var(--text-dark); }
+  .heat-cell.slow { background: linear-gradient(180deg, #ff5a5a, var(--redstone)); color: white; }
+
+  .legend {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    justify-content: center;
+    font-size: 11px;
+    margin-top: 10px;
+    color: white;
+  }
+  .legend-block {
+    display: inline-block; width: 12px; height: 12px;
+    border: 1px solid var(--text-dark);
+    vertical-align: -2px;
+    margin-right: 3px;
+  }
+
+  /* ===== PARTICLES ===== */
+  .particles {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 100;
+    overflow: hidden;
+  }
+  .particle {
+    position: absolute;
+    width: 12px; height: 12px;
+    animation: particleFly 1s ease-out forwards;
+  }
+  @keyframes particleFly {
+    0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) rotate(360deg) scale(0.4); opacity: 0; }
+  }
+
+  /* ===== TOAST ===== */
+  .toast {
+    position: fixed;
+    top: 80px; left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(180deg, var(--wood-mid), var(--wood-dark));
+    border: 3px solid;
+    border-color: var(--wood-light) var(--text-dark) var(--text-dark) var(--wood-light);
+    color: white;
+    padding: 12px 20px;
+    font-size: 14px;
+    text-shadow: 2px 2px 0 var(--text-dark);
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.3s, transform 0.3s;
+    box-shadow: 0 4px 0 var(--text-dark);
+    pointer-events: none;
+    text-align: center;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(8px);
+  }
+
+  /* ===== ICONS as inline SVG-style blocks ===== */
+  .ico {
+    display: inline-block;
+    width: 16px; height: 16px;
+    vertical-align: middle;
+  }
+  .ico-diamond { background: linear-gradient(180deg, var(--diamond), var(--diamond-dark)); border: 1px solid var(--text-dark); }
+  .ico-gold { background: linear-gradient(180deg, var(--gold), var(--gold-dark)); border: 1px solid var(--text-dark); }
+  .ico-emerald { background: linear-gradient(180deg, #80f8a8, var(--emerald)); border: 1px solid var(--text-dark); }
+  .ico-iron { background: linear-gradient(180deg, white, var(--iron)); border: 1px solid var(--text-dark); }
+
+</style>
+</head>
+<body>
+
+<div class="clouds" id="clouds"></div>
+
+<div class="hud">
+  <div class="logo">⛏️ MATH MINE</div>
+  <div class="inv">
+    <div class="inv-slot" id="inv-diamonds">
+      <span class="ico ico-diamond"></span>
+      <span id="diamond-count">0</span>
+    </div>
+    <div class="inv-slot" id="inv-streak" style="display:none;">
+      🔥<span id="streak-count">0</span>
+    </div>
+  </div>
+</div>
+
+<div class="tier-bar" id="tier-bar">
+  <div class="tier-label">
+    <span class="tier-pick" id="tier-pick">⛏️</span>
+    <span id="tier-name">TIER 1 — Pickaxe</span>
+  </div>
+  <div class="tier-progress-track">
+    <div class="tier-progress-fill" id="tier-progress-fill"></div>
+  </div>
+  <div class="tier-pct" id="tier-pct">0%</div>
+</div>
+
+<nav class="hotbar" id="tabs">
+  <button class="slot active" data-panel="mtc"><span class="slot-icon">📜</span>EXAM</button>
+  <button class="slot" data-panel="rhythm"><span class="slot-icon">⚡</span>RUSH</button>
+  <button class="slot" data-panel="cube"><span class="slot-icon">🧊</span>CUBE</button>
+  <button class="slot" data-panel="boss"><span class="slot-icon">💥</span>CREEPER</button>
+  <button class="slot" data-panel="progress"><span class="slot-icon">📊</span>STATS</button>
+</nav>
+
+<main>
+
+  <!-- ============ MTC ============ -->
+  <section class="panel active" id="panel-mtc">
+    <div class="craft-card">
+      <div class="steve-area">
+        <div class="steve idle" id="mtc-steve">
+          <div class="steve-head">
+            <div class="steve-hair"></div>
+            <div class="eye l"></div><div class="eye r"></div>
+            <div class="mouth" id="mtc-mouth"></div>
+          </div>
+          <div class="steve-body"></div>
+          <div class="steve-arms-l"></div>
+          <div class="steve-arms-r"></div>
+        </div>
+        <div class="bubble" id="mtc-bubble"></div>
+      </div>
+      <div class="meta-row">
+        <span id="mtc-counter">⛏️ Ready to mine!</span>
+        <span class="val" id="mtc-time">6.0s</span>
+      </div>
+      <div class="heart-bar"><div class="heart-fill" id="mtc-bar"></div></div>
+      <div class="question-block" id="mtc-q">PRESS START</div>
+      <div class="answer-chest empty" id="mtc-answer">?</div>
+      <div class="feedback" id="mtc-fb"></div>
+      <div class="keypad" id="mtc-keypad"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="mtc-start">⛏️ START MINING</button>
+        <button class="btn btn-tnt" id="mtc-stop">STOP</button>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">SCORE</div><div class="stat-val" id="mtc-score">—</div></div>
+        <div class="stat"><div class="stat-label">AVG</div><div class="stat-val" id="mtc-avg">—</div></div>
+        <div class="stat"><div class="stat-label">BEST</div><div class="stat-val" id="mtc-best">—</div></div>
+      </div>
+      <div class="hint">25 blocks to break, 6 seconds each. Just like the real exam at school!</div>
+    </div>
+  </section>
+
+  <!-- ============ RHYTHM ============ -->
+  <section class="panel" id="panel-rhythm">
+    <div class="craft-card">
+      <div class="meta-row">
+        <span>🔥 <span id="rh-streak">0</span></span>
+        <span class="val" id="rh-score">0</span>
+        <span>👑 <span id="rh-best">0</span></span>
+      </div>
+      <div class="rhythm-track" id="rh-track">
+        <div class="rhythm-line"></div>
+        <div class="lava-floor"></div>
+      </div>
+      <div class="answer-chest empty" id="rh-answer">?</div>
+      <div class="feedback" id="rh-fb"></div>
+      <div class="keypad" id="rh-keypad"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="rh-start">⚡ START RUSH</button>
+        <button class="btn btn-tnt" id="rh-stop">STOP</button>
+      </div>
+      <div class="hint">Break the blocks before they fall in the lava! Goes faster as you score.</div>
+    </div>
+  </section>
+
+  <!-- ============ CUBE ============ -->
+  <section class="panel" id="panel-cube">
+    <div class="craft-card">
+      <div class="meta-row">
+        <span>SOLVED <span class="val" id="cb-solved">0/9</span></span>
+        <span>TIME <span class="val" id="cb-time">0.0s</span></span>
+        <span>👑 <span class="val" id="cb-pb">—</span></span>
+      </div>
+      <div class="cube-grid" id="cb-grid"></div>
+      <div class="question-block" id="cb-prompt" style="font-size: clamp(28px, 8vw, 40px); padding: 12px;">TAP NEW CUBE</div>
+      <div class="answer-chest empty" id="cb-answer">?</div>
+      <div class="feedback" id="cb-fb"></div>
+      <div class="keypad" id="cb-keypad"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="cb-start">🧊 NEW CUBE</button>
+      </div>
+      <div class="hint">Mine all 9 blocks fast — beat your record like a Rubik's cube!</div>
+    </div>
+  </section>
+
+  <!-- ============ BOSS / CREEPER ============ -->
+  <section class="panel" id="panel-boss">
+    <div class="craft-card">
+      <div class="creeper-banner">
+        <span class="creeper-face"></span>
+        CREEPER ATTACK!
+      </div>
+      <div class="meta-row">
+        <span id="bs-counter">Ready</span>
+        <span class="val" id="bs-time">3.0s</span>
+      </div>
+      <div class="heart-bar"><div class="heart-fill" id="bs-bar"></div></div>
+      <div class="question-block" id="bs-q">DEFEAT THE CREEPER</div>
+      <div class="answer-chest empty" id="bs-answer">?</div>
+      <div class="feedback" id="bs-fb"></div>
+      <div class="keypad" id="bs-keypad"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="bs-start">⚔️ FIGHT!</button>
+        <button class="btn btn-tnt" id="bs-stop">RUN!</button>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">HITS</div><div class="stat-val" id="bs-right">—</div></div>
+        <div class="stat"><div class="stat-label">TOTAL</div><div class="stat-val" id="bs-total">—</div></div>
+        <div class="stat"><div class="stat-label">COMBO</div><div class="stat-val" id="bs-streak">0</div></div>
+      </div>
+      <div class="hint">The creeper attacks your weakest facts! Only 3 seconds — be quick!</div>
+    </div>
+  </section>
+
+  <!-- ============ STATS ============ -->
+  <section class="panel" id="panel-progress">
+    <div class="craft-card">
+      <div style="text-align:center; font-size: 14px; color: white; margin-bottom: 10px;">
+        🗺️ YOUR MINING MAP
+      </div>
+      <p style="font-size: 11px; color: white; text-align: center; margin: 0 0 10px;">
+        Diamond = super fast! Gold = OK. Red = need practice!
+      </p>
+      <div class="heat-wrap">
+        <div class="heatmap" id="hm-grid"></div>
+      </div>
+      <div class="legend">
+        <span><span class="legend-block" style="background: linear-gradient(180deg, var(--diamond), var(--diamond-dark));"></span>Diamond &lt;2s</span>
+        <span><span class="legend-block" style="background: linear-gradient(180deg, var(--gold), var(--gold-dark));"></span>Gold 2–4s</span>
+        <span><span class="legend-block" style="background: linear-gradient(180deg, #ff5a5a, var(--redstone));"></span>Redstone slow</span>
+        <span><span class="legend-block" style="background: var(--coal);"></span>Coal untried</span>
+      </div>
+    </div>
+    <div class="craft-card">
+      <div class="meta-row"><span>⛏️ SKILL TIER</span><span class="val" id="tier-info">—</span></div>
+      <div class="meta-row"><span>✨ FACTS MASTERED</span><span class="val" id="mastered-info">—</span></div>
+      <div class="meta-row"><span>🔥 DAILY STREAK</span><span class="val" id="streak-info">—</span></div>
+      <div class="meta-row"><span>⛏️ BLOCKS BROKEN</span><span class="val" id="total-q">—</span></div>
+      <div class="meta-row"><span>🎯 ACCURACY</span><span class="val" id="overall-acc">—</span></div>
+      <div class="meta-row"><span>💎 DIAMONDS</span><span class="val" id="total-diamonds">0</span></div>
+      <div class="btn-row">
+        <button class="btn btn-tnt" id="hm-reset">💥 RESET WORLD</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="particles" id="particles"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ============ CLOUDS ============
+  const cloudsEl = document.getElementById('clouds');
+  for (let i = 0; i < 5; i++) {
+    const c = document.createElement('div');
+    c.className = 'cloud';
+    c.style.top = (5 + Math.random() * 35) + '%';
+    c.style.animationDuration = (40 + Math.random() * 40) + 's';
+    c.style.animationDelay = -Math.random() * 60 + 's';
+    cloudsEl.appendChild(c);
+  }
+
+  // ============ STORAGE ============
+  const KEY = 'mathmine-v1';
+  let data = {
+    progress: {},
+    bestMtc: 0,
+    bestRhythm: 0,
+    bestCube: null,
+    diamonds: 0,
+    streak: { count: 0, lastDay: null },
+    tier: 1
+  };
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) data = Object.assign(data, JSON.parse(raw));
+    } catch(e) {}
+    updateStreakDisplay();
+    refreshUI();
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(data)); } catch(e) {}
+  }
+
+  function todayStr() {
+    const d = new Date();
+    return d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate();
+  }
+  function yesterdayStr() {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    return d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate();
+  }
+  function bumpStreak() {
+    const today = todayStr();
+    if (data.streak.lastDay === today) return;
+    if (data.streak.lastDay === yesterdayStr()) data.streak.count++;
+    else data.streak.count = 1;
+    data.streak.lastDay = today;
+    save();
+    updateStreakDisplay();
+  }
+  function updateStreakDisplay() {
+    const slot = document.getElementById('inv-streak');
+    if (data.streak.count > 0) {
+      slot.style.display = 'flex';
+      document.getElementById('streak-count').textContent = data.streak.count;
+    } else {
+      slot.style.display = 'none';
+    }
+  }
+
+  function recordFact(a, b, ms, correct) {
+    const key = a + 'X' + b;
+    if (!data.progress[key]) data.progress[key] = { times: [], wrongs: 0 };
+    const wasMastered = factMastered(a, b);
+    if (correct) {
+      data.progress[key].times.push(ms);
+      // award diamonds: 1 base, +1 if under 2s, +1 if under 1s
+      let d = 1;
+      if (ms < 2000) d++;
+      if (ms < 1000) d++;
+      addDiamonds(d);
+    } else {
+      data.progress[key].wrongs++;
+    }
+    if (data.progress[key].times.length > 10) data.progress[key].times = data.progress[key].times.slice(-10);
+    bumpStreak();
+    save();
+    // celebrate fact mastery and check for tier unlock
+    if (correct && !wasMastered && factMastered(a, b)) {
+      toast('✨ ' + a + ' × ' + b + ' MASTERED!');
+    }
+    checkTierUnlock();
+  }
+  function addDiamonds(n) {
+    data.diamonds += n;
+    const el = document.getElementById('diamond-count');
+    el.textContent = data.diamonds;
+    const slot = document.getElementById('inv-diamonds');
+    slot.classList.remove('pop');
+    void slot.offsetWidth;
+    slot.classList.add('pop');
+  }
+  function avgTime(a, b) {
+    const p = data.progress[a + 'X' + b];
+    if (!p || p.times.length === 0) return null;
+    return p.times.reduce((s,t)=>s+t,0) / p.times.length;
+  }
+
+  // ============ SOUNDS (Web Audio) ============
+  let audioCtx = null;
+  function ac() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+    }
+    return audioCtx;
+  }
+  function beep(freq, duration, type, vol) {
+    const c = ac(); if (!c) return;
+    if (c.state === 'suspended') c.resume();
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = type || 'square';
+    o.frequency.value = freq;
+    g.gain.value = vol || 0.08;
+    g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + duration);
+    o.connect(g).connect(c.destination);
+    o.start();
+    o.stop(c.currentTime + duration);
+  }
+  function sndCorrect() {
+    beep(660, 0.08, 'square', 0.1);
+    setTimeout(() => beep(880, 0.12, 'square', 0.1), 70);
+  }
+  function sndWrong() {
+    beep(180, 0.18, 'sawtooth', 0.1);
+  }
+  function sndMine() {
+    beep(220, 0.04, 'square', 0.06);
+    setTimeout(() => beep(180, 0.04, 'square', 0.05), 30);
+  }
+  function sndDiamond() {
+    beep(880, 0.06, 'triangle', 0.08);
+    setTimeout(() => beep(1320, 0.1, 'triangle', 0.08), 50);
+  }
+  function sndExplode() {
+    beep(120, 0.3, 'sawtooth', 0.12);
+    setTimeout(() => beep(80, 0.3, 'sawtooth', 0.1), 80);
+  }
+  function sndPB() {
+    beep(523, 0.1, 'square', 0.1);
+    setTimeout(() => beep(659, 0.1, 'square', 0.1), 100);
+    setTimeout(() => beep(784, 0.1, 'square', 0.1), 200);
+    setTimeout(() => beep(1047, 0.2, 'square', 0.1), 300);
+  }
+
+  // ============ PARTICLES ============
+  function spawnParticles(x, y, color, count) {
+    const wrap = document.getElementById('particles');
+    for (let i = 0; i < count; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      p.style.left = x + 'px';
+      p.style.top = y + 'px';
+      p.style.background = color;
+      p.style.border = '1px solid #000';
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 60 + Math.random() * 80;
+      p.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
+      p.style.setProperty('--dy', Math.sin(angle) * dist + 'px');
+      wrap.appendChild(p);
+      setTimeout(() => p.remove(), 1000);
+    }
+  }
+  function celebrateAt(el, kind) {
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    if (kind === 'correct') spawnParticles(x, y, '#5cdef0', 8);
+    else if (kind === 'diamond') spawnParticles(x, y, '#5cdef0', 14);
+    else if (kind === 'wrong') spawnParticles(x, y, '#d62a2a', 6);
+    else if (kind === 'gold') spawnParticles(x, y, '#fcd84a', 10);
+  }
+
+  // ============ TOAST ============
+  let toastTimer;
+  function toast(msg, ms) {
+    const t = document.getElementById('toast');
+    t.innerHTML = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), ms || 2000);
+  }
+
+  // ============ STEVE EMOTIONS ============
+  function steveSay(steveEl, mouthEl, bubbleEl, mood, msg) {
+    steveEl.classList.remove('happy', 'sad', 'idle');
+    if (mood === 'happy') {
+      steveEl.classList.add('happy');
+      mouthEl.className = 'mouth smile';
+    } else if (mood === 'sad') {
+      steveEl.classList.add('sad');
+      mouthEl.className = 'mouth frown';
+    } else {
+      steveEl.classList.add('idle');
+      mouthEl.className = 'mouth';
+    }
+    if (msg) {
+      bubbleEl.textContent = msg;
+      bubbleEl.classList.add('show');
+      setTimeout(() => bubbleEl.classList.remove('show'), 1400);
+    }
+    if (mood !== 'idle') {
+      setTimeout(() => {
+        steveEl.classList.remove('happy', 'sad');
+        steveEl.classList.add('idle');
+        mouthEl.className = 'mouth';
+      }, 1500);
+    }
+  }
+  const HAPPY_MSGS = ['Nice!', 'Wow!', 'Diamond!', 'Yes!', '💎', 'GG!', 'Pro!', 'Speed!'];
+  const SAD_MSGS = ['Oof!', 'Try again', 'Nearly!', 'Oops'];
+
+  // ============ QUESTION GEN (TIER-BASED ADAPTIVE) ============
+  // Tiers progressively unlock harder times tables.
+  // Within unlocked tiers, weight toward facts not yet mastered.
+  const TIERS = [
+    { name: 'Pickaxe',    icon: '⛏️',  tables: [2, 5, 10] },           // T1: foundation
+    { name: 'Iron Pick',  icon: '⚒️',  tables: [3, 4, 11] },           // T2
+    { name: 'Diamond',    icon: '💎',  tables: [6, 9] },               // T3
+    { name: 'Netherite',  icon: '🔥',  tables: [7, 8, 12] }            // T4: hardest
+  ];
+  const MASTERY_TIME_MS = 3000;   // "solid" = avg under 3s
+  const MASTERY_REQUIRED_HITS = 3; // need at least 3 attempts
+  const UNLOCK_THRESHOLD = 0.75;   // 75% of facts in tier mastered → unlock next
+
+  function factMastered(a, b) {
+    const p = data.progress[a + 'X' + b];
+    if (!p || p.times.length < MASTERY_REQUIRED_HITS) return false;
+    const recent = p.times.slice(-MASTERY_REQUIRED_HITS);
+    const avg = recent.reduce((s,t)=>s+t,0) / recent.length;
+    if (avg > MASTERY_TIME_MS) return false;
+    // also: not too many wrongs recently. heuristic: wrongs shouldn't outnumber 1/3 of attempts
+    const totalAttempts = p.times.length + p.wrongs;
+    if (p.wrongs / totalAttempts > 0.33) return false;
+    return true;
+  }
+
+  // Returns all (a,b) pairs for tables in a given tier index, paired against 2..12
+  function factsInTier(tierIdx) {
+    const tables = TIERS[tierIdx].tables;
+    const out = [];
+    tables.forEach(a => {
+      for (let b = 2; b <= 12; b++) out.push([a, b]);
+    });
+    return out;
+  }
+
+  // Mastery ratio of current tier (0..1) — used for the progress bar
+  function currentTierMastery() {
+    const idx = data.tier - 1;
+    const facts = factsInTier(idx);
+    let mastered = 0;
+    facts.forEach(([a,b]) => { if (factMastered(a,b)) mastered++; });
+    return mastered / facts.length;
+  }
+
+  // Check if next tier should unlock; if so, do it and celebrate
+  function checkTierUnlock() {
+    if (data.tier >= TIERS.length) return; // already at top
+    if (currentTierMastery() >= UNLOCK_THRESHOLD) {
+      data.tier++;
+      save();
+      const newTier = TIERS[data.tier - 1];
+      const bar = document.getElementById('tier-bar');
+      bar.classList.remove('unlocking');
+      void bar.offsetWidth;
+      bar.classList.add('unlocking');
+      sndPB();
+      toast('🔓 TIER ' + data.tier + ' UNLOCKED!<br>' + newTier.icon + ' ' + newTier.name.toUpperCase() + ' BLOCKS');
+      addDiamonds(25);
+    }
+    refreshTierBar();
+  }
+
+  function refreshTierBar() {
+    const tier = TIERS[data.tier - 1];
+    document.getElementById('tier-pick').textContent = tier.icon;
+    let label = 'TIER ' + data.tier + ' — ' + tier.name.toUpperCase();
+    if (data.tier >= TIERS.length) label += ' (MAX)';
+    document.getElementById('tier-name').textContent = label;
+    const pct = Math.round(currentTierMastery() * 100);
+    document.getElementById('tier-progress-fill').style.width = pct + '%';
+    document.getElementById('tier-pct').textContent = pct + '%';
+  }
+
+  // Adaptive question picker.
+  // Pool = all facts in unlocked tiers. Weighted so:
+  //   - non-mastered facts in highest unlocked tier get most weight (focus)
+  //   - non-mastered in lower tiers get medium weight
+  //   - mastered facts get low weight (warmup / confidence)
+  // Always orient (a,b) so a is from a tier table (so tables practice is consistent).
+  function genQ() {
+    const pool = [];
+    for (let t = 0; t < data.tier; t++) {
+      const isCurrent = (t === data.tier - 1);
+      const facts = factsInTier(t);
+      facts.forEach(([a, b]) => {
+        const mastered = factMastered(a, b);
+        let weight;
+        if (mastered) weight = 1;                       // confidence reps
+        else if (isCurrent) weight = 6;                  // active focus
+        else weight = 3;                                 // older unmastered facts
+        for (let i = 0; i < weight; i++) pool.push([a, b]);
+      });
+    }
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  function weakestFacts(n) {
+    // Boss mode: target unmastered facts in unlocked tiers,
+    // prioritized by how far they are from mastery.
+    const all = [];
+    for (let t = 0; t < data.tier; t++) {
+      factsInTier(t).forEach(([a, b]) => {
+        const p = data.progress[a + 'X' + b];
+        const avg = avgTime(a, b);
+        const wrongs = p ? p.wrongs : 0;
+        let score;
+        if (!p || p.times.length === 0) score = 6000;
+        else score = avg + wrongs * 2000;
+        all.push({ a, b, score });
+      });
+    }
+    all.sort((x,y) => y.score - x.score);
+    return all.slice(0, Math.min(n, all.length));
+  }
+
+  // ============ KEYPAD ============
+  function buildKeypad(container, onDigit, onDel, onSubmit) {
+    container.innerHTML = '';
+    const layout = ['1','2','3','4','5','6','7','8','9','del','0','ok'];
+    layout.forEach(label => {
+      const b = document.createElement('button');
+      b.className = 'key';
+      if (label === 'del') { b.className += ' del'; b.innerHTML = '⌫'; b.addEventListener('click', () => { sndMine(); onDel(); }); }
+      else if (label === 'ok') { b.className += ' action'; b.textContent = '✓'; b.addEventListener('click', () => { sndMine(); onSubmit(); }); }
+      else { b.textContent = label; b.addEventListener('click', () => { sndMine(); onDigit(label); }); }
+      container.appendChild(b);
+    });
+  }
+
+  // ============ TABS ============
+  document.getElementById('tabs').addEventListener('click', (e) => {
+    const t = e.target.closest('.slot');
+    if (!t) return;
+    if (!audioCtx) ac(); // unlock audio on first interaction
+    document.querySelectorAll('.slot').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('panel-' + t.dataset.panel).classList.add('active');
+    if (t.dataset.panel === 'progress') renderHeatmap();
+  });
+
+  // ============ MTC EXAM ============
+  const mtc = { running:false, qNum:0, total:25, score:0, totalTime:0, current:null, qStart:0, timer:null, buf:'', perQ:6000, gap:1500 };
+  const $mq = document.getElementById('mtc-q');
+  const $ma = document.getElementById('mtc-answer');
+  const $mb = document.getElementById('mtc-bar');
+  const $mc = document.getElementById('mtc-counter');
+  const $mt = document.getElementById('mtc-time');
+  const $mf = document.getElementById('mtc-fb');
+  const $mSteve = document.getElementById('mtc-steve');
+  const $mMouth = document.getElementById('mtc-mouth');
+  const $mBubble = document.getElementById('mtc-bubble');
+
+  function mtcSetAnswer() {
+    if (!mtc.buf) { $ma.textContent = '?'; $ma.className = 'answer-chest empty'; }
+    else { $ma.textContent = mtc.buf; $ma.className = 'answer-chest'; }
+  }
+  function mtcStart() {
+    mtc.running = true; mtc.qNum = 0; mtc.score = 0; mtc.totalTime = 0;
+    $mf.textContent = ''; $mf.className = 'feedback';
+    document.getElementById('mtc-score').textContent = '—';
+    document.getElementById('mtc-avg').textContent = '—';
+    mtcNext();
+  }
+  function mtcStop() {
+    mtc.running = false;
+    if (mtc.timer) clearInterval(mtc.timer);
+    $mq.textContent = 'STOPPED'; $mq.className = 'question-block';
+    $mc.textContent = '—'; $mt.textContent = '—'; $mb.style.width = '0%';
+    mtc.buf = ''; mtcSetAnswer();
+  }
+  function mtcNext() {
+    if (!mtc.running) return;
+    if (mtc.qNum >= mtc.total) return mtcEnd();
+    mtc.qNum++;
+    mtc.current = genQ();
+    $mq.textContent = mtc.current[0] + ' × ' + mtc.current[1];
+    $mq.className = 'question-block';
+    $mc.textContent = '⛏️ Block ' + mtc.qNum + '/' + mtc.total;
+    mtc.buf = ''; mtcSetAnswer();
+    mtc.qStart = Date.now();
+    $mb.style.width = '100%'; $mb.className = 'heart-fill';
+    if (mtc.timer) clearInterval(mtc.timer);
+    mtc.timer = setInterval(() => {
+      const elapsed = Date.now() - mtc.qStart;
+      const remain = Math.max(0, mtc.perQ - elapsed);
+      $mb.style.width = (remain / mtc.perQ * 100) + '%';
+      $mt.textContent = (remain / 1000).toFixed(1) + 's';
+      if (remain < 2000) $mb.className = 'heart-fill warn';
+      if (remain < 1000) $mb.className = 'heart-fill danger';
+      if (remain <= 0) mtcSubmit(true);
+    }, 50);
+  }
+  function mtcSubmit(timedOut) {
+    if (!mtc.running) return;
+    if (!timedOut && !mtc.buf) return;
+    clearInterval(mtc.timer);
+    const [a, b] = mtc.current;
+    const correct = a * b;
+    const val = mtc.buf ? parseInt(mtc.buf, 10) : null;
+    const elapsed = Date.now() - mtc.qStart;
+    const isRight = val === correct;
+    if (isRight) {
+      mtc.score++;
+      $mf.textContent = '✓ ' + correct + (elapsed < 2000 ? ' 💎+3' : ' 💎+1');
+      $mf.className = 'feedback correct';
+      $ma.className = 'answer-chest correct';
+      $mq.classList.add('broken');
+      sndCorrect();
+      if (elapsed < 2000) sndDiamond();
+      celebrateAt($ma, elapsed < 2000 ? 'diamond' : 'correct');
+      steveSay($mSteve, $mMouth, $mBubble, 'happy', HAPPY_MSGS[Math.floor(Math.random()*HAPPY_MSGS.length)]);
+    } else {
+      $mf.textContent = (val === null ? '⏰ Time! ' : '✗ ') + a + ' × ' + b + ' = ' + correct;
+      $mf.className = 'feedback wrong';
+      $ma.className = 'answer-chest wrong';
+      $mq.classList.add('cracked');
+      sndWrong();
+      celebrateAt($ma, 'wrong');
+      steveSay($mSteve, $mMouth, $mBubble, 'sad', SAD_MSGS[Math.floor(Math.random()*SAD_MSGS.length)]);
+    }
+    mtc.totalTime += elapsed;
+    recordFact(a, b, elapsed, isRight);
+    setTimeout(() => { if (mtc.running) { $mf.textContent=''; mtcNext(); } }, mtc.gap);
+  }
+  function mtcEnd() {
+    mtc.running = false;
+    if (mtc.timer) clearInterval(mtc.timer);
+    $mq.textContent = '🎉 DONE!';
+    $mq.className = 'question-block';
+    $mc.textContent = 'Finished'; $mt.textContent = '—'; $mb.style.width = '0%';
+    document.getElementById('mtc-score').textContent = mtc.score + '/25';
+    document.getElementById('mtc-avg').textContent = (mtc.totalTime / mtc.total / 1000).toFixed(1) + 's';
+    if (mtc.score > data.bestMtc) {
+      data.bestMtc = mtc.score; save(); refreshUI();
+      sndPB();
+      toast('🏆 NEW BEST SCORE!<br>' + mtc.score + '/25');
+      addDiamonds(10);
+    } else {
+      toast('Score: ' + mtc.score + '/25<br>+' + mtc.score + ' 💎');
+      addDiamonds(mtc.score);
+    }
+  }
+  function mtcMaybeAutoSubmit() {
+    if (!mtc.running || !mtc.current || !mtc.buf) return;
+    const correct = mtc.current[0] * mtc.current[1];
+    const correctStr = String(correct);
+    // auto-submit when the buffer matches the correct answer exactly
+    if (mtc.buf === correctStr) { mtcSubmit(false); return; }
+    // also auto-submit if buffer has reached the length of the correct answer (likely wrong, but no point waiting)
+    if (mtc.buf.length >= correctStr.length) { mtcSubmit(false); }
+  }
+  buildKeypad(
+    document.getElementById('mtc-keypad'),
+    (d) => { if (mtc.running && mtc.buf.length < 4) { mtc.buf += d; mtcSetAnswer(); mtcMaybeAutoSubmit(); }},
+    () => { if (mtc.running) { mtc.buf = mtc.buf.slice(0, -1); mtcSetAnswer(); }},
+    () => mtcSubmit(false)
+  );
+  document.getElementById('mtc-start').addEventListener('click', mtcStart);
+  document.getElementById('mtc-stop').addEventListener('click', mtcStop);
+
+  // ============ RHYTHM ============
+  const rh = { running:false, score:0, streak:0, items:[], speed:70, raf:null, lastSpawn:0, lastFrame:0, buf:'' };
+  const $rt = document.getElementById('rh-track');
+  const $ra = document.getElementById('rh-answer');
+  const $rs = document.getElementById('rh-score');
+  const $rk = document.getElementById('rh-streak');
+  const $rf = document.getElementById('rh-fb');
+
+  function rhSetAnswer() {
+    if (!rh.buf) { $ra.textContent = '?'; $ra.className = 'answer-chest empty'; }
+    else { $ra.textContent = rh.buf; $ra.className = 'answer-chest'; }
+  }
+  function rhStart() {
+    rh.running = true; rh.score = 0; rh.streak = 0; rh.speed = 70; rh.lastSpawn = 0; rh.buf = '';
+    rh.items.forEach(it => it.el.remove()); rh.items = [];
+    $rs.textContent = '0'; $rk.textContent = '0';
+    $rf.textContent = ''; $rf.className = 'feedback';
+    rhSetAnswer();
+    rhSpawn();
+    rh.lastFrame = performance.now();
+    rh.raf = requestAnimationFrame(rhLoop);
+  }
+  function rhStop() {
+    rh.running = false;
+    if (rh.raf) cancelAnimationFrame(rh.raf);
+    rh.items.forEach(it => it.el.remove()); rh.items = [];
+    if (rh.score > data.bestRhythm) {
+      data.bestRhythm = rh.score; save(); refreshUI();
+      sndPB();
+      toast('🏆 NEW BEST!<br>' + rh.score + ' points');
+    }
+  }
+  function rhSpawn() {
+    const [a, b] = genQ();
+    const el = document.createElement('div');
+    el.className = 'rhythm-q';
+    el.textContent = a + ' × ' + b;
+    const trackW = $rt.offsetWidth;
+    const lanes = 4;
+    const laneH = ($rt.offsetHeight - 50) / lanes;
+    const lane = rh.items.length % lanes;
+    el.style.left = trackW + 'px';
+    el.style.top = (10 + lane * laneH) + 'px';
+    $rt.appendChild(el);
+    rh.items.push({ el, a, b, x: trackW, ans: a*b, spawned: performance.now() });
+  }
+  function rhLoop(now) {
+    if (!rh.running) return;
+    const dt = (now - rh.lastFrame) / 1000;
+    rh.lastFrame = now;
+    if (now - rh.lastSpawn > Math.max(1100, 220000 / rh.speed)) {
+      rhSpawn(); rh.lastSpawn = now;
+    }
+    for (let i = rh.items.length - 1; i >= 0; i--) {
+      const it = rh.items[i];
+      it.x -= rh.speed * dt;
+      it.el.style.left = it.x + 'px';
+      if (it.x < 130) it.el.classList.add('danger');
+      if (it.x < 64) {
+        rh.streak = 0; $rk.textContent = '0';
+        $rf.textContent = '💥 ' + it.a + ' × ' + it.b + ' = ' + it.ans;
+        $rf.className = 'feedback wrong';
+        recordFact(it.a, it.b, 6000, false);
+        sndExplode();
+        it.el.remove();
+        rh.items.splice(i, 1);
+      }
+    }
+    rh.raf = requestAnimationFrame(rhLoop);
+  }
+  function rhSubmit() {
+    if (!rh.running || !rh.buf) return;
+    const v = parseInt(rh.buf, 10);
+    rh.buf = ''; rhSetAnswer();
+    for (let i = 0; i < rh.items.length; i++) {
+      const it = rh.items[i];
+      if (it.ans === v) {
+        const elapsed = performance.now() - it.spawned;
+        recordFact(it.a, it.b, elapsed, true);
+        rh.score += 10 + Math.floor(rh.streak / 3);
+        rh.streak++;
+        rh.speed = Math.min(200, rh.speed + 4);
+        $rs.textContent = rh.score;
+        $rk.textContent = rh.streak;
+        $rf.textContent = '✓ ' + it.a + ' × ' + it.b;
+        $rf.className = 'feedback correct';
+        sndCorrect();
+        if (rh.streak % 5 === 0 && rh.streak > 0) {
+          toast('🔥 ' + rh.streak + ' STREAK!');
+          sndDiamond();
+        }
+        const r = it.el.getBoundingClientRect();
+        spawnParticles(r.left + r.width/2, r.top + r.height/2, '#5cdef0', 6);
+        it.el.classList.add('popping');
+        setTimeout(() => it.el.remove(), 300);
+        rh.items.splice(i, 1);
+        return;
+      }
+    }
+    $rf.textContent = '✗ no match';
+    $rf.className = 'feedback wrong';
+    sndWrong();
+  }
+  function rhMaybeAutoSubmit() {
+    if (!rh.running || !rh.buf) return;
+    const v = parseInt(rh.buf, 10);
+    if (isNaN(v)) return;
+    // if any visible item matches the current buffer exactly, submit
+    for (const it of rh.items) {
+      if (it.ans === v) { rhSubmit(); return; }
+    }
+    // otherwise, if buffer is 3+ digits (max possible answer length), commit it
+    if (rh.buf.length >= 3) rhSubmit();
+  }
+  buildKeypad(
+    document.getElementById('rh-keypad'),
+    (d) => { if (rh.running && rh.buf.length < 4) { rh.buf += d; rhSetAnswer(); rhMaybeAutoSubmit(); }},
+    () => { if (rh.running) { rh.buf = rh.buf.slice(0, -1); rhSetAnswer(); }},
+    rhSubmit
+  );
+  document.getElementById('rh-start').addEventListener('click', rhStart);
+  document.getElementById('rh-stop').addEventListener('click', rhStop);
+
+  // ============ CUBE ============
+  const cb = { running:false, cells:[], active:-1, solved:0, start:0, timer:null, buf:'' };
+  const $cg = document.getElementById('cb-grid');
+  const $cp = document.getElementById('cb-prompt');
+  const $ca = document.getElementById('cb-answer');
+  const $cs = document.getElementById('cb-solved');
+  const $ct = document.getElementById('cb-time');
+  const $cf = document.getElementById('cb-fb');
+
+  function cbSetAnswer() {
+    if (!cb.buf) { $ca.textContent = '?'; $ca.className = 'answer-chest empty'; }
+    else { $ca.textContent = cb.buf; $ca.className = 'answer-chest'; }
+  }
+  function cbStart() {
+    cb.running = true; cb.cells = []; cb.active = -1; cb.solved = 0; cb.buf = '';
+    $cg.innerHTML = '';
+    $cf.textContent = ''; $cf.className = 'feedback';
+    for (let i = 0; i < 9; i++) {
+      const [a, b] = genQ();
+      const cell = { a, b, ans: a*b, solved: false, started: 0 };
+      const el = document.createElement('div');
+      el.className = 'cube-cell';
+      el.textContent = a + '×' + b;
+      el.addEventListener('click', () => { sndMine(); cbActivate(i); });
+      cell.el = el;
+      cb.cells.push(cell);
+      $cg.appendChild(el);
+    }
+    $cs.textContent = '0/9';
+    cb.start = Date.now();
+    if (cb.timer) clearInterval(cb.timer);
+    cb.timer = setInterval(() => $ct.textContent = ((Date.now()-cb.start)/1000).toFixed(1)+'s', 100);
+    cbActivate(0);
+  }
+  function cbActivate(i) {
+    if (!cb.running || cb.cells[i].solved) return;
+    cb.cells.forEach(c => c.el.classList.remove('active'));
+    cb.cells[i].el.classList.add('active');
+    cb.active = i;
+    cb.cells[i].started = Date.now();
+    $cp.textContent = cb.cells[i].a + ' × ' + cb.cells[i].b;
+    cb.buf = ''; cbSetAnswer();
+  }
+  function cbSubmit() {
+    if (cb.active < 0 || !cb.buf) return;
+    const c = cb.cells[cb.active];
+    const v = parseInt(cb.buf, 10);
+    const elapsed = Date.now() - c.started;
+    cb.buf = ''; cbSetAnswer();
+    if (v === c.ans) {
+      c.solved = true;
+      c.el.classList.remove('active');
+      c.el.classList.add('solved');
+      c.el.innerHTML = '💎<br>' + c.ans;
+      cb.solved++;
+      $cs.textContent = cb.solved + '/9';
+      $cf.textContent = '✓ MINED!'; $cf.className = 'feedback correct';
+      sndDiamond();
+      const r = c.el.getBoundingClientRect();
+      spawnParticles(r.left + r.width/2, r.top + r.height/2, '#5cdef0', 6);
+      recordFact(c.a, c.b, elapsed, true);
+      if (cb.solved === 9) return cbFinish();
+      for (let j = (cb.active+1)%9, t=0; t<9; j=(j+1)%9, t++) {
+        if (!cb.cells[j].solved) return cbActivate(j);
+      }
+    } else {
+      c.el.classList.add('wrong');
+      $cf.textContent = '✗ try again'; $cf.className = 'feedback wrong';
+      sndWrong();
+      recordFact(c.a, c.b, elapsed, false);
+      setTimeout(() => c.el.classList.remove('wrong'), 400);
+    }
+  }
+  function cbFinish() {
+    cb.running = false;
+    if (cb.timer) clearInterval(cb.timer);
+    const total = (Date.now() - cb.start) / 1000;
+    if (data.bestCube === null || total < data.bestCube) {
+      data.bestCube = total; save(); refreshUI();
+      $cp.innerHTML = '🏆 NEW PB!<br>' + total.toFixed(1) + 's';
+      sndPB();
+      toast('🏆 NEW PB!<br>' + total.toFixed(1) + 's');
+      addDiamonds(15);
+    } else {
+      $cp.textContent = total.toFixed(1) + 's';
+      addDiamonds(5);
+    }
+  }
+  function cbMaybeAutoSubmit() {
+    if (!cb.running || cb.active < 0 || !cb.buf) return;
+    const correctStr = String(cb.cells[cb.active].ans);
+    if (cb.buf === correctStr) { cbSubmit(); return; }
+    if (cb.buf.length >= correctStr.length) cbSubmit();
+  }
+  buildKeypad(
+    document.getElementById('cb-keypad'),
+    (d) => { if (cb.running && cb.buf.length < 4) { cb.buf += d; cbSetAnswer(); cbMaybeAutoSubmit(); }},
+    () => { if (cb.running) { cb.buf = cb.buf.slice(0, -1); cbSetAnswer(); }},
+    cbSubmit
+  );
+  document.getElementById('cb-start').addEventListener('click', cbStart);
+
+  // ============ BOSS / CREEPER ============
+  const bs = { running:false, queue:[], idx:0, right:0, total:0, streak:0, current:null, qStart:0, timer:null, buf:'', perQ:3000, gap:1200 };
+  const $bq = document.getElementById('bs-q');
+  const $ba = document.getElementById('bs-answer');
+  const $bb = document.getElementById('bs-bar');
+  const $bc = document.getElementById('bs-counter');
+  const $bt = document.getElementById('bs-time');
+  const $bf = document.getElementById('bs-fb');
+
+  function bsSetAnswer() {
+    if (!bs.buf) { $ba.textContent = '?'; $ba.className = 'answer-chest empty'; }
+    else { $ba.textContent = bs.buf; $ba.className = 'answer-chest'; }
+  }
+  function bsStart() {
+    const weak = weakestFacts(8);
+    bs.queue = [...weak, ...weak].sort(() => Math.random() - 0.5);
+    bs.running = true; bs.idx = 0; bs.right = 0; bs.total = 0; bs.streak = 0;
+    document.getElementById('bs-streak').textContent = '0';
+    document.getElementById('bs-right').textContent = '—';
+    document.getElementById('bs-total').textContent = '—';
+    $bf.textContent = ''; $bf.className = 'feedback';
+    bsNext();
+  }
+  function bsStop() {
+    bs.running = false;
+    if (bs.timer) clearInterval(bs.timer);
+    $bq.textContent = 'FLED!'; $bq.className = 'question-block';
+    $bc.textContent = '—'; $bt.textContent = '—'; $bb.style.width = '0%';
+    bs.buf = ''; bsSetAnswer();
+  }
+  function bsNext() {
+    if (!bs.running) return;
+    if (bs.idx >= bs.queue.length) return bsEnd();
+    const q = bs.queue[bs.idx++];
+    bs.current = [q.a, q.b];
+    $bq.textContent = q.a + ' × ' + q.b;
+    $bq.className = 'question-block';
+    $bc.textContent = bs.idx + '/' + bs.queue.length;
+    bs.buf = ''; bsSetAnswer();
+    bs.qStart = Date.now();
+    $bb.style.width = '100%'; $bb.className = 'heart-fill';
+    if (bs.timer) clearInterval(bs.timer);
+    bs.timer = setInterval(() => {
+      const elapsed = Date.now() - bs.qStart;
+      const remain = Math.max(0, bs.perQ - elapsed);
+      $bb.style.width = (remain / bs.perQ * 100) + '%';
+      $bt.textContent = (remain / 1000).toFixed(1) + 's';
+      if (remain < 1000) $bb.className = 'heart-fill warn';
+      if (remain < 500) $bb.className = 'heart-fill danger';
+      if (remain <= 0) bsSubmit(true);
+    }, 50);
+  }
+  function bsSubmit(timedOut) {
+    if (!bs.running) return;
+    if (!timedOut && !bs.buf) return;
+    clearInterval(bs.timer);
+    const [a, b] = bs.current;
+    const correct = a * b;
+    const val = bs.buf ? parseInt(bs.buf, 10) : null;
+    const elapsed = Date.now() - bs.qStart;
+    const isRight = val === correct;
+    bs.total++;
+    if (isRight) {
+      bs.right++; bs.streak++;
+      $bf.textContent = '⚔️ HIT! ' + correct;
+      $bf.className = 'feedback correct';
+      $ba.className = 'answer-chest correct';
+      $bq.classList.add('broken');
+      sndCorrect();
+      celebrateAt($ba, 'correct');
+    } else {
+      bs.streak = 0;
+      $bf.textContent = (val===null?'💥 BOOM! ':'✗ ') + a + ' × ' + b + ' = ' + correct;
+      $bf.className = 'feedback wrong';
+      $ba.className = 'answer-chest wrong';
+      sndExplode();
+      celebrateAt($ba, 'wrong');
+    }
+    document.getElementById('bs-streak').textContent = bs.streak;
+    recordFact(a, b, elapsed, isRight);
+    setTimeout(() => { if (bs.running) { $bf.textContent=''; bsNext(); } }, bs.gap);
+  }
+  function bsEnd() {
+    bs.running = false;
+    if (bs.timer) clearInterval(bs.timer);
+    const won = bs.right >= bs.total * 0.8;
+    $bq.textContent = won ? '⚔️ VICTORY!' : '💀 DEFEATED';
+    $bq.className = 'question-block';
+    $bc.textContent = 'Done'; $bt.textContent = '—'; $bb.style.width = '0%';
+    document.getElementById('bs-right').textContent = bs.right;
+    document.getElementById('bs-total').textContent = bs.total;
+    if (won) {
+      sndPB();
+      toast('⚔️ CREEPER DEFEATED!<br>+20 💎');
+      addDiamonds(20);
+    } else {
+      toast('Try again, hero!');
+    }
+  }
+  function bsMaybeAutoSubmit() {
+    if (!bs.running || !bs.current || !bs.buf) return;
+    const correctStr = String(bs.current[0] * bs.current[1]);
+    if (bs.buf === correctStr) { bsSubmit(false); return; }
+    if (bs.buf.length >= correctStr.length) bsSubmit(false);
+  }
+  buildKeypad(
+    document.getElementById('bs-keypad'),
+    (d) => { if (bs.running && bs.buf.length < 4) { bs.buf += d; bsSetAnswer(); bsMaybeAutoSubmit(); }},
+    () => { if (bs.running) { bs.buf = bs.buf.slice(0, -1); bsSetAnswer(); }},
+    () => bsSubmit(false)
+  );
+  document.getElementById('bs-start').addEventListener('click', bsStart);
+  document.getElementById('bs-stop').addEventListener('click', bsStop);
+
+  // ============ HEATMAP ============
+  function renderHeatmap() {
+    const grid = document.getElementById('hm-grid');
+    grid.style.gridTemplateColumns = '24px repeat(11, 1fr)';
+    grid.innerHTML = '';
+    const corner = document.createElement('div');
+    corner.className = 'heat-label'; corner.textContent = '×';
+    grid.appendChild(corner);
+    for (let b = 2; b <= 12; b++) {
+      const h = document.createElement('div');
+      h.className = 'heat-label'; h.textContent = b;
+      grid.appendChild(h);
+    }
+    for (let a = 2; a <= 12; a++) {
+      const lab = document.createElement('div');
+      lab.className = 'heat-label'; lab.textContent = a;
+      grid.appendChild(lab);
+      for (let b = 2; b <= 12; b++) {
+        const cell = document.createElement('div');
+        cell.className = 'heat-cell';
+        const avg = avgTime(a, b);
+        const key = a + 'X' + b;
+        const wrongs = (data.progress[key] && data.progress[key].wrongs) || 0;
+        if (avg !== null) {
+          const sec = avg / 1000;
+          if (wrongs > 0 && sec > 3) cell.classList.add('slow');
+          else if (sec < 2) cell.classList.add('fast');
+          else if (sec < 4) cell.classList.add('ok');
+          else cell.classList.add('slow');
+          cell.textContent = sec.toFixed(1);
+        }
+        grid.appendChild(cell);
+      }
+    }
+
+    let totalQ = 0, totalRight = 0;
+    Object.values(data.progress).forEach(p => {
+      totalQ += p.times.length + p.wrongs;
+      totalRight += p.times.length;
+    });
+    document.getElementById('total-q').textContent = totalQ.toLocaleString();
+    document.getElementById('overall-acc').textContent = totalQ ? Math.round(totalRight/totalQ*100) + '%' : '—';
+    document.getElementById('streak-info').textContent = data.streak.count > 0 ? data.streak.count + ' 🔥' : 'Start today!';
+    document.getElementById('total-diamonds').textContent = data.diamonds;
+    // tier info
+    const tier = TIERS[data.tier - 1];
+    document.getElementById('tier-info').textContent = tier.icon + ' ' + tier.name;
+    let masteredCount = 0;
+    let totalUnlocked = 0;
+    for (let t = 0; t < data.tier; t++) {
+      factsInTier(t).forEach(([a,b]) => {
+        totalUnlocked++;
+        if (factMastered(a, b)) masteredCount++;
+      });
+    }
+    document.getElementById('mastered-info').textContent = masteredCount + ' / ' + totalUnlocked;
+  }
+  document.getElementById('hm-reset').addEventListener('click', () => {
+    if (confirm('Reset everything? You will lose all your diamonds and progress!')) {
+      data = { progress:{}, bestMtc:0, bestRhythm:0, bestCube:null, diamonds:0, streak:{count:0,lastDay:null}, tier:1 };
+      save(); refreshUI(); renderHeatmap();
+    }
+  });
+
+  // ============ UI REFRESH ============
+  function refreshUI() {
+    document.getElementById('mtc-best').textContent = data.bestMtc ? (data.bestMtc + '/25') : '—';
+    document.getElementById('rh-best').textContent = data.bestRhythm;
+    document.getElementById('cb-pb').textContent = data.bestCube ? (data.bestCube.toFixed(1) + 's') : '—';
+    document.getElementById('diamond-count').textContent = data.diamonds;
+    updateStreakDisplay();
+    refreshTierBar();
+  }
+
+  // ============ HARDWARE KEYBOARD ============
+  document.addEventListener('keydown', (e) => {
+    const active = document.querySelector('.panel.active').id;
+    let st, sub, setA, autoSub;
+    if (active === 'panel-mtc') { st = mtc; sub = () => mtcSubmit(false); setA = mtcSetAnswer; autoSub = mtcMaybeAutoSubmit; }
+    else if (active === 'panel-rhythm') { st = rh; sub = rhSubmit; setA = rhSetAnswer; autoSub = rhMaybeAutoSubmit; }
+    else if (active === 'panel-cube') { st = cb; sub = cbSubmit; setA = cbSetAnswer; autoSub = cbMaybeAutoSubmit; }
+    else if (active === 'panel-boss') { st = bs; sub = () => bsSubmit(false); setA = bsSetAnswer; autoSub = bsMaybeAutoSubmit; }
+    else return;
+    if (!st.running) return;
+    if (/^\d$/.test(e.key) && st.buf.length < 4) { st.buf += e.key; setA(); autoSub(); }
+    else if (e.key === 'Backspace') { st.buf = st.buf.slice(0, -1); setA(); }
+    else if (e.key === 'Enter') sub();
+  });
+
+  // prevent double-tap zoom
+  let lastTouch = 0;
+  document.addEventListener('touchend', (e) => {
+    const now = Date.now();
+    if (now - lastTouch < 300) e.preventDefault();
+    lastTouch = now;
+  }, { passive: false });
+
+  load();
+})();
+</script>
+</body>
+</html>

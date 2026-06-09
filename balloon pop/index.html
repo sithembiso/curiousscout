@@ -1,0 +1,3188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>🎈 Balloons Pop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Bubblegum+Sans&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Fredoka', sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    overscroll-behavior: none;
+    position: fixed;
+    width: 100%;
+  }
+  body {
+    background: linear-gradient(180deg, #87CEEB 0%, #B0E0FF 50%, #FFE4B5 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* Custom cursor only on devices with fine pointers (mouse) */
+  @media (pointer: fine) {
+    body {
+      cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="3" fill="%23ff3366" stroke="white" stroke-width="2"/></svg>') 16 16, crosshair;
+    }
+  }
+  #game-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh; /* dynamic viewport for mobile browsers */
+    max-width: 1200px;
+    max-height: 800px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: #5DADE2; /* fallback */
+  }
+  /* Decorative clouds in background */
+  .cloud {
+    position: absolute;
+    background: white;
+    border-radius: 100px;
+    opacity: 0.85;
+    pointer-events: none;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.05));
+  }
+  .cloud::before, .cloud::after {
+    content: '';
+    position: absolute;
+    background: white;
+    border-radius: 50%;
+  }
+  .cloud-1 { width: 120px; height: 36px; top: 12%; left: -20%; animation: drift 60s linear infinite; }
+  .cloud-1::before { width: 50px; height: 50px; top: -22px; left: 18px; }
+  .cloud-1::after { width: 38px; height: 38px; top: -16px; left: 60px; }
+  .cloud-2 { width: 90px; height: 28px; top: 25%; left: -15%; animation: drift 80s linear infinite; animation-delay: -20s; }
+  .cloud-2::before { width: 40px; height: 40px; top: -18px; left: 15px; }
+  .cloud-2::after { width: 32px; height: 32px; top: -12px; left: 48px; }
+  .cloud-3 { width: 140px; height: 40px; top: 40%; left: -25%; animation: drift 100s linear infinite; animation-delay: -50s; }
+  .cloud-3::before { width: 56px; height: 56px; top: -26px; left: 20px; }
+  .cloud-3::after { width: 44px; height: 44px; top: -18px; left: 70px; }
+  @keyframes drift {
+    from { transform: translateX(0); }
+    to { transform: translateX(calc(100vw + 200px)); }
+  }
+
+  /* HUD */
+  #hud {
+    position: absolute;
+    top: env(safe-area-inset-top, 0); left: 0; right: 0;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    pointer-events: none;
+    z-index: 10;
+    gap: 8px;
+  }
+  .hud-card {
+    background: rgba(255,255,255,0.92);
+    border-radius: 14px;
+    padding: 8px 14px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    border: 3px solid white;
+    font-weight: 600;
+    font-size: 1rem;
+    color: #2C3E50;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .hud-card .label {
+    font-family: 'Bubblegum Sans', cursive;
+    font-size: 0.85rem;
+    color: #E74C3C;
+    letter-spacing: 1px;
+  }
+  #lives-display { font-size: 1.2rem; line-height: 1; }
+  .pause-btn {
+    pointer-events: auto;
+    background: rgba(255,255,255,0.92);
+    border: 3px solid white;
+    border-radius: 14px;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    font-size: 1.3rem;
+    padding: 0;
+    color: #2C3E50;
+    transition: transform 0.1s;
+    flex-shrink: 0;
+  }
+  .pause-btn:active { transform: scale(0.92); }
+
+  /* Mobile-specific HUD adjustments */
+  @media (max-width: 600px) {
+    #hud { padding: 8px 10px; gap: 6px; }
+    .hud-card { padding: 6px 10px; font-size: 0.85rem; border-radius: 12px; border-width: 2px; }
+    .hud-card .label { font-size: 0.7rem; letter-spacing: 0.5px; }
+    #lives-display { font-size: 0.85rem; letter-spacing: -2px; }
+    .pause-btn { width: 38px; height: 38px; font-size: 1.1rem; border-width: 2px; }
+  }
+  @media (max-width: 380px) {
+    .hud-card { padding: 5px 8px; font-size: 0.78rem; }
+    .hud-card .label { display: none; } /* hide labels on very small screens, keep just numbers */
+    #lives-display { font-size: 0.75rem; letter-spacing: -3px; }
+  }
+  .heart {
+    display: inline-block;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .heart.lost {
+    opacity: 0.25;
+    transform: scale(0.7);
+    filter: grayscale(1);
+  }
+
+  /* Screen edge flash on life lost */
+  #damage-flash {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 40;
+    opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(255, 0, 0, 0.65) 100%);
+    box-shadow: inset 0 0 80px 30px rgba(255, 0, 0, 0.6);
+  }
+  #damage-flash.flash {
+    animation: damageFlash 0.5s ease-out;
+  }
+  @keyframes damageFlash {
+    0% { opacity: 0; }
+    25% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  /* Lives card shake on damage */
+  #lives-display.shaking {
+    animation: livesShake 0.5s ease-out;
+    display: inline-block;
+  }
+  @keyframes livesShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px) rotate(-3deg); }
+    40% { transform: translateX(6px) rotate(3deg); }
+    60% { transform: translateX(-4px) rotate(-2deg); }
+    80% { transform: translateX(4px) rotate(2deg); }
+  }
+
+  /* Splash screens */
+  .splash {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    text-align: center;
+    background: rgba(0,0,0,0.35);
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .splash-card {
+    background: linear-gradient(145deg, #FFF8E7, #FFEFC9);
+    border-radius: 32px;
+    padding: 40px 56px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3), inset 0 -6px 0 rgba(0,0,0,0.08);
+    border: 6px solid white;
+    max-width: 90%;
+    max-height: 90%;
+    overflow-y: auto;
+    animation: bounceIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @media (max-width: 600px) {
+    .splash-card {
+      padding: 28px 28px;
+      border-radius: 24px;
+      border-width: 4px;
+    }
+    .splash-card p {
+      font-size: 1rem !important;
+    }
+  }
+  @keyframes bounceIn {
+    0% { transform: scale(0.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .splash h1 {
+    font-family: 'Bubblegum Sans', cursive;
+    font-size: clamp(2.5rem, 8vw, 5rem);
+    background: linear-gradient(90deg, #FF6B6B, #FFA500, #FFD93D, #6BCB77, #4D96FF, #B388FF);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 4px 0 rgba(0,0,0,0.05);
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+    line-height: 1;
+  }
+  .splash h2 {
+    font-family: 'Bubblegum Sans', cursive;
+    font-size: clamp(2rem, 6vw, 3.5rem);
+    color: #2C3E50;
+    margin-bottom: 12px;
+  }
+  .splash p {
+    font-size: 1.15rem;
+    color: #34495E;
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+  .splash .stat {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: #E74C3C;
+    margin: 4px 0;
+  }
+  .play-btn {
+    margin-top: 24px;
+    background: linear-gradient(145deg, #FF6B6B, #E74C3C);
+    color: white;
+    border: 4px solid white;
+    padding: 16px 40px;
+    border-radius: 50px;
+    font-family: 'Bubblegum Sans', cursive;
+    font-size: 1.6rem;
+    letter-spacing: 2px;
+    cursor: pointer;
+    box-shadow: 0 8px 0 #C0392B, 0 12px 20px rgba(0,0,0,0.2);
+    transition: transform 0.1s, box-shadow 0.1s;
+    min-height: 56px; /* iOS recommended minimum tap target */
+  }
+  .play-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 0 #C0392B, 0 14px 22px rgba(0,0,0,0.25); }
+  .play-btn:active { transform: translateY(6px); box-shadow: 0 2px 0 #C0392B, 0 4px 8px rgba(0,0,0,0.2); }
+
+  /* Primary Continue button (game over): big, green, prominent, glowing */
+  .play-btn.primary-continue {
+    background: linear-gradient(145deg, #2ECC71, #27AE60);
+    box-shadow: 0 8px 0 #1E8449, 0 12px 28px rgba(46, 204, 113, 0.5);
+    font-size: 1.7rem;
+    padding: 18px 36px;
+    margin-top: 24px;
+    animation: continuePulse 1.6s ease-in-out infinite;
+  }
+  .play-btn.primary-continue:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 0 #1E8449, 0 14px 30px rgba(46, 204, 113, 0.6);
+  }
+  .play-btn.primary-continue:active {
+    transform: translateY(6px);
+    box-shadow: 0 2px 0 #1E8449, 0 4px 8px rgba(46, 204, 113, 0.4);
+    animation: none;
+  }
+  @keyframes continuePulse {
+    0%, 100% { box-shadow: 0 8px 0 #1E8449, 0 12px 28px rgba(46, 204, 113, 0.5); }
+    50% { box-shadow: 0 8px 0 #1E8449, 0 12px 36px rgba(46, 204, 113, 0.8); }
+  }
+
+  /* Secondary Start Over button: smaller, text-link style, less attention-grabbing */
+  .play-btn.secondary-restart {
+    background: transparent;
+    color: #95A5A6;
+    border: 2px solid #BDC3C7;
+    box-shadow: none;
+    font-size: 1rem;
+    padding: 10px 24px;
+    margin-top: 14px;
+    letter-spacing: 1.5px;
+    min-height: 40px;
+  }
+  .play-btn.secondary-restart:hover {
+    color: #7F8C8D;
+    border-color: #95A5A6;
+    background: rgba(149, 165, 166, 0.1);
+    transform: none;
+    box-shadow: none;
+  }
+  .play-btn.secondary-restart:active {
+    transform: scale(0.97);
+    box-shadow: none;
+  }
+  @media (max-width: 600px) {
+    .play-btn {
+      font-size: 1.3rem;
+      padding: 14px 32px;
+      letter-spacing: 1.5px;
+    }
+  }
+
+  /* Round announcement */
+  .round-banner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    z-index: 50;
+    pointer-events: none;
+    text-align: center;
+    animation: roundPop 1.6s ease-out forwards;
+  }
+  @keyframes roundPop {
+    0% { transform: translate(-50%, -50%) scale(0) rotate(-12deg); opacity: 0; }
+    25% { transform: translate(-50%, -50%) scale(1.15) rotate(2deg); opacity: 1; }
+    40% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+    80% { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+  }
+  .round-banner .round-num {
+    font-family: 'Bubblegum Sans', cursive;
+    font-size: clamp(4rem, 14vw, 8rem);
+    color: #FFD93D;
+    -webkit-text-stroke: 4px #2C3E50;
+    text-shadow: 6px 6px 0 #2C3E50, 0 12px 30px rgba(0,0,0,0.3);
+    line-height: 1;
+  }
+  .round-banner .round-label {
+    font-family: 'Bubblegum Sans', cursive;
+    font-size: clamp(1.5rem, 4vw, 2.5rem);
+    color: white;
+    -webkit-text-stroke: 2px #2C3E50;
+    text-shadow: 3px 3px 0 #2C3E50;
+    letter-spacing: 4px;
+  }
+  .round-banner .new-type {
+    font-family: 'Fredoka', sans-serif;
+    font-weight: 600;
+    font-size: clamp(1rem, 3vw, 1.4rem);
+    color: white;
+    background: #E74C3C;
+    padding: 6px 16px;
+    border-radius: 20px;
+    border: 3px solid white;
+    margin-top: 8px;
+    display: inline-block;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
+
+  /* Round summary */
+  .summary-card {
+    background: linear-gradient(145deg, #FFF8E7, #FFEFC9);
+    border-radius: 28px;
+    padding: 32px 48px;
+    border: 6px solid white;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+    animation: bounceIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .summary-card h2 {
+    font-family: 'Bubblegum Sans', cursive;
+    font-size: 2.5rem;
+    color: #27AE60;
+    margin-bottom: 16px;
+  }
+  .summary-card .stats {
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: #34495E;
+    margin: 4px 0;
+  }
+  .summary-card .stats span {
+    color: #E74C3C;
+    font-weight: 700;
+  }
+  .checkpoint-badge {
+    display: inline-block;
+    margin: 16px 0 8px;
+    padding: 10px 22px;
+    background: linear-gradient(145deg, #2ECC71, #27AE60);
+    color: white;
+    font-family: 'Bubblegum Sans', cursive;
+    font-size: 1.1rem;
+    letter-spacing: 1.5px;
+    border-radius: 50px;
+    border: 3px solid white;
+    box-shadow: 0 4px 0 #1E8449, 0 8px 16px rgba(0,0,0,0.2);
+    animation: checkpointPulse 0.8s ease-out;
+  }
+  @keyframes checkpointPulse {
+    0% { transform: scale(0); opacity: 0; }
+    60% { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+
+  .audio-toggle {
+    position: absolute;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    right: calc(16px + env(safe-area-inset-right));
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.92);
+    border: 3px solid white;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    z-index: 20;
+    pointer-events: auto;
+  }
+  .audio-toggle:hover { transform: scale(1.05); }
+  .audio-toggle:active { transform: scale(0.92); }
+
+  /* Bomb warning banner */
+  .bomb-warning {
+    position: absolute;
+    top: 35%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 50;
+    pointer-events: none;
+    background: linear-gradient(145deg, #C0392B, #E74C3C);
+    border: 5px solid white;
+    border-radius: 24px;
+    padding: 16px 28px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.4), 0 0 0 4px #2C3E50;
+    animation: bombWarn 3s ease-out forwards;
+  }
+  @keyframes bombWarn {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+    15% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+    25% { transform: translate(-50%, -50%) scale(1); }
+    35%, 65% { transform: translate(-50%, -50%) scale(1) rotate(-1deg); }
+    45%, 55% { transform: translate(-50%, -50%) scale(1) rotate(1deg); }
+    85% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+  }
+  .bomb-warning-icon {
+    font-size: 3rem;
+    animation: bombShake 0.4s ease-in-out infinite;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+  }
+  @keyframes bombShake {
+    0%, 100% { transform: rotate(-8deg) scale(1); }
+    50% { transform: rotate(8deg) scale(1.1); }
+  }
+  .bomb-warning-text {
+    color: white;
+    font-family: 'Bubblegum Sans', cursive;
+    text-shadow: 2px 2px 0 #2C3E50;
+  }
+  .bomb-warning-title {
+    font-size: clamp(1.3rem, 4vw, 1.8rem);
+    letter-spacing: 2px;
+    line-height: 1;
+  }
+  .bomb-warning-sub {
+    font-family: 'Fredoka', sans-serif;
+    font-weight: 600;
+    font-size: clamp(0.85rem, 2.5vw, 1.05rem);
+    margin-top: 4px;
+    color: #FFD93D;
+  }
+  @media (max-width: 600px) {
+    .bomb-warning { padding: 12px 18px; gap: 10px; border-radius: 18px; border-width: 4px; }
+    .bomb-warning-icon { font-size: 2.2rem; }
+  }
+
+  /* World transition splash (every 5 rounds when theme changes) */
+  #world-splash {
+    position: absolute;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    animation: worldSplashShow 3s ease-out forwards;
+  }
+  @keyframes worldSplashShow {
+    0% { opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  .world-splash-card {
+    text-align: center;
+    padding: 40px 60px;
+    background: linear-gradient(145deg, rgba(255,255,255,0.95), rgba(255,250,230,0.92));
+    border: 6px solid white;
+    border-radius: 32px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    animation: worldCardPop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+    max-width: 90%;
+  }
+  @keyframes worldCardPop {
+    0% { transform: scale(0) rotate(-15deg); opacity: 0; }
+    100% { transform: scale(1) rotate(0); opacity: 1; }
+  }
+  .world-splash-emoji {
+    font-size: clamp(4rem, 12vw, 6rem);
+    line-height: 1;
+    margin-bottom: 12px;
+    animation: emojiFloat 2s ease-in-out infinite;
+    filter: drop-shadow(0 8px 12px rgba(0,0,0,0.2));
+  }
+  @keyframes emojiFloat {
+    0%, 100% { transform: translateY(0) rotate(-5deg); }
+    50% { transform: translateY(-12px) rotate(5deg); }
+  }
+  .world-splash-label {
+    font-family: 'Fredoka', sans-serif;
+    font-weight: 500;
+    color: #95A5A6;
+    text-transform: uppercase;
+    letter-spacing: 6px;
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+  }
+  .world-splash-name {
+    font-family: 'Bubblegum Sans', cursive;
+    font-size: clamp(2rem, 6vw, 3.2rem);
+    line-height: 1.1;
+    margin-bottom: 8px;
+    background: linear-gradient(90deg, #FF6B6B, #FFD93D, #6BCB77, #4D96FF, #B388FF);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 4px 0 rgba(0,0,0,0.05);
+  }
+  .world-splash-rounds {
+    font-family: 'Fredoka', sans-serif;
+    font-weight: 600;
+    color: #34495E;
+    font-size: 1rem;
+    margin-top: 8px;
+  }
+  @media (max-width: 600px) {
+    .world-splash-card { padding: 28px 32px; border-radius: 24px; border-width: 4px; }
+  }
+
+  .hidden { display: none !important; }
+
+  /* Intro splash screen ("By Lunga Khumalo") */
+  #intro-splash {
+    position: absolute;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(ellipse at center, rgba(255, 220, 100, 0.4) 0%, transparent 70%),
+      linear-gradient(180deg, #2C3E50 0%, #34495E 60%, #1A252F 100%);
+    animation: introFade 0.5s ease;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  @keyframes introFade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  #intro-splash.fading-out {
+    animation: introFadeOut 0.6s ease forwards;
+  }
+  @keyframes introFadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; transform: scale(1.05); }
+  }
+
+  /* Floating decorative balloons in the intro background */
+  .intro-balloon {
+    position: absolute;
+    width: 60px;
+    height: 75px;
+    border-radius: 50%;
+    box-shadow: inset -10px -15px 25px rgba(0,0,0,0.25), 0 10px 30px rgba(0,0,0,0.4);
+    animation: floatUp linear infinite;
+    pointer-events: none;
+  }
+  .intro-balloon::after {
+    content: '';
+    position: absolute;
+    bottom: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1px;
+    height: 28px;
+    background: rgba(255,255,255,0.3);
+  }
+  @keyframes floatUp {
+    from { transform: translateY(110vh) rotate(-3deg); }
+    to { transform: translateY(-30vh) rotate(3deg); }
+  }
+
+  .intro-content {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    padding: 24px;
+  }
+
+  .intro-portrait {
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    border: 6px solid #FFD93D;
+    box-shadow:
+      0 0 0 4px white,
+      0 12px 40px rgba(0, 0, 0, 0.5),
+      0 0 60px rgba(255, 217, 61, 0.4);
+    object-fit: cover;
+    object-position: top center;
+    margin-bottom: 28px;
+    animation: portraitPop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s backwards;
+    background: #FFF8E7;
+  }
+  @keyframes portraitPop {
+    from { transform: scale(0) rotate(-180deg); opacity: 0; }
+    to { transform: scale(1) rotate(0); opacity: 1; }
+  }
+
+  .intro-presents {
+    font-family: 'Fredoka', sans-serif;
+    font-weight: 500;
+    font-size: 1.1rem;
+    color: rgba(255,255,255,0.7);
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    animation: slideDown 0.6s ease 0.6s backwards;
+  }
+  @keyframes slideDown {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .intro-author {
+    font-family: 'Bubblegum Sans', cursive;
+    font-size: clamp(2.5rem, 7vw, 4rem);
+    background: linear-gradient(135deg, #FFD93D 0%, #FFA500 50%, #FF6B6B 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px;
+    margin-bottom: 24px;
+    text-shadow: 0 4px 20px rgba(255, 217, 61, 0.3);
+    animation: slideUp 0.6s ease 0.8s backwards;
+    line-height: 1;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .intro-divider {
+    width: 80px;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #FFD93D, transparent);
+    margin: 0 auto 20px;
+    animation: expandLine 0.8s ease 1s backwards;
+  }
+  @keyframes expandLine {
+    from { width: 0; opacity: 0; }
+    to { width: 80px; opacity: 1; }
+  }
+
+  .intro-tap {
+    font-family: 'Fredoka', sans-serif;
+    font-weight: 400;
+    font-size: 0.95rem;
+    color: rgba(255,255,255,0.6);
+    margin-top: 16px;
+    animation: pulse 1.5s ease-in-out 1.5s infinite backwards;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+
+  /* Corner attribution on start screen */
+  .corner-credit {
+    position: absolute;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    left: calc(16px + env(safe-area-inset-left));
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255,255,255,0.92);
+    padding: 6px 14px 6px 6px;
+    border-radius: 50px;
+    border: 3px solid white;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 30;
+    pointer-events: none;
+  }
+  .corner-credit img {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: top center;
+    border: 2px solid #FFD93D;
+    background: #FFF8E7;
+    flex-shrink: 0;
+  }
+  .corner-credit .credit-text {
+    font-family: 'Fredoka', sans-serif;
+    font-size: 0.85rem;
+    color: #2C3E50;
+    line-height: 1.1;
+  }
+  .corner-credit .credit-text .by {
+    font-size: 0.65rem;
+    color: #95A5A6;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: block;
+  }
+  .corner-credit .credit-text .name {
+    font-weight: 600;
+    font-family: 'Bubblegum Sans', cursive;
+    font-size: 1rem;
+    color: #E74C3C;
+    letter-spacing: 0.5px;
+  }
+  @media (max-width: 600px) {
+    .corner-credit {
+      padding: 4px 12px 4px 4px;
+      gap: 8px;
+    }
+    .corner-credit img { width: 32px; height: 32px; }
+    .corner-credit .credit-text .by { font-size: 0.6rem; }
+    .corner-credit .credit-text .name { font-size: 0.9rem; }
+  }
+</style>
+</head>
+<body>
+<div id="game-container">
+  <div class="cloud cloud-1"></div>
+  <div class="cloud cloud-2"></div>
+  <div class="cloud cloud-3"></div>
+
+  <canvas id="game"></canvas>
+
+  <!-- Damage flash overlay (red vignette on life lost) -->
+  <div id="damage-flash"></div>
+
+  <!-- Intro Splash Screen (shows on first load) -->
+  <div id="intro-splash">
+    <!-- Floating decorative balloons -->
+    <div class="intro-balloon" style="background: radial-gradient(circle at 35% 30%, #FF8888, #E74C3C); left: 8%; animation-duration: 12s; animation-delay: -2s;"></div>
+    <div class="intro-balloon" style="background: radial-gradient(circle at 35% 30%, #FFC44D, #F39C12); left: 22%; animation-duration: 15s; animation-delay: -7s; width: 50px; height: 62px;"></div>
+    <div class="intro-balloon" style="background: radial-gradient(circle at 35% 30%, #6BCBFF, #3498DB); left: 78%; animation-duration: 14s; animation-delay: -4s;"></div>
+    <div class="intro-balloon" style="background: radial-gradient(circle at 35% 30%, #B388FF, #8E44AD); left: 88%; animation-duration: 16s; animation-delay: -9s; width: 55px; height: 68px;"></div>
+    <div class="intro-balloon" style="background: radial-gradient(circle at 35% 30%, #6BFF95, #27AE60); left: 50%; animation-duration: 13s; animation-delay: -1s; width: 45px; height: 56px;"></div>
+    <div class="intro-balloon" style="background: radial-gradient(circle at 35% 30%, #FFD93D, #F1C40F); left: 65%; animation-duration: 17s; animation-delay: -11s;"></div>
+
+    <div class="intro-content">
+      <img id="intro-portrait-img" class="intro-portrait" alt="Lunga Khumalo" src="data:image/jpeg;base64,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">
+      <div class="intro-presents">A Game By</div>
+      <div class="intro-author">Lunga Khumalo</div>
+      <div class="intro-divider"></div>
+      <div class="intro-presents" style="letter-spacing: 4px; animation-delay: 1.2s;">🎈 Balloons Pop 🎈</div>
+      <div class="intro-tap">Tap to continue</div>
+    </div>
+  </div>
+
+  <div id="hud" class="hidden">
+    <div class="hud-card"><span class="label">ROUND</span><span id="round-display">1</span><span style="color:#999">/20</span></div>
+    <div class="hud-card"><span class="label">LIVES</span><span id="lives-display">❤️❤️❤️❤️❤️</span></div>
+    <div class="hud-card"><span class="label">SCORE</span><span id="score-display">0</span></div>
+    <button class="pause-btn" id="pause-btn" title="Pause" aria-label="Pause">⏸</button>
+  </div>
+
+  <button class="audio-toggle" id="audio-toggle" title="Toggle sound">🔊</button>
+
+  <!-- Pause Screen -->
+  <div class="splash hidden" id="pause-screen">
+    <div class="splash-card">
+      <h2 style="color:#3498DB;">⏸ Paused</h2>
+      <p style="font-size:1.1rem; margin:16px 0;">Take a break! Tap below when you're ready.</p>
+      <button class="play-btn" id="resume-btn">RESUME</button>
+      <button class="play-btn" id="quit-btn" style="background: linear-gradient(145deg, #95A5A6, #7F8C8D); box-shadow: 0 8px 0 #555, 0 12px 20px rgba(0,0,0,0.2); margin-top: 12px; font-size: 1.2rem; padding: 12px 28px;">QUIT GAME</button>
+    </div>
+  </div>
+
+  <!-- Start Screen -->
+  <div class="splash hidden" id="start-screen">
+    <div class="splash-card">
+      <h1>🎈 BALLOONS POP 🎈</h1>
+      <p style="font-size: 1.3rem; margin: 16px 0;">Pop the balloons before they escape!</p>
+      <p>🎯 Click balloons to pop them</p>
+      <p>💖 You have 5 lives</p>
+      <p>💣 Don't click the bombs!</p>
+      <p>🏆 Survive 20 rounds to win</p>
+      <button class="play-btn" id="start-btn">PLAY!</button>
+    </div>
+    <div class="corner-credit">
+      <img id="corner-credit-img" alt="Lunga Khumalo" src="data:image/jpeg;base64,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">
+      <div class="credit-text">
+        <span class="by">A Game By</span>
+        <span class="name">Lunga Khumalo</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Round Banner -->
+  <div class="round-banner hidden" id="round-banner">
+    <div class="round-label">ROUND</div>
+    <div class="round-num" id="round-banner-num">1</div>
+    <div id="round-new-type"></div>
+  </div>
+
+  <!-- World Transition Splash -->
+  <div id="world-splash" class="hidden">
+    <div class="world-splash-card">
+      <div class="world-splash-emoji" id="world-splash-emoji">🌅</div>
+      <div class="world-splash-label">Welcome To</div>
+      <div class="world-splash-name" id="world-splash-name">Sunset Beach</div>
+      <div class="world-splash-rounds" id="world-splash-rounds">Rounds 6 - 10</div>
+    </div>
+  </div>
+
+  <!-- Bomb warning (Round 9 first appearance) -->
+  <div class="bomb-warning hidden" id="bomb-warning">
+    <div class="bomb-warning-icon">💣</div>
+    <div class="bomb-warning-text">
+      <div class="bomb-warning-title">BOMB INCOMING!</div>
+      <div class="bomb-warning-sub">DON'T tap the spiky ones!</div>
+    </div>
+  </div>
+
+  <!-- Cluster warning (Round 16 first appearance) -->
+  <div class="bomb-warning hidden" id="cluster-warning" style="background: linear-gradient(145deg, #C0392B, #E91E63);">
+    <div class="bomb-warning-icon" style="animation: bombShake 0.5s ease-in-out infinite;">💥</div>
+    <div class="bomb-warning-text">
+      <div class="bomb-warning-title">CLUSTER BALLOON!</div>
+      <div class="bomb-warning-sub">Pops into 3 babies — pop them all!</div>
+    </div>
+  </div>
+
+  <!-- Round Summary -->
+  <div class="splash hidden" id="round-summary">
+    <div class="summary-card">
+      <h2>Round Complete! 🎉</h2>
+      <p class="stats">Balloons Popped: <span id="summary-popped">0</span></p>
+      <p class="stats">Round Score: <span id="summary-points">0</span></p>
+      <p class="stats">Lives Remaining: <span id="summary-lives">❤️❤️❤️❤️❤️</span></p>
+      <div id="summary-checkpoint" class="checkpoint-badge hidden">
+        <span>🚩</span> CHECKPOINT SAVED!
+      </div>
+      <button class="play-btn" id="next-btn">NEXT ROUND</button>
+    </div>
+  </div>
+
+  <!-- Game Over -->
+  <div class="splash hidden" id="game-over">
+    <div class="splash-card">
+      <h2 style="color:#E74C3C;">Game Over 😢</h2>
+      <p class="stats">Rounds Survived: <span id="go-rounds">0</span></p>
+      <p class="stats">Final Score: <span id="go-score">0</span></p>
+      <button class="play-btn primary-continue hidden" id="continue-btn">
+        ▶ CONTINUE FROM ROUND <span id="continue-round">5</span>
+      </button>
+      <button class="play-btn secondary-restart" id="retry-btn">START OVER</button>
+    </div>
+  </div>
+
+  <!-- Victory -->
+  <div class="splash hidden" id="victory">
+    <div class="splash-card">
+      <h1>🏆 YOU WIN! 🏆</h1>
+      <h2 style="color:#27AE60; margin-top:16px;">All 20 Rounds Cleared!</h2>
+      <p class="stats" style="margin-top:16px;">Final Score: <span id="win-score">0</span></p>
+      <p class="stats">Lives Remaining: <span id="win-lives">❤️❤️❤️❤️❤️</span></p>
+      <button class="play-btn" id="play-again-btn">PLAY AGAIN</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// BALLOONS POP — full game
+// ============================================================
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  W = rect.width;
+  H = rect.height;
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => {
+  // Small delay to let mobile browsers settle viewport
+  setTimeout(resize, 100);
+});
+resize();
+
+// ============================================================
+// AUDIO — synthesized with WebAudio
+// ============================================================
+let audioCtx = null;
+let audioEnabled = true;
+let musicGain, musicNodes = [];
+
+function ensureAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playPop(pitch = 1, type = 'standard') {
+  if (!audioEnabled) return;
+  ensureAudio();
+  const t = audioCtx.currentTime;
+
+  // Pop = noise burst + descending pitch
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(800 * pitch, t);
+  osc.frequency.exponentialRampToValueAtTime(150 * pitch, t + 0.12);
+  gain.gain.setValueAtTime(0.3, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + 0.16);
+
+  // Noise burst
+  const bufferSize = audioCtx.sampleRate * 0.08;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+  }
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 0.15;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'highpass';
+  filter.frequency.value = 1000;
+  noise.connect(filter).connect(noiseGain).connect(audioCtx.destination);
+  noise.start(t);
+}
+
+function playLifeLost() {
+  if (!audioEnabled) return;
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  [400, 320, 240].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t + i * 0.1);
+    gain.gain.setValueAtTime(0.2, t + i * 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.1 + 0.2);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t + i * 0.1); osc.stop(t + i * 0.1 + 0.22);
+  });
+}
+
+function playBomb() {
+  if (!audioEnabled) return;
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  const bufferSize = audioCtx.sampleRate * 0.4;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.5);
+  }
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.5, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 400;
+  noise.connect(filter).connect(gain).connect(audioCtx.destination);
+  noise.start(t);
+}
+
+function playBonus() {
+  if (!audioEnabled) return;
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  [523, 659, 784, 1047].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t + i * 0.07);
+    gain.gain.setValueAtTime(0.18, t + i * 0.07);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.07 + 0.2);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t + i * 0.07); osc.stop(t + i * 0.07 + 0.22);
+  });
+}
+
+function playUIClick() {
+  if (!audioEnabled) return;
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(800, t);
+  osc.frequency.exponentialRampToValueAtTime(1200, t + 0.05);
+  gain.gain.setValueAtTime(0.08, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + 0.1);
+}
+
+function playCountTick() {
+  if (!audioEnabled) return;
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(1200, t);
+  gain.gain.setValueAtTime(0.05, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + 0.06);
+}
+
+function playWorldTransition() {
+  if (!audioEnabled) return;
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  // Magical chime: ascending pentatonic with shimmer
+  const notes = [523, 659, 784, 988, 1175, 1397]; // C E G B D F (pentatonic-ish ascending)
+  notes.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t + i * 0.09);
+    gain.gain.setValueAtTime(0.16, t + i * 0.09);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.09 + 0.5);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t + i * 0.09); osc.stop(t + i * 0.09 + 0.55);
+    // Octave-up shimmer layer (quieter)
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(freq * 2, t + i * 0.09);
+    gain2.gain.setValueAtTime(0.05, t + i * 0.09);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + i * 0.09 + 0.4);
+    osc2.connect(gain2).connect(audioCtx.destination);
+    osc2.start(t + i * 0.09); osc2.stop(t + i * 0.09 + 0.45);
+  });
+}
+
+// God balloon tap: rising bell tone, pitch climbs with each tap
+function playGodTap(tapNumber) {
+  if (!audioEnabled) return;
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  // tap 1 = E, 2 = G, 3 = B, 4 = D (ascending)
+  const baseFreqs = [659, 784, 988, 1175];
+  const freq = baseFreqs[Math.min(tapNumber - 1, 3)];
+  // Bell tone
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(0.22, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + 0.65);
+  // Octave shimmer
+  const osc2 = audioCtx.createOscillator();
+  const gain2 = audioCtx.createGain();
+  osc2.type = 'sine';
+  osc2.frequency.setValueAtTime(freq * 2, t);
+  gain2.gain.setValueAtTime(0.08, t);
+  gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+  osc2.connect(gain2).connect(audioCtx.destination);
+  osc2.start(t); osc2.stop(t + 0.55);
+}
+
+// God balloon final pop: triumphant heavenly fanfare
+function playGodReward() {
+  if (!audioEnabled) return;
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  // Sustained C major triad
+  const chord = [523, 659, 784, 1047];
+  chord.forEach(freq => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(0.16, t);
+    gain.gain.setValueAtTime(0.16, t + 0.4);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + 1.25);
+  });
+  // Ascending sparkle melody
+  const sparkle = [1047, 1319, 1568, 2093, 1568, 2093, 2637];
+  sparkle.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, t + 0.1 + i * 0.08);
+    gain.gain.setValueAtTime(0.12, t + 0.1 + i * 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1 + i * 0.08 + 0.3);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t + 0.1 + i * 0.08); osc.stop(t + 0.1 + i * 0.08 + 0.32);
+  });
+}
+
+function playShieldBreak() {
+  if (!audioEnabled) return;
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  // Metallic clang: short noise + descending high-pitched tone
+  const bufferSize = audioCtx.sampleRate * 0.15;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+  }
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 0.25;
+  const noiseFilter = audioCtx.createBiquadFilter();
+  noiseFilter.type = 'bandpass';
+  noiseFilter.frequency.value = 3000;
+  noiseFilter.Q.value = 2;
+  noise.connect(noiseFilter).connect(noiseGain).connect(audioCtx.destination);
+  noise.start(t);
+  // Tonal "ting"
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(1800, t);
+  osc.frequency.exponentialRampToValueAtTime(900, t + 0.18);
+  gain.gain.setValueAtTime(0.18, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + 0.22);
+}
+
+function playRoundComplete() {
+  if (!audioEnabled) return;
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  [523, 659, 784, 1047, 1319].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t + i * 0.08);
+    gain.gain.setValueAtTime(0.2, t + i * 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.08 + 0.3);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t + i * 0.08); osc.stop(t + i * 0.08 + 0.32);
+  });
+}
+
+function playVictory() {
+  if (!audioEnabled) return;
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  const melody = [523, 659, 784, 1047, 784, 1047, 1319];
+  melody.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t + i * 0.15);
+    gain.gain.setValueAtTime(0.22, t + i * 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.15 + 0.4);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t + i * 0.15); osc.stop(t + i * 0.15 + 0.42);
+  });
+}
+
+function playGameOver() {
+  if (!audioEnabled) return;
+  ensureAudio();
+  const t = audioCtx.currentTime;
+  [659, 587, 523, 440, 392].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t + i * 0.15);
+    gain.gain.setValueAtTime(0.2, t + i * 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.15 + 0.4);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t + i * 0.15); osc.stop(t + i * 0.15 + 0.42);
+  });
+}
+
+// Background music: uses current theme's notes, tempo, and waveform
+let musicInterval = null;
+function startMusic() {
+  if (!audioEnabled || musicInterval) return;
+  ensureAudio();
+  let i = 0;
+  const playNote = () => {
+    if (!audioEnabled) return;
+    const t = audioCtx.currentTime;
+    const notes = currentTheme.musicNotes;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = currentTheme.musicWaveform;
+    osc.frequency.value = notes[i % notes.length];
+    // Slightly louder for sawtooth (space) since it's harsher; quieter for that
+    const baseVol = currentTheme.musicWaveform === 'sawtooth' ? 0.025 : 0.04;
+    gain.gain.setValueAtTime(baseVol, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + 0.55);
+    i++;
+  };
+  musicInterval = setInterval(playNote, currentTheme.musicTempo);
+}
+function stopMusic() {
+  if (musicInterval) { clearInterval(musicInterval); musicInterval = null; }
+}
+// Restart music with current theme's settings (called when theme changes)
+function restartMusic() {
+  if (musicInterval) {
+    stopMusic();
+    startMusic();
+  }
+}
+
+// ============================================================
+// THEMES (change every 5 rounds)
+// ============================================================
+const THEMES = {
+  sunny: {
+    name: 'Sunny Sky',
+    emoji: '🌤️',
+    welcomeText: 'Welcome to Sunny Sky!',
+    rounds: [1, 5],
+    // Canvas background gradient stops [position, color]
+    gradient: [
+      [0,    '#5DADE2'],
+      [0.4,  '#85C1E9'],
+      [0.7,  '#AED6F1'],
+      [1,    '#F8E9A1'],
+    ],
+    // Hill silhouette color at bottom
+    hillColor: 'rgba(255,255,255,0.12)',
+    // Decoration type for canvas
+    decoration: 'clouds',
+    // Show CSS clouds (white puffy ones)
+    cssClouds: true,
+    // Music key/tempo
+    musicNotes: [262, 330, 392, 523, 392, 330], // C major arpeggio
+    musicTempo: 320,
+    musicWaveform: 'sine',
+    // Splash card colors
+    splashAccent: '#3498DB',
+  },
+  sunset: {
+    name: 'Sunset Beach',
+    emoji: '🌅',
+    welcomeText: 'Welcome to Sunset Beach!',
+    rounds: [6, 10],
+    gradient: [
+      [0,    '#2C3E50'],
+      [0.25, '#8E44AD'],
+      [0.55, '#E67E22'],
+      [0.8,  '#F39C12'],
+      [1,    '#F1C40F'],
+    ],
+    hillColor: 'rgba(40, 20, 60, 0.55)',
+    decoration: 'palms',
+    cssClouds: false,
+    musicNotes: [220, 277, 330, 415, 330, 277], // A minor (warmer)
+    musicTempo: 360,
+    musicWaveform: 'triangle',
+    splashAccent: '#E67E22',
+  },
+  night: {
+    name: 'Starry Night',
+    emoji: '🌌',
+    welcomeText: 'Welcome to Starry Night!',
+    rounds: [11, 15],
+    gradient: [
+      [0,    '#0F0C29'],
+      [0.4,  '#24243e'],
+      [0.7,  '#302B63'],
+      [1,    '#1A1A4E'],
+    ],
+    hillColor: 'rgba(15, 10, 30, 0.7)',
+    decoration: 'stars',
+    cssClouds: false,
+    musicNotes: [196, 247, 294, 392, 294, 247], // G minor (mysterious)
+    musicTempo: 380,
+    musicWaveform: 'sine',
+    splashAccent: '#9B59B6',
+  },
+  space: {
+    name: 'Outer Space',
+    emoji: '🚀',
+    welcomeText: 'Welcome to Outer Space!',
+    rounds: [16, 20],
+    gradient: [
+      [0,    '#000000'],
+      [0.3,  '#0A0033'],
+      [0.6,  '#1A0044'],
+      [1,    '#2D004D'],
+    ],
+    hillColor: 'rgba(20, 0, 40, 0.6)',
+    decoration: 'space',
+    cssClouds: false,
+    musicNotes: [174, 220, 261, 349, 261, 220], // F minor (epic)
+    musicTempo: 280, // faster for finale tension
+    musicWaveform: 'sawtooth',
+    splashAccent: '#E74C3C',
+  },
+};
+
+function getThemeForRound(round) {
+  if (round <= 5) return THEMES.sunny;
+  if (round <= 10) return THEMES.sunset;
+  if (round <= 15) return THEMES.night;
+  return THEMES.space;
+}
+
+// Track which theme is currently active so we can detect changes
+let currentTheme = THEMES.sunny;
+
+// ============================================================
+// GAME STATE
+// ============================================================
+const MAX_LIVES = 5;
+const CHECKPOINT_INTERVAL = 5; // every 5 rounds
+const game = {
+  state: 'menu', // 'menu', 'playing', 'roundIntro', 'roundEnd', 'gameOver', 'victory'
+  round: 1,
+  lives: MAX_LIVES,
+  score: 0,
+  balloons: [],
+  particles: [],
+  floaters: [], // floating score / "+1 LIFE!" text
+  popped: 0,
+  roundScore: 0,
+  spawnQueue: [],
+  spawnTimer: 0,
+  totalToSpawn: 0,
+  spawned: 0,
+  clustersSpawned: 0, // tracked per round to cap chaos in late game
+  godSpawned: 0, // tracked per round (round 16 guarantees one)
+  lastCheckpoint: 0, // round number of last cleared checkpoint (0 = none)
+  scoreAtCheckpoint: 0, // score saved at last checkpoint
+};
+
+// Balloon type definitions
+const TYPES = {
+  standard: { color: '#FF6B6B', size: 38, speed: 1.0, hp: 1, points: 10, hasFace: true },
+  fast:     { color: '#FFA726', size: 30, speed: 1.8, hp: 1, points: 20, hasFace: true },
+  big:      { color: '#9B59B6', size: 60, speed: 0.6, hp: 3, points: 30, hasFace: true },
+  zigzag:   { color: '#26C6DA', size: 36, speed: 1.1, hp: 1, points: 25, hasFace: true, zigzag: true },
+  bomb:     { color: '#2C3E50', size: 38, speed: 0.9, hp: 1, points: 0, hasFace: false, isBomb: true },
+  bonus:    { color: '#FFD700', size: 38, speed: 1.0, hp: 1, points: 50, hasFace: true, isBonus: true },
+  cluster:  { color: '#E91E63', size: 44, speed: 0.8, hp: 1, points: 15, hasFace: true, splits: true },
+  shielded: { color: '#34495E', size: 40, speed: 0.9, hp: 2, points: 40, hasFace: true, hasShield: true },
+  god:      { color: '#FFD700', size: 70, speed: 0.5, hp: 5, points: 100, hasFace: true, isGod: true },
+};
+
+// Round configurations: [count, types-allowed, speed-multiplier]
+function buildRoundConfig(round) {
+  const types = ['standard'];
+  let newType = null;
+  if (round >= 3) types.push('fast');
+  if (round === 3) newType = 'fast';
+  if (round >= 5) types.push('big');
+  if (round === 5) newType = 'big';
+  if (round >= 7) types.push('zigzag');
+  if (round === 7) newType = 'zigzag';
+  if (round >= 9) types.push('bomb');
+  if (round === 9) newType = 'bomb';
+  if (round >= 11) types.push('bonus');
+  if (round === 11) newType = 'bonus';
+  if (round >= 13) types.push('shielded');
+  if (round === 13) newType = 'shielded';
+  if (round >= 16) types.push('cluster');
+  if (round === 16) newType = 'cluster';
+  // God balloon announces on round 17 (gets its own moment after cluster intro on 16)
+  if (round === 17) newType = 'god';
+
+  // Balloon count: substantial early, gentler late-game ramp
+  // R1=8, R5=15, R10=22, R15=28, R20=36 (was 42)
+  let baseCount;
+  if (round <= 5) baseCount = 7 + round + Math.floor(round * 0.4);   // 8, 10, 11, 13, 15
+  else if (round <= 15) baseCount = 15 + Math.floor((round - 5) * 1.3); // 16, 17, ..., 28
+  else baseCount = 28 + Math.floor((round - 15) * 1.6);              // 29, 31, 32, 34, 36
+
+  // Speed: slow early to keep it kid-friendly, capped lower late-game so kids can still react
+  // R1=0.90, R5=1.10, R10=1.35, R15=1.60, R20=1.90 (was 2.30)
+  let speedMult;
+  if (round <= 10) speedMult = 0.9 + (round - 1) * 0.05;
+  else speedMult = 1.35 + (round - 10) * 0.055;
+
+  // Bonus rarity scales UP slightly in late rounds so kids have a safety net
+  // R11-15 = 5%, R16-20 = 7%
+  const bonusChance = round < 11 ? 0 : (round >= 16 ? 0.07 : 0.05);
+  // Bomb frequency scales but caps at 22% (was 25%) — late game already chaotic enough
+  const bombChance  = round < 9  ? 0 : Math.min(0.22, 0.13 + (round - 9) * 0.011);
+  // God balloon: more frequent divine reward in Outer Space (was 3%, now 5%)
+  // With ~32 balloons per round at 5%, expect ~1-2 per round = reliable lifesaver
+  const godChance   = round < 16 ? 0 : 0.05;
+
+  return { count: baseCount, types, speedMult, newType, bonusChance, bombChance, godChance };
+}
+
+// ============================================================
+// BALLOON CLASS (function constructor style)
+// ============================================================
+function makeBalloon(type, speedMult) {
+  const t = TYPES[type];
+  // God balloon spawns more centered vertically since it's so big
+  const margin = type === 'god' ? 120 : 100;
+  const y = margin + Math.random() * Math.max(50, H - margin * 2);
+  return {
+    type,
+    x: -t.size - 20,
+    y,
+    baseY: y,
+    vx: t.speed * speedMult * 1.2, // px per frame at 60fps
+    size: t.size,
+    color: t.color,
+    hp: t.hp,
+    maxHp: t.hp,
+    isBomb: t.isBomb,
+    isBonus: t.isBonus,
+    isGod: t.isGod,
+    splits: t.splits,
+    hasShield: t.hasShield,
+    zigzag: t.zigzag,
+    hasFace: t.hasFace,
+    points: t.points,
+    age: 0,
+    swayPhase: Math.random() * Math.PI * 2,
+    popped: false,
+    isChild: false,
+  };
+}
+
+function makeChildBalloon(parent, angleOffset) {
+  // Slight vertical scatter on spawn, then drift rightward like a normal balloon
+  const scatterY = (angleOffset - 1) * 30; // -30, 0, +30 spread
+  const newY = Math.max(80, Math.min(H - 80, parent.y + scatterY));
+  return {
+    type: 'standard',
+    x: parent.x,
+    y: newY,
+    baseY: newY,
+    vx: 1.4 + Math.random() * 0.4,
+    vy: 0,
+    size: 22,
+    color: ['#FF6B6B', '#FFA726', '#26C6DA'][Math.floor(Math.random() * 3)],
+    hp: 1, maxHp: 1,
+    isBomb: false, isBonus: false, splits: false, hasShield: false,
+    zigzag: false, hasFace: true,
+    points: 5,
+    age: 0,
+    swayPhase: Math.random() * Math.PI * 2,
+    popped: false,
+    isChild: true,
+  };
+}
+
+// ============================================================
+// PARTICLES
+// ============================================================
+function spawnFloater(x, y, text, color, big = false) {
+  game.floaters.push({
+    x, y,
+    vy: -1.6 - Math.random() * 0.4,
+    text,
+    color,
+    big,
+    life: 1,
+    age: 0,
+    scale: big ? 0 : 1, // big floaters do a pop-in, small ones start at full size
+  });
+}
+
+function drawFloater(f) {
+  ctx.save();
+  ctx.globalAlpha = f.life;
+  ctx.translate(f.x, f.y);
+  ctx.scale(f.scale, f.scale);
+  // Drop shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.font = f.big
+    ? `bold 32px "Bubblegum Sans", cursive`
+    : `bold 22px "Fredoka", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(f.text, 2, 2);
+  // Outline
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = f.big ? 5 : 4;
+  ctx.lineJoin = 'round';
+  ctx.strokeText(f.text, 0, 0);
+  // Fill
+  ctx.fillStyle = f.color;
+  ctx.fillText(f.text, 0, 0);
+  ctx.restore();
+}
+
+function spawnShieldShatter(x, y) {
+  // 16 metal shards explode outward as triangular fragments
+  const colors = ['#BDC3C7', '#95A5A6', '#7F8C8D', '#ECF0F1'];
+  for (let i = 0; i < 16; i++) {
+    const angle = (Math.PI * 2 * i) / 16 + (Math.random() - 0.5) * 0.3;
+    const speed = 4 + Math.random() * 4;
+    game.particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1,
+      size: 6 + Math.random() * 6,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 1.2,
+      gravity: 0.25,
+      type: 'shard',
+      rotation: Math.random() * Math.PI * 2,
+      vRotation: (Math.random() - 0.5) * 0.5,
+    });
+  }
+  // A flash ring to make it pop visually
+  game.particles.push({
+    x, y,
+    vx: 0, vy: 0,
+    size: 30,
+    color: '#FFFFFF',
+    life: 0.6,
+    gravity: 0,
+    type: 'ring',
+    rotation: 0,
+    vRotation: 0,
+    ringRadius: 10,
+    ringGrowth: 4,
+  });
+}
+
+function spawnPopParticles(x, y, color, count = 14) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
+    const speed = 2 + Math.random() * 4;
+    game.particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1,
+      size: 4 + Math.random() * 4,
+      color,
+      life: 1,
+      gravity: 0.15,
+      type: 'confetti',
+      rotation: Math.random() * Math.PI * 2,
+      vRotation: (Math.random() - 0.5) * 0.3,
+    });
+  }
+}
+
+function spawnSparkles(x, y) {
+  for (let i = 0; i < 20; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1 + Math.random() * 3;
+    game.particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: 3 + Math.random() * 3,
+      color: ['#FFD700', '#FFEB3B', '#FFF176'][Math.floor(Math.random() * 3)],
+      life: 1,
+      gravity: 0.05,
+      type: 'sparkle',
+    });
+  }
+}
+
+// Small golden sparkles on each god balloon tap (encourages "keep tapping!")
+function spawnGodTapSparkles(x, y) {
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 3;
+    game.particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1,
+      size: 4 + Math.random() * 4,
+      color: ['#FFD700', '#FFF176', '#FFFFFF', '#FFEB3B'][Math.floor(Math.random() * 4)],
+      life: 1,
+      gravity: 0.08,
+      type: 'sparkle',
+    });
+  }
+}
+
+// Massive divine explosion when god balloon is fully claimed
+function spawnGodExplosion(x, y) {
+  // Big shockwave ring
+  game.particles.push({
+    x, y,
+    vx: 0, vy: 0,
+    size: 30,
+    color: '#FFFFFF',
+    life: 1,
+    gravity: 0,
+    type: 'ring',
+    rotation: 0,
+    vRotation: 0,
+    ringRadius: 20,
+    ringGrowth: 8,
+  });
+  // Second slower ring
+  game.particles.push({
+    x, y,
+    vx: 0, vy: 0,
+    size: 30,
+    color: '#FFD700',
+    life: 1.2,
+    gravity: 0,
+    type: 'ring',
+    rotation: 0,
+    vRotation: 0,
+    ringRadius: 10,
+    ringGrowth: 5,
+  });
+  // 40 golden sparkles flying outward
+  for (let i = 0; i < 40; i++) {
+    const angle = (Math.PI * 2 * i) / 40 + (Math.random() - 0.5) * 0.2;
+    const speed = 3 + Math.random() * 5;
+    game.particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: 5 + Math.random() * 5,
+      color: ['#FFD700', '#FFF176', '#FFFFFF', '#FFEB3B', '#FFC107'][Math.floor(Math.random() * 5)],
+      life: 1.5,
+      gravity: 0.05,
+      type: 'sparkle',
+    });
+  }
+  // 25 confetti shimmer pieces
+  for (let i = 0; i < 25; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 4;
+    game.particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 2,
+      size: 6 + Math.random() * 6,
+      color: ['#FFD700', '#FFFFFF', '#FFEB3B'][Math.floor(Math.random() * 3)],
+      life: 1.5,
+      gravity: 0.12,
+      type: 'confetti',
+      rotation: Math.random() * Math.PI * 2,
+      vRotation: (Math.random() - 0.5) * 0.4,
+    });
+  }
+}
+
+function spawnBombFlash(x, y) {
+  for (let i = 0; i < 25; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 3 + Math.random() * 5;
+    game.particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: 5 + Math.random() * 5,
+      color: ['#FF6B6B', '#FFA500', '#2C3E50', '#FFD93D'][Math.floor(Math.random() * 4)],
+      life: 1,
+      gravity: 0.2,
+      type: 'confetti',
+      rotation: Math.random() * Math.PI * 2,
+      vRotation: (Math.random() - 0.5) * 0.4,
+    });
+  }
+}
+
+// ============================================================
+// DRAWING
+// ============================================================
+function drawBalloon(b) {
+  ctx.save();
+
+  const sway = Math.sin(b.age * 0.04 + b.swayPhase) * 3;
+  const cx = b.x + sway;
+  const cy = b.y;
+  const r = b.size;
+
+  // String
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + r * 0.95);
+  ctx.quadraticCurveTo(
+    cx + Math.sin(b.age * 0.05) * 8,
+    cy + r * 1.4,
+    cx + Math.sin(b.age * 0.05) * 4,
+    cy + r * 1.9
+  );
+  ctx.stroke();
+
+  // GOD BALLOON: divine aura BEHIND everything else
+  if (b.isGod) {
+    const hpRatio = b.hp / b.maxHp; // 1.0 down to 0.2
+    // Outer pulsing halo glow
+    const haloIntensity = 0.3 + 0.2 * Math.sin(b.age * 0.08) + hpRatio * 0.3;
+    const haloR = r * 1.8;
+    const haloGrd = ctx.createRadialGradient(cx, cy, r * 0.9, cx, cy, haloR);
+    haloGrd.addColorStop(0, `rgba(255, 240, 150, ${haloIntensity * 0.5})`);
+    haloGrd.addColorStop(0.5, `rgba(255, 215, 80, ${haloIntensity * 0.3})`);
+    haloGrd.addColorStop(1, 'rgba(255, 215, 80, 0)');
+    ctx.fillStyle = haloGrd;
+    ctx.beginPath();
+    ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Top halo ring (the iconic angel halo) — tilted ellipse above the balloon
+    const haloRingY = cy - r * 1.15;
+    const haloOpacity = 0.4 + hpRatio * 0.5;
+    // Outer glow
+    ctx.strokeStyle = `rgba(255, 240, 100, ${haloOpacity * 0.3})`;
+    ctx.lineWidth = 12;
+    ctx.beginPath();
+    ctx.ellipse(cx, haloRingY, r * 0.65, r * 0.18, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // Main gold ring
+    ctx.strokeStyle = `rgba(255, 215, 0, ${haloOpacity})`;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.ellipse(cx, haloRingY, r * 0.65, r * 0.18, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // Inner brighter ring
+    ctx.strokeStyle = `rgba(255, 255, 220, ${haloOpacity})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(cx, haloRingY, r * 0.65, r * 0.18, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Orbiting golden sparkles
+    const sparkleCount = 6;
+    for (let i = 0; i < sparkleCount; i++) {
+      const sa = (Math.PI * 2 * i) / sparkleCount + b.age * 0.04;
+      const sx = cx + Math.cos(sa) * r * 1.2;
+      const sy = cy + Math.sin(sa) * r * 1.0;
+      ctx.fillStyle = `rgba(255, 240, 100, ${0.7 + Math.sin(b.age * 0.1 + i) * 0.3})`;
+      // Tiny sparkle star
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(b.age * 0.05);
+      drawStar(0, 0, 5 + Math.sin(b.age * 0.15 + i) * 2, 4);
+      ctx.restore();
+    }
+
+    // Light rays radiating outward (8 beams)
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(b.age * 0.01);
+    for (let i = 0; i < 8; i++) {
+      const a = (Math.PI * 2 * i) / 8;
+      const rayGrd = ctx.createLinearGradient(
+        Math.cos(a) * r * 0.9,
+        Math.sin(a) * r * 0.9,
+        Math.cos(a) * r * 1.6,
+        Math.sin(a) * r * 1.6
+      );
+      rayGrd.addColorStop(0, `rgba(255, 240, 150, ${0.3 * hpRatio})`);
+      rayGrd.addColorStop(1, 'rgba(255, 240, 150, 0)');
+      ctx.strokeStyle = rayGrd;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.9, Math.sin(a) * r * 0.9);
+      ctx.lineTo(Math.cos(a) * r * 1.6, Math.sin(a) * r * 1.6);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Tie at bottom
+  ctx.fillStyle = b.color;
+  ctx.beginPath();
+  ctx.moveTo(cx - 5, cy + r * 0.92);
+  ctx.lineTo(cx + 5, cy + r * 0.92);
+  ctx.lineTo(cx, cy + r * 1.05);
+  ctx.closePath();
+  ctx.fill();
+
+  // Balloon body — draw as filled ellipse with gradient
+  const grd = ctx.createRadialGradient(
+    cx - r * 0.3, cy - r * 0.4, r * 0.1,
+    cx, cy, r * 1.1
+  );
+  grd.addColorStop(0, lightenColor(b.color, 40));
+  grd.addColorStop(0.5, b.color);
+  grd.addColorStop(1, darkenColor(b.color, 25));
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, r * 0.85, r, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  ctx.ellipse(cx - r * 0.3, cy - r * 0.4, r * 0.18, r * 0.28, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(cx + r * 0.25, cy - r * 0.55, r * 0.08, r * 0.12, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Special effects per type
+  if (b.isBomb) {
+    // Spikes around the bomb
+    ctx.fillStyle = '#1A1A1A';
+    for (let i = 0; i < 12; i++) {
+      const a = (Math.PI * 2 * i) / 12;
+      const sx = cx + Math.cos(a) * r * 0.85;
+      const sy = cy + Math.sin(a) * r * 0.95;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(cx + Math.cos(a) * r * 1.1, cy + Math.sin(a) * r * 1.25);
+      ctx.lineTo(cx + Math.cos(a + 0.15) * r * 0.85, cy + Math.sin(a + 0.15) * r * 0.95);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Fuse
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r);
+    ctx.quadraticCurveTo(cx + 8, cy - r - 12, cx + 14, cy - r - 18);
+    ctx.stroke();
+    // Spark on fuse
+    ctx.fillStyle = '#FFD93D';
+    ctx.beginPath();
+    ctx.arc(cx + 14 + Math.sin(b.age * 0.5) * 2, cy - r - 18, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#FF6B6B';
+    ctx.beginPath();
+    ctx.arc(cx + 14 + Math.sin(b.age * 0.5) * 2, cy - r - 18, 2, 0, Math.PI * 2);
+    ctx.fill();
+    // Skull symbol
+    ctx.fillStyle = 'white';
+    ctx.font = `bold ${r * 0.7}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('💀', cx, cy + 2);
+  } else if (b.isBonus) {
+    // Star sparkle decoration
+    const sparkAngle = b.age * 0.05;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(sparkAngle);
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    drawStar(0, 0, r * 0.4, 5);
+    ctx.restore();
+    // Outer glow ring
+    ctx.strokeStyle = `rgba(255, 215, 0, ${0.4 + Math.sin(b.age * 0.1) * 0.3})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r * 0.9 + 4, r * 1.05 + 4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (b.hasShield && b.hp > 1) {
+    // Metallic shield ring
+    ctx.strokeStyle = '#95A5A6';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r * 0.95, r * 1.1, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = '#BDC3C7';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r * 0.95, r * 1.1, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // Bolts
+    ctx.fillStyle = '#7F8C8D';
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI * 2 * i) / 6;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(a) * r * 0.95, cy + Math.sin(a) * r * 1.1, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (b.shieldBroken) {
+    // After shield breaks: pulsing red glow telling kid "hit me again!"
+    const pulse = (Math.sin(b.age * 0.25) + 1) * 0.5; // 0..1
+    ctx.strokeStyle = `rgba(255, 100, 100, ${0.4 + pulse * 0.5})`;
+    ctx.lineWidth = 3 + pulse * 2;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r * 0.85 + 4 + pulse * 4, r + 4 + pulse * 4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // Brief white flash right after breaking
+    if (b.shieldFlashTime > 0) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${b.shieldFlashTime / 20 * 0.5})`;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r * 0.85, r, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Face (eyes + smile)
+  if (b.hasFace) {
+    const eyeY = cy - r * 0.15;
+    const eyeOffset = r * 0.22;
+    // Eye whites
+    ctx.fillStyle = 'white';
+    ctx.beginPath(); ctx.arc(cx - eyeOffset, eyeY, r * 0.13, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + eyeOffset, eyeY, r * 0.13, 0, Math.PI * 2); ctx.fill();
+    // Pupils
+    ctx.fillStyle = '#2C3E50';
+    ctx.beginPath(); ctx.arc(cx - eyeOffset + 1, eyeY + 1, r * 0.07, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + eyeOffset + 1, eyeY + 1, r * 0.07, 0, Math.PI * 2); ctx.fill();
+    // Eye shine
+    ctx.fillStyle = 'white';
+    ctx.beginPath(); ctx.arc(cx - eyeOffset + 2, eyeY - 1, r * 0.025, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + eyeOffset + 2, eyeY - 1, r * 0.025, 0, Math.PI * 2); ctx.fill();
+    // Smile
+    ctx.strokeStyle = '#2C3E50';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(cx, cy + r * 0.05, r * 0.22, 0.15, Math.PI - 0.15);
+    ctx.stroke();
+    // Cheek blush
+    ctx.fillStyle = 'rgba(255, 100, 100, 0.35)';
+    ctx.beginPath(); ctx.arc(cx - r * 0.4, cy + r * 0.05, r * 0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + r * 0.4, cy + r * 0.05, r * 0.1, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // HP indicator
+  if (b.isGod) {
+    // 5 golden dots at the bottom, fading as HP drops
+    const dotCount = b.maxHp;
+    const dotSpacing = r * 0.3;
+    const startX = cx - (dotSpacing * (dotCount - 1)) / 2;
+    const dotY = cy + r * 0.55;
+    for (let i = 0; i < dotCount; i++) {
+      const filled = i < b.hp;
+      const dx = startX + i * dotSpacing;
+      // Outline
+      ctx.fillStyle = filled ? '#FFFFFF' : 'rgba(255,255,255,0.25)';
+      ctx.beginPath();
+      ctx.arc(dx, dotY, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      // Inner gold dot if active
+      if (filled) {
+        ctx.fillStyle = '#FFD700';
+        ctx.beginPath();
+        ctx.arc(dx, dotY, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  } else if (b.maxHp > 1 && !b.hasShield) {
+    // Standard HP number for big balloons
+    ctx.fillStyle = 'white';
+    ctx.strokeStyle = '#2C3E50';
+    ctx.lineWidth = 2;
+    ctx.font = `bold ${r * 0.5}px Bubblegum Sans, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.strokeText(b.hp, cx, cy + r * 0.3);
+    ctx.fillText(b.hp, cx, cy + r * 0.3);
+  }
+
+  ctx.restore();
+}
+
+function drawStar(cx, cy, radius, points) {
+  ctx.beginPath();
+  for (let i = 0; i < points * 2; i++) {
+    const r = i % 2 === 0 ? radius : radius * 0.4;
+    const a = (Math.PI * i) / points - Math.PI / 2;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawParticle(p) {
+  ctx.save();
+  ctx.globalAlpha = p.life;
+  if (p.type === 'sparkle') {
+    ctx.fillStyle = p.color;
+    ctx.translate(p.x, p.y);
+    drawStar(0, 0, p.size, 4);
+  } else if (p.type === 'ring') {
+    // Expanding white shockwave ring
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.ringRadius, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (p.type === 'shard') {
+    // Triangular metal fragment with glint
+    ctx.fillStyle = p.color;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rotation || 0);
+    ctx.beginPath();
+    ctx.moveTo(-p.size / 2, p.size / 3);
+    ctx.lineTo(p.size / 2, 0);
+    ctx.lineTo(-p.size / 2, -p.size / 3);
+    ctx.closePath();
+    ctx.fill();
+    // White edge highlight for metallic look
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = p.color;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rotation || 0);
+    ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+  }
+  ctx.restore();
+}
+
+function lightenColor(hex, amt) {
+  const c = parseInt(hex.replace('#',''), 16);
+  let r = Math.min(255, ((c >> 16) & 0xff) + amt);
+  let g = Math.min(255, ((c >> 8) & 0xff) + amt);
+  let b = Math.min(255, (c & 0xff) + amt);
+  return `rgb(${r},${g},${b})`;
+}
+function darkenColor(hex, amt) {
+  const c = parseInt(hex.replace('#',''), 16);
+  let r = Math.max(0, ((c >> 16) & 0xff) - amt);
+  let g = Math.max(0, ((c >> 8) & 0xff) - amt);
+  let b = Math.max(0, (c & 0xff) - amt);
+  return `rgb(${r},${g},${b})`;
+}
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+let lastTime = performance.now();
+function loop(now) {
+  const dt = Math.min(33, now - lastTime); // cap dt
+  lastTime = now;
+  const tStep = dt / 16.67; // normalize to 60fps
+  decorTime += tStep;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Decorative sun rays (subtle)
+  drawBackgroundDecor();
+
+  if (game.state === 'playing') {
+    update(tStep);
+  }
+
+  // Always draw balloons + particles (so they're visible during round-end too)
+  for (const b of game.balloons) drawBalloon(b);
+  for (const p of game.particles) drawParticle(p);
+  for (const f of game.floaters) drawFloater(f);
+
+  requestAnimationFrame(loop);
+}
+
+function drawBackgroundDecor() {
+  // Paint the theme gradient covering the whole canvas
+  const grd = ctx.createLinearGradient(0, 0, 0, H);
+  for (const [pos, color] of currentTheme.gradient) {
+    grd.addColorStop(pos, color);
+  }
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+
+  // Theme-specific decorations
+  if (currentTheme.decoration === 'clouds') {
+    // Sunny: subtle white wispy mist near horizon (CSS clouds handle main clouds)
+    // Just add some atmospheric haze
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath();
+    ctx.ellipse(W * 0.3, H * 0.55, W * 0.4, 30, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (currentTheme.decoration === 'palms') {
+    drawPalmTrees();
+  } else if (currentTheme.decoration === 'stars') {
+    drawStarryNight();
+  } else if (currentTheme.decoration === 'space') {
+    drawOuterSpace();
+  }
+
+  // Distant hills/horizon silhouette
+  ctx.fillStyle = currentTheme.hillColor;
+  ctx.beginPath();
+  ctx.moveTo(0, H * 0.85);
+  ctx.lineTo(W * 0.2, H * 0.7);
+  ctx.lineTo(W * 0.4, H * 0.82);
+  ctx.lineTo(W * 0.65, H * 0.68);
+  ctx.lineTo(W * 0.85, H * 0.78);
+  ctx.lineTo(W, H * 0.72);
+  ctx.lineTo(W, H);
+  ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ============================================================
+// THEME DECORATIONS
+// ============================================================
+
+// Pre-generated decoration data so positions don't jitter every frame
+let decorationData = null;
+function regenerateDecorations() {
+  decorationData = {
+    stars: Array.from({length: 80}, () => ({
+      x: Math.random(),
+      y: Math.random() * 0.7,
+      size: 0.5 + Math.random() * 1.8,
+      twinkleOffset: Math.random() * Math.PI * 2,
+    })),
+    spaceStars: Array.from({length: 120}, () => ({
+      x: Math.random(),
+      y: Math.random(),
+      size: 0.3 + Math.random() * 1.5,
+      twinkleOffset: Math.random() * Math.PI * 2,
+    })),
+    distantStars: Array.from({length: 40}, () => ({
+      x: Math.random(),
+      y: Math.random() * 0.6,
+      size: 1 + Math.random() * 2,
+    })),
+  };
+}
+regenerateDecorations();
+
+let decorTime = 0;
+
+function drawPalmTrees() {
+  // Two palm tree silhouettes - one on left, one on right
+  ctx.fillStyle = 'rgba(20, 10, 30, 0.85)';
+
+  // Left palm
+  drawPalmAt(W * 0.08, H * 0.92, 1);
+  // Right palm
+  drawPalmAt(W * 0.92, H * 0.88, 1.1);
+  // Background smaller palm
+  ctx.globalAlpha = 0.5;
+  drawPalmAt(W * 0.78, H * 0.93, 0.7);
+  ctx.globalAlpha = 1;
+}
+
+function drawPalmAt(baseX, baseY, scale) {
+  // Trunk - curving slightly
+  ctx.beginPath();
+  ctx.moveTo(baseX - 6 * scale, baseY);
+  ctx.quadraticCurveTo(
+    baseX + 8 * scale, baseY - 80 * scale,
+    baseX + 4 * scale, baseY - 160 * scale
+  );
+  ctx.lineTo(baseX + 12 * scale, baseY - 160 * scale);
+  ctx.quadraticCurveTo(
+    baseX + 16 * scale, baseY - 80 * scale,
+    baseX + 6 * scale, baseY
+  );
+  ctx.closePath();
+  ctx.fill();
+
+  // Fronds - 6 leaves radiating from top
+  const topX = baseX + 8 * scale;
+  const topY = baseY - 160 * scale;
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI * i) / 5 - Math.PI * 1.1;
+    const len = 50 * scale + (i % 2 === 0 ? 10 * scale : 0);
+    const endX = topX + Math.cos(angle) * len;
+    const endY = topY + Math.sin(angle) * len;
+    ctx.beginPath();
+    ctx.moveTo(topX, topY);
+    ctx.quadraticCurveTo(
+      topX + Math.cos(angle) * len * 0.5,
+      topY + Math.sin(angle) * len * 0.5 - 5 * scale,
+      endX, endY
+    );
+    ctx.quadraticCurveTo(
+      topX + Math.cos(angle) * len * 0.5 + 8 * scale,
+      topY + Math.sin(angle) * len * 0.5 + 5 * scale,
+      topX + 4 * scale, topY + 2 * scale
+    );
+    ctx.fill();
+  }
+
+  // Coconut blob at top
+  ctx.beginPath();
+  ctx.arc(topX, topY, 8 * scale, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawStarryNight() {
+  // Twinkling stars
+  for (const s of decorationData.stars) {
+    const twinkle = Math.sin(decorTime * 0.05 + s.twinkleOffset) * 0.5 + 0.5;
+    ctx.fillStyle = `rgba(255, 255, 220, ${0.4 + twinkle * 0.5})`;
+    ctx.beginPath();
+    ctx.arc(s.x * W, s.y * H, s.size * (0.8 + twinkle * 0.4), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Crescent moon
+  const moonX = W * 0.85;
+  const moonY = H * 0.18;
+  const moonR = 38;
+  // Glow
+  const glowGrd = ctx.createRadialGradient(moonX, moonY, moonR * 0.5, moonX, moonY, moonR * 2);
+  glowGrd.addColorStop(0, 'rgba(255, 240, 180, 0.4)');
+  glowGrd.addColorStop(1, 'rgba(255, 240, 180, 0)');
+  ctx.fillStyle = glowGrd;
+  ctx.fillRect(moonX - moonR * 2, moonY - moonR * 2, moonR * 4, moonR * 4);
+  // Moon body
+  ctx.fillStyle = '#FFF8DC';
+  ctx.beginPath();
+  ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+  ctx.fill();
+  // Crescent shadow
+  ctx.fillStyle = currentTheme.gradient[0][1]; // top color of theme
+  ctx.beginPath();
+  ctx.arc(moonX + 12, moonY - 4, moonR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Aurora wisps near horizon
+  ctx.save();
+  for (let i = 0; i < 3; i++) {
+    const yPos = H * (0.55 + i * 0.05);
+    const auroraGrd = ctx.createLinearGradient(0, yPos, 0, yPos + 80);
+    auroraGrd.addColorStop(0, `rgba(102, 204, 255, ${0.15 + Math.sin(decorTime * 0.02 + i) * 0.05})`);
+    auroraGrd.addColorStop(1, 'rgba(102, 204, 255, 0)');
+    ctx.fillStyle = auroraGrd;
+    ctx.beginPath();
+    ctx.moveTo(0, yPos);
+    for (let x = 0; x <= W; x += 20) {
+      ctx.lineTo(x, yPos + Math.sin(x * 0.008 + decorTime * 0.02 + i) * 15);
+    }
+    ctx.lineTo(W, yPos + 80);
+    ctx.lineTo(0, yPos + 80);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawOuterSpace() {
+  // Distant stars (background layer)
+  for (const s of decorationData.spaceStars) {
+    const twinkle = Math.sin(decorTime * 0.04 + s.twinkleOffset) * 0.5 + 0.5;
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.3 + twinkle * 0.6})`;
+    ctx.beginPath();
+    ctx.arc(s.x * W, s.y * H, s.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Brighter foreground stars with subtle glow
+  for (const s of decorationData.distantStars) {
+    ctx.fillStyle = 'rgba(255, 255, 200, 0.9)';
+    ctx.beginPath();
+    ctx.arc(s.x * W, s.y * H, s.size, 0, Math.PI * 2);
+    ctx.fill();
+    // Tiny cross sparkle
+    ctx.strokeStyle = 'rgba(255, 255, 220, 0.5)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(s.x * W - s.size * 2, s.y * H);
+    ctx.lineTo(s.x * W + s.size * 2, s.y * H);
+    ctx.moveTo(s.x * W, s.y * H - s.size * 2);
+    ctx.lineTo(s.x * W, s.y * H + s.size * 2);
+    ctx.stroke();
+  }
+
+  // Nebula clouds (purple/pink ethereal blobs)
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  const nebulaPositions = [
+    { x: W * 0.2, y: H * 0.3, color: 'rgba(255, 100, 200, 0.18)', size: 200 },
+    { x: W * 0.8, y: H * 0.5, color: 'rgba(100, 100, 255, 0.18)', size: 240 },
+    { x: W * 0.5, y: H * 0.7, color: 'rgba(255, 80, 120, 0.12)', size: 180 },
+  ];
+  for (const n of nebulaPositions) {
+    const ng = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.size);
+    ng.addColorStop(0, n.color);
+    ng.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = ng;
+    ctx.fillRect(n.x - n.size, n.y - n.size, n.size * 2, n.size * 2);
+  }
+  ctx.restore();
+
+  // A planet in the upper right
+  const planetX = W * 0.85;
+  const planetY = H * 0.22;
+  const planetR = 42;
+  // Planet glow
+  const pg = ctx.createRadialGradient(planetX, planetY, planetR * 0.7, planetX, planetY, planetR * 1.6);
+  pg.addColorStop(0, 'rgba(255, 150, 100, 0.35)');
+  pg.addColorStop(1, 'rgba(255, 150, 100, 0)');
+  ctx.fillStyle = pg;
+  ctx.fillRect(planetX - planetR * 2, planetY - planetR * 2, planetR * 4, planetR * 4);
+  // Planet body
+  const planetGrd = ctx.createRadialGradient(
+    planetX - planetR * 0.4, planetY - planetR * 0.4, planetR * 0.2,
+    planetX, planetY, planetR
+  );
+  planetGrd.addColorStop(0, '#FFB870');
+  planetGrd.addColorStop(0.6, '#E67E22');
+  planetGrd.addColorStop(1, '#A04000');
+  ctx.fillStyle = planetGrd;
+  ctx.beginPath();
+  ctx.arc(planetX, planetY, planetR, 0, Math.PI * 2);
+  ctx.fill();
+  // Surface bands
+  ctx.strokeStyle = 'rgba(160, 60, 0, 0.4)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(planetX, planetY - 10, planetR * 0.85, 4, 0, 0, Math.PI);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(planetX, planetY + 10, planetR * 0.7, 3, 0, 0, Math.PI);
+  ctx.stroke();
+  // Saturn-style ring
+  ctx.strokeStyle = 'rgba(255, 220, 180, 0.4)';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.ellipse(planetX, planetY, planetR * 1.6, planetR * 0.4, -0.3, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255, 220, 180, 0.7)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(planetX, planetY, planetR * 1.6, planetR * 0.4, -0.3, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function update(tStep) {
+  // Spawn balloons
+  if (game.spawned < game.totalToSpawn) {
+    game.spawnTimer -= tStep;
+    if (game.spawnTimer <= 0) {
+      const cfg = buildRoundConfig(game.round);
+      const types = cfg.types;
+      let chosen;
+
+      // SPECIAL CASE: Round 9, first spawn = a lone slow bomb (with warning banner)
+      // This gives the player a moment to recognize "oh, that's the bad one"
+      if (game.round === 9 && game.spawned === 0) {
+        chosen = 'bomb';
+        const bomb = makeBalloon('bomb', cfg.speedMult * 0.55); // even slower
+        game.balloons.push(bomb);
+        game.spawned++;
+        // Big delay before next balloon so player can study the bomb
+        game.spawnTimer = 180;
+        return;
+      }
+
+      // SPECIAL CASE: Round 16, first spawn = a lone slow cluster (with warning banner)
+      // Lets the player learn "pop it = 3 children" without other balloons in the way
+      if (game.round === 16 && game.spawned === 0) {
+        chosen = 'cluster';
+        const cluster = makeBalloon('cluster', cfg.speedMult * 0.55);
+        game.balloons.push(cluster);
+        game.spawned++;
+        game.clustersSpawned++;
+        game.spawnTimer = 180;
+        return;
+      }
+
+      // SPECIAL CASE: Round 16, guarantee a god balloon spawns at least once
+      // (as a safety net since players are learning clusters)
+      // If we're 70% through the round and no god has appeared, force one
+      if (game.round === 16 && game.godSpawned === 0 && game.spawned >= Math.floor(game.totalToSpawn * 0.7)) {
+        chosen = 'god';
+        game.balloons.push(makeBalloon('god', cfg.speedMult));
+        game.spawned++;
+        game.godSpawned++;
+        // Normal spawn timer
+        let baseDelay;
+        if (game.round <= 10) baseDelay = 50 - game.round * 2;
+        else baseDelay = 30 - (game.round - 10) * 1.6;
+        baseDelay = Math.max(14, baseDelay);
+        game.spawnTimer = baseDelay + Math.random() * (baseDelay * 0.4);
+        return;
+      }
+
+      // Determine cluster cap for this round (prevents RNG runaway from cluster children)
+      // Round 16: max 2 clusters, scaling up to 5 by round 20
+      const clusterCap = game.round < 16 ? 999 : Math.min(5, 2 + (game.round - 16));
+
+      // Effective bomb chance — Round 16 gets reduced bombs since cluster is a new mechanic
+      const effectiveBombChance = game.round === 16 ? 0.12 : cfg.bombChance;
+
+      // Weight: god rarest (round 16+), bonus rare, bomb scales with round, others equal
+      const r = Math.random();
+      if (cfg.godChance > 0 && r < cfg.godChance) {
+        chosen = 'god';
+        game.godSpawned++;
+      }
+      else if (cfg.types.includes('bonus') && r < cfg.bonusChance + cfg.godChance) chosen = 'bonus';
+      else if (cfg.types.includes('bomb') && r < effectiveBombChance + cfg.bonusChance + cfg.godChance) chosen = 'bomb';
+      else {
+        // Build a weighted pool: clusters are half-weight since each cluster spawns 3 children
+        // Without this, late game has WAY too many extra balloons from cluster splits
+        // Also exclude clusters if we've hit the cap
+        const pool = [];
+        for (const t of types) {
+          if (t === 'bonus' || t === 'bomb') continue;
+          // Skip cluster if we've reached the cap for this round
+          if (t === 'cluster' && game.clustersSpawned >= clusterCap) continue;
+          pool.push(t);
+          // Most types are weight 1, but cluster is half-weight
+          if (t !== 'cluster') pool.push(t);
+        }
+        chosen = pool[Math.floor(Math.random() * pool.length)];
+        if (chosen === 'cluster') game.clustersSpawned++;
+      }
+      game.balloons.push(makeBalloon(chosen, cfg.speedMult));
+      game.spawned++;
+
+      // Wave spawning: rounds 17+ occasionally spawn a second balloon at a different Y
+      // (Round 16 is reserved for the cluster introduction — keep it cleaner)
+      // R17=6%, R18=12%, R19=18%, R20=24% (was up to 40%)
+      if (game.round >= 17 && game.spawned < game.totalToSpawn && Math.random() < (game.round - 16) * 0.06) {
+        const pool = types.filter(t => t !== 'bonus' && t !== 'bomb' && t !== 'god');
+        const second = pool[Math.floor(Math.random() * pool.length)];
+        // Try to spawn at a different vertical position than the most recent balloon
+        // to avoid stacking (we'll just use makeBalloon's natural randomness twice)
+        game.balloons.push(makeBalloon(second, cfg.speedMult));
+        game.spawned++;
+      }
+
+      // Spawn delay: shorter in late rounds for the "frantic finale" feel, but with breathing room
+      // R1: ~50f gap, R10: ~30f, R15: ~22f, R20: ~14f (was 10)
+      let baseDelay;
+      if (game.round <= 10) baseDelay = 50 - game.round * 2;
+      else baseDelay = 30 - (game.round - 10) * 1.6;
+      baseDelay = Math.max(14, baseDelay);
+      game.spawnTimer = baseDelay + Math.random() * (baseDelay * 0.4);
+    }
+  }
+
+  // Update balloons
+  for (let i = game.balloons.length - 1; i >= 0; i--) {
+    const b = game.balloons[i];
+    b.age += tStep;
+    b.x += b.vx * tStep;
+    if (b.shieldFlashTime > 0) b.shieldFlashTime -= tStep;
+    if (b.zigzag) {
+      b.y = b.baseY + Math.sin(b.age * 0.06) * 50;
+    }
+    // Off-screen?
+    if (b.x - b.size > W) {
+      // Bombs going off-screen are fine (no penalty for letting them pass)
+      // Bonus going off-screen is fine (just missed opportunity)
+      // Standard balloons cost a life
+      if (!b.isBomb && !b.isBonus) {
+        // Show the -1 LIFE near the right edge where the balloon escaped
+        loseLife(W - 80, b.y);
+      }
+      game.balloons.splice(i, 1);
+    }
+  }
+
+  // Update particles
+  for (let i = game.particles.length - 1; i >= 0; i--) {
+    const p = game.particles[i];
+    p.x += p.vx * tStep;
+    p.y += p.vy * tStep;
+    p.vy += p.gravity * tStep;
+    // Ring particles expand instead of fading via gravity
+    if (p.type === 'ring') {
+      p.ringRadius += p.ringGrowth * tStep;
+      p.life -= 0.04 * tStep;
+    } else if (p.type === 'shard') {
+      p.life -= 0.012 * tStep; // shards last longer
+    } else {
+      p.life -= 0.02 * tStep;
+    }
+    if (p.rotation !== undefined) p.rotation += p.vRotation * tStep;
+    if (p.life <= 0) game.particles.splice(i, 1);
+  }
+
+  // Update floaters
+  for (let i = game.floaters.length - 1; i >= 0; i--) {
+    const f = game.floaters[i];
+    f.age += tStep;
+    f.y += f.vy * tStep;
+    f.vy *= 0.96; // air drag - slow down as it floats
+    // Pop-in animation for "big" floaters in first 8 frames
+    if (f.big && f.scale < 1) {
+      f.scale += (1 - f.scale) * 0.25;
+      if (f.scale > 0.99) f.scale = 1;
+    }
+    // Hold full-opacity for ~30 frames then fade
+    if (f.age > 35) f.life -= 0.025 * tStep;
+    if (f.life <= 0) game.floaters.splice(i, 1);
+  }
+
+  // Round end check
+  if (game.spawned >= game.totalToSpawn && game.balloons.length === 0) {
+    endRound();
+  }
+}
+
+// ============================================================
+// CLICK HANDLING
+// ============================================================
+function handleClick(clientX, clientY) {
+  if (game.state !== 'playing') return;
+  const rect = canvas.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
+
+  // Detect touch device for more forgiving hitboxes
+  const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  const hitboxBoost = isTouchDevice ? 1.25 : 1.0; // 25% larger hit area on touch
+
+  // Check from front (last drawn) to back
+  for (let i = game.balloons.length - 1; i >= 0; i--) {
+    const b = game.balloons[i];
+    const sway = Math.sin(b.age * 0.04 + b.swayPhase) * 3;
+    const dx = x - (b.x + sway);
+    const dy = y - b.y;
+    const rx = b.size * 0.85 * hitboxBoost;
+    const ry = b.size * hitboxBoost;
+    if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1) {
+      hitBalloon(b, i);
+      return;
+    }
+  }
+}
+
+function hitBalloon(b, i) {
+  if (b.isBomb) {
+    // BOMB! Lose a life
+    spawnBombFlash(b.x, b.y);
+    playBomb();
+    loseLife(b.x, b.y - 30);
+    game.balloons.splice(i, 1);
+    return;
+  }
+
+  // GOD BALLOON: 5 taps, full life refill on final
+  if (b.isGod) {
+    if (b.hp > 1) {
+      b.hp--;
+      // Rising chime: pitch goes up with each tap (taps 1..4 give increasingly higher tones)
+      const tapNumber = b.maxHp - b.hp; // 1, 2, 3, 4
+      playGodTap(tapNumber);
+      spawnGodTapSparkles(b.x, b.y);
+      // Slight balloon size pulse on tap (visual feedback)
+      return;
+    }
+    // FINAL TAP — divine reward!
+    playGodReward();
+    spawnGodExplosion(b.x, b.y);
+    // Refill all lives
+    const livesGained = MAX_LIVES - game.lives;
+    game.lives = MAX_LIVES;
+    updateLivesDisplay();
+    if (livesGained > 0) {
+      spawnFloater(b.x, b.y - 30, `+${livesGained} LIVES!`, '#FFD700', true);
+    } else {
+      spawnFloater(b.x, b.y - 30, 'BLESSED!', '#FFD700', true);
+    }
+    spawnFloater(b.x, b.y + 40, '+' + b.points, '#FFFFFF', false);
+    game.score += b.points;
+    game.roundScore += b.points;
+    game.popped++;
+    game.balloons.splice(i, 1);
+    updateScoreDisplay();
+    return;
+  }
+
+  if (b.isBonus) {
+    spawnSparkles(b.x, b.y);
+    playBonus();
+    game.score += b.points;
+    game.roundScore += b.points;
+    if (game.lives < MAX_LIVES) {
+      game.lives++;
+      updateLivesDisplay();
+      // Big "+1 LIFE!" floater - this is the most important reward feedback
+      spawnFloater(b.x, b.y - 15, '+1 LIFE!', '#FF4081', true);
+      // Plus a smaller score floater offset slightly
+      spawnFloater(b.x, b.y + 30, '+' + b.points, '#FFD700', false);
+    } else {
+      // Already at max - just show points (no wasted "+1 LIFE!")
+      spawnFloater(b.x, b.y, '+' + b.points, '#FFD700', true);
+    }
+    game.popped++;
+    game.balloons.splice(i, 1);
+    updateScoreDisplay();
+    return;
+  }
+
+  if (b.hasShield && b.hp > 1) {
+    // Shield SHATTER — dramatic feedback so kids understand they need another tap
+    b.hp--;
+    b.shieldBroken = true;
+    b.shieldFlashTime = 20; // frames of flash effect
+    // Reveal a bright color underneath the dark armored shell
+    b.color = '#FF6B6B';
+    playShieldBreak();
+    spawnShieldShatter(b.x, b.y);
+    return;
+  }
+
+  if (b.hp > 1) {
+    b.hp--;
+    playPop(1 + (b.maxHp - b.hp) * 0.2, 'multi');
+    spawnPopParticles(b.x, b.y, b.color, 6);
+    // Squish effect — slight size pulse
+    return;
+  }
+
+  // Pop!
+  spawnPopParticles(b.x, b.y, b.color, 14);
+  playPop(b.type === 'fast' ? 1.4 : (b.type === 'big' ? 0.7 : 1));
+  game.score += b.points;
+  game.roundScore += b.points;
+  game.popped++;
+
+  // Floating score text for higher-value pops (skip standard 10pt ones to avoid clutter)
+  if (b.points >= 20) {
+    spawnFloater(b.x, b.y - 10, '+' + b.points, b.color);
+  }
+
+  // Cluster splits
+  if (b.splits) {
+    for (let k = 0; k < 3; k++) {
+      game.balloons.push(makeChildBalloon(b, k * 1.2));
+    }
+  }
+
+  game.balloons.splice(i, 1);
+  updateScoreDisplay();
+}
+
+// Use only touchstart on touch devices, only click on others, to avoid double-firing
+let lastTouchTime = 0;
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  lastTouchTime = Date.now();
+  for (const t of e.changedTouches) handleClick(t.clientX, t.clientY);
+}, { passive: false });
+canvas.addEventListener('click', e => {
+  // Skip the synthetic click that follows a touch
+  if (Date.now() - lastTouchTime < 500) return;
+  handleClick(e.clientX, e.clientY);
+});
+
+// ============================================================
+// LIFE / SCORE / UI
+// ============================================================
+function loseLife(x, y) {
+  // Guard: if we're already in game over state, don't process more life losses
+  if (game.state === 'gameOver' || game.lives <= 0) return;
+
+  game.lives--;
+  updateLivesDisplay();
+  playLifeLost();
+
+  // Screen edge red flash for visceral feedback
+  const flash = document.getElementById('damage-flash');
+  flash.classList.remove('flash');
+  void flash.offsetWidth; // force reflow to restart animation
+  flash.classList.add('flash');
+
+  // Shake the lives display
+  const livesEl = document.getElementById('lives-display');
+  livesEl.classList.remove('shaking');
+  void livesEl.offsetWidth;
+  livesEl.classList.add('shaking');
+
+  // Floating "-1 LIFE!" near where it happened
+  if (x !== undefined && y !== undefined) {
+    spawnFloater(x, y, '-1 LIFE!', '#FF4444', true);
+  }
+
+  if (game.lives <= 0) {
+    // Immediately switch state so no more lives can be lost during the delay
+    game.state = 'dying';
+    setTimeout(() => gameOver(), 600);
+  }
+}
+
+function updateLivesDisplay() {
+  const el = document.getElementById('lives-display');
+  let s = '';
+  for (let i = 0; i < MAX_LIVES; i++) s += i < game.lives ? '❤️' : '🤍';
+  el.textContent = s;
+}
+function updateScoreDisplay() {
+  document.getElementById('score-display').textContent = game.score;
+}
+function updateRoundDisplay() {
+  document.getElementById('round-display').textContent = game.round;
+}
+
+// ============================================================
+// FLOW: rounds, game over, victory
+// ============================================================
+function startGame() {
+  game.state = 'playing';
+  game.round = 1;
+  game.lives = MAX_LIVES;
+  game.score = 0;
+  game.balloons = [];
+  game.particles = [];
+  game.floaters = [];
+  game.lastCheckpoint = 0;
+  game.scoreAtCheckpoint = 0;
+  // Reset theme
+  currentTheme = THEMES.sunny;
+  updateCssCloudsVisibility();
+  document.getElementById('hud').classList.remove('hidden');
+  updateLivesDisplay();
+  updateScoreDisplay();
+  updateRoundDisplay();
+  startMusic();
+  showRoundIntro();
+}
+
+function showRoundIntro() {
+  game.state = 'roundIntro';
+
+  // Check if entering a new theme/world
+  const newTheme = getThemeForRound(game.round);
+  const themeChanged = newTheme !== currentTheme;
+
+  if (themeChanged) {
+    currentTheme = newTheme;
+    // Toggle CSS clouds visibility based on theme
+    updateCssCloudsVisibility();
+    // Restart music with new theme's notes/tempo if currently playing
+    restartMusic();
+    // Show the "Welcome to X!" splash (only after the very first theme is set up)
+    if (game.round > 1) {
+      showWorldSplash();
+      // Delay the round banner until after the world splash
+      setTimeout(() => showRoundBanner(), 2200);
+      return;
+    }
+  }
+  showRoundBanner();
+}
+
+function showRoundBanner() {
+  const cfg = buildRoundConfig(game.round);
+  document.getElementById('round-banner-num').textContent = game.round;
+  const newTypeEl = document.getElementById('round-new-type');
+  if (cfg.newType) {
+    const labels = {
+      fast: '⚡ NEW: Fast Balloons!',
+      big: '🎈 NEW: Big Balloons! (3 hits)',
+      zigzag: '〰️ NEW: Zigzag Balloons!',
+      bomb: '💣 BEWARE: Bombs! Don\'t click!',
+      bonus: '⭐ NEW: Gold = Extra Life!',
+      shielded: '🛡️ NEW: Shielded! (2 hits)',
+      cluster: '💥 NEW: Cluster — they split!',
+      god: '😇 DIVINE: God Balloon — 5 taps for 5 lives!',
+    };
+    newTypeEl.innerHTML = `<span class="new-type">${labels[cfg.newType]}</span>`;
+  } else {
+    newTypeEl.innerHTML = '';
+  }
+  const banner = document.getElementById('round-banner');
+  banner.classList.remove('hidden');
+  // Reset animation
+  banner.style.animation = 'none';
+  void banner.offsetWidth;
+  banner.style.animation = 'roundPop 1.6s ease-out forwards';
+
+  setTimeout(() => {
+    banner.classList.add('hidden');
+    beginRound();
+  }, 1700);
+}
+
+function showWorldSplash() {
+  const splash = document.getElementById('world-splash');
+  document.getElementById('world-splash-emoji').textContent = currentTheme.emoji;
+  document.getElementById('world-splash-name').textContent = currentTheme.name;
+  document.getElementById('world-splash-rounds').textContent =
+    `Rounds ${currentTheme.rounds[0]} – ${currentTheme.rounds[1]}`;
+  splash.classList.remove('hidden');
+  splash.style.animation = 'none';
+  void splash.offsetWidth;
+  splash.style.animation = 'worldSplashShow 3s ease-out forwards';
+  // Play a celebratory sound for the world transition
+  playWorldTransition();
+  setTimeout(() => splash.classList.add('hidden'), 3000);
+}
+
+function updateCssCloudsVisibility() {
+  const clouds = document.querySelectorAll('.cloud');
+  clouds.forEach(c => {
+    c.style.display = currentTheme.cssClouds ? '' : 'none';
+  });
+}
+
+function beginRound() {
+  const cfg = buildRoundConfig(game.round);
+  game.totalToSpawn = cfg.count;
+  game.spawned = 0;
+  game.popped = 0;
+  game.roundScore = 0;
+  game.clustersSpawned = 0;
+  game.godSpawned = 0;
+  game.spawnTimer = 30;
+  game.state = 'playing';
+  updateRoundDisplay();
+
+  // Special: show bomb warning when bombs first appear (Round 9)
+  if (game.round === 9) {
+    const warning = document.getElementById('bomb-warning');
+    warning.classList.remove('hidden');
+    warning.style.animation = 'none';
+    void warning.offsetWidth;
+    warning.style.animation = 'bombWarn 3s ease-out forwards';
+    setTimeout(() => warning.classList.add('hidden'), 3000);
+  }
+  // Special: show cluster warning when clusters first appear (Round 16)
+  if (game.round === 16) {
+    const warning = document.getElementById('cluster-warning');
+    warning.classList.remove('hidden');
+    warning.style.animation = 'none';
+    void warning.offsetWidth;
+    warning.style.animation = 'bombWarn 3s ease-out forwards';
+    setTimeout(() => warning.classList.add('hidden'), 3000);
+  }
+}
+
+function animateNumber(el, targetValue, duration = 1000) {
+  const start = performance.now();
+  const startValue = 0;
+  function tick(now) {
+    const elapsed = now - start;
+    const progress = Math.min(1, elapsed / duration);
+    // Ease-out cubic for satisfying deceleration
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const current = Math.round(startValue + (targetValue - startValue) * eased);
+    el.textContent = current;
+    if (progress < 1) requestAnimationFrame(tick);
+    else el.textContent = targetValue;
+  }
+  requestAnimationFrame(tick);
+}
+
+function endRound() {
+  game.state = 'roundEnd';
+  playRoundComplete();
+
+  // Save checkpoint every CHECKPOINT_INTERVAL rounds
+  if (game.round % CHECKPOINT_INTERVAL === 0) {
+    game.lastCheckpoint = game.round;
+    game.scoreAtCheckpoint = game.score;
+  }
+
+  if (game.round >= 20) {
+    setTimeout(() => victory(), 700);
+    return;
+  }
+  // Round summary — animate the numbers ticking up
+  const poppedEl = document.getElementById('summary-popped');
+  const pointsEl = document.getElementById('summary-points');
+  poppedEl.textContent = '0';
+  pointsEl.textContent = '0';
+
+  let lifeStr = '';
+  for (let i = 0; i < MAX_LIVES; i++) lifeStr += i < game.lives ? '❤️' : '🤍';
+  document.getElementById('summary-lives').textContent = lifeStr;
+
+  // Show checkpoint message if just hit one
+  const checkpointMsg = document.getElementById('summary-checkpoint');
+  if (game.round % CHECKPOINT_INTERVAL === 0 && checkpointMsg) {
+    checkpointMsg.classList.remove('hidden');
+  } else if (checkpointMsg) {
+    checkpointMsg.classList.add('hidden');
+  }
+
+  // Hide the next button until counts finish, so kids feel the reward
+  const nextBtn = document.getElementById('next-btn');
+  nextBtn.style.opacity = '0';
+  nextBtn.style.pointerEvents = 'none';
+
+  document.getElementById('round-summary').classList.remove('hidden');
+
+  // Stagger the animations: balloons first, then points (with little tick sounds)
+  setTimeout(() => {
+    animateNumber(poppedEl, game.popped, 700);
+    playCountTick();
+  }, 300);
+  setTimeout(() => {
+    animateNumber(pointsEl, game.roundScore, 1100);
+    // Multiple small ticks during the count
+    let tickCount = 0;
+    const tickInterval = setInterval(() => {
+      playCountTick();
+      tickCount++;
+      if (tickCount > 8) clearInterval(tickInterval);
+    }, 130);
+  }, 1200);
+  // Re-enable the button after counts finish
+  setTimeout(() => {
+    nextBtn.style.transition = 'opacity 0.4s ease';
+    nextBtn.style.opacity = '1';
+    nextBtn.style.pointerEvents = 'auto';
+  }, 2500);
+}
+
+function nextRound() {
+  document.getElementById('round-summary').classList.add('hidden');
+  game.round++;
+  showRoundIntro();
+}
+
+function gameOver() {
+  game.state = 'gameOver';
+  stopMusic();
+  playGameOver();
+  document.getElementById('go-rounds').textContent = game.round - 1;
+  document.getElementById('go-score').textContent = game.score;
+
+  // Show "Continue" button only if there's a checkpoint to return to
+  const continueBtn = document.getElementById('continue-btn');
+  if (game.lastCheckpoint > 0 && game.lastCheckpoint < 20) {
+    document.getElementById('continue-round').textContent = game.lastCheckpoint + 1;
+    continueBtn.classList.remove('hidden');
+  } else {
+    continueBtn.classList.add('hidden');
+  }
+
+  document.getElementById('game-over').classList.remove('hidden');
+  document.getElementById('hud').classList.add('hidden');
+}
+
+function continueFromCheckpoint() {
+  // Resume from the round after the last cleared checkpoint
+  game.round = game.lastCheckpoint + 1;
+  game.score = game.scoreAtCheckpoint;
+  game.lives = MAX_LIVES;
+  game.balloons = [];
+  game.particles = [];
+  game.floaters = [];
+  game.state = 'playing';
+  // Force theme to the previous theme so showRoundIntro detects a change and shows the welcome splash
+  // E.g. continuing into round 11 (night) - set currentTheme to sunset so transition fires properly
+  if (game.round <= 5) currentTheme = THEMES.space; // any non-sunny
+  else if (game.round <= 10) currentTheme = THEMES.sunny;
+  else if (game.round <= 15) currentTheme = THEMES.sunset;
+  else currentTheme = THEMES.night;
+  document.getElementById('game-over').classList.add('hidden');
+  document.getElementById('hud').classList.remove('hidden');
+  updateLivesDisplay();
+  updateScoreDisplay();
+  updateRoundDisplay();
+  if (audioEnabled) startMusic();
+  showRoundIntro();
+}
+
+function victory() {
+  game.state = 'victory';
+  stopMusic();
+  playVictory();
+  document.getElementById('win-score').textContent = game.score;
+  let lifeStr = '';
+  for (let i = 0; i < MAX_LIVES; i++) lifeStr += i < game.lives ? '❤️' : '🤍';
+  document.getElementById('win-lives').textContent = lifeStr;
+  document.getElementById('victory').classList.remove('hidden');
+  document.getElementById('hud').classList.add('hidden');
+  // Confetti rain
+  const interval = setInterval(() => {
+    for (let i = 0; i < 3; i++) {
+      const colors = ['#FF6B6B','#FFA726','#FFD93D','#6BCB77','#4D96FF','#B388FF','#FF69B4'];
+      game.particles.push({
+        x: Math.random() * W,
+        y: -10,
+        vx: (Math.random() - 0.5) * 2,
+        vy: 1 + Math.random() * 2,
+        size: 6 + Math.random() * 6,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        life: 2,
+        gravity: 0.05,
+        type: 'confetti',
+        rotation: Math.random() * Math.PI * 2,
+        vRotation: (Math.random() - 0.5) * 0.3,
+      });
+    }
+  }, 80);
+  setTimeout(() => clearInterval(interval), 5000);
+}
+
+// ============================================================
+// PAUSE
+// ============================================================
+let pausedFromState = null; // remembers what state we were in before pause
+
+function pauseGame() {
+  if (game.state !== 'playing' && game.state !== 'roundIntro') return;
+  pausedFromState = game.state;
+  game.state = 'paused';
+  stopMusic();
+  document.getElementById('pause-screen').classList.remove('hidden');
+}
+
+function resumeGame() {
+  if (game.state !== 'paused') return;
+  document.getElementById('pause-screen').classList.add('hidden');
+  game.state = pausedFromState || 'playing';
+  pausedFromState = null;
+  if (audioEnabled) startMusic();
+  // Reset lastTime so we don't get a huge dt jump after pause
+  lastTime = performance.now();
+}
+
+function quitToMenu() {
+  document.getElementById('pause-screen').classList.add('hidden');
+  document.getElementById('hud').classList.add('hidden');
+  document.getElementById('start-screen').classList.remove('hidden');
+  game.state = 'menu';
+  game.balloons = [];
+  game.particles = [];
+  game.floaters = [];
+  currentTheme = THEMES.sunny;
+  updateCssCloudsVisibility();
+  stopMusic();
+  pausedFromState = null;
+}
+
+// Auto-pause when tab/app loses focus (kid switches apps, gets a call, etc.)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && (game.state === 'playing' || game.state === 'roundIntro')) {
+    pauseGame();
+  }
+});
+
+// ============================================================
+// BUTTONS
+// ============================================================
+document.getElementById('start-btn').addEventListener('click', () => {
+  playUIClick();
+  document.getElementById('start-screen').classList.add('hidden');
+  startGame();
+});
+document.getElementById('next-btn').addEventListener('click', () => {
+  playUIClick();
+  nextRound();
+});
+document.getElementById('retry-btn').addEventListener('click', () => {
+  playUIClick();
+  // If a checkpoint is available, confirm before throwing away progress
+  if (game.lastCheckpoint > 0) {
+    const ok = confirm(`Are you sure you want to start over?\n\nYou'll lose your checkpoint at Round ${game.lastCheckpoint}.`);
+    if (!ok) return;
+  }
+  document.getElementById('game-over').classList.add('hidden');
+  startGame();
+});
+document.getElementById('continue-btn').addEventListener('click', () => {
+  playUIClick();
+  continueFromCheckpoint();
+});
+document.getElementById('play-again-btn').addEventListener('click', () => {
+  playUIClick();
+  document.getElementById('victory').classList.add('hidden');
+  startGame();
+});
+
+document.getElementById('pause-btn').addEventListener('click', () => {
+  playUIClick();
+  pauseGame();
+});
+document.getElementById('resume-btn').addEventListener('click', () => {
+  playUIClick();
+  resumeGame();
+});
+document.getElementById('quit-btn').addEventListener('click', () => {
+  playUIClick();
+  quitToMenu();
+});
+
+// Keyboard shortcut: P or Escape to pause
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
+    if (game.state === 'playing' || game.state === 'roundIntro') {
+      pauseGame();
+    } else if (game.state === 'paused') {
+      resumeGame();
+    }
+  }
+});
+
+document.getElementById('audio-toggle').addEventListener('click', () => {
+  audioEnabled = !audioEnabled;
+  document.getElementById('audio-toggle').textContent = audioEnabled ? '🔊' : '🔇';
+  if (!audioEnabled) stopMusic();
+  else if (game.state === 'playing' || game.state === 'roundIntro' || game.state === 'roundEnd') startMusic();
+});
+
+// ============================================================
+// INTRO SPLASH (By Lunga Khumalo)
+// ============================================================
+const introSplash = document.getElementById('intro-splash');
+let introDismissed = false;
+
+function dismissIntro() {
+  if (introDismissed) return;
+  introDismissed = true;
+  introSplash.classList.add('fading-out');
+  setTimeout(() => {
+    introSplash.style.display = 'none';
+    document.getElementById('start-screen').classList.remove('hidden');
+  }, 600);
+}
+
+// Auto-dismiss after 3.5 seconds
+setTimeout(dismissIntro, 3500);
+
+// Or skip on tap/click
+introSplash.addEventListener('click', dismissIntro);
+introSplash.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  dismissIntro();
+}, { passive: false });
+
+// Start the loop
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
