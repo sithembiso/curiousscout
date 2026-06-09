@@ -1,84 +1,104 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Claudecraft</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #1a1a1a;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      overscroll-behavior: none;
-      touch-action: none;
-    }
-    #cc-root {
-      width: 100vw !important;
-      height: 100vh !important;
-      height: 100dvh !important;
-      border-radius: 0 !important;
-    }
-    /* Lift bottom-anchored controls above iOS Safari toolbar / home indicator. */
-    #cc-joy,
-    #cc-actions {
-      bottom: calc(14px + env(safe-area-inset-bottom, 0px)) !important;
-    }
-    #cc-hotbar,
-    #cc-slot-left,
-    #cc-slot-right {
-      bottom: calc(90px + env(safe-area-inset-bottom, 0px)) !important;
-    }
-    #cc-tool,
-    #cc-armor {
-      bottom: calc(145px + env(safe-area-inset-bottom, 0px)) !important;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>ClaudeCraft 3.0 - Land of Milk and Honey</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #87CEEB; font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif); user-select: none; touch-action: none; overscroll-behavior: none; }
+  #cc-root {
+    position: relative;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    overflow: hidden;
+    border-radius: 0 !important;
+    font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  }
+  button { font-family: inherit; }
+  /* Lift bottom-anchored controls above iOS Safari toolbar / home indicator. */
+  #cc-joy,
+  #cc-actions {
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  #cc-hotbar,
+  #cc-slot-left,
+  #cc-slot-right {
+    bottom: calc(90px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  #cc-tool,
+  #cc-armor {
+    bottom: calc(145px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+</style>
 </head>
 <body>
-<div id="cc-root" style="position: relative; width: 100%; height: 700px; border-radius: var(--border-radius-lg); overflow: hidden; background: #87CEEB; font-family: var(--font-sans); user-select: none; touch-action: none;">
+<div id="cc-root" style="background: #87CEEB;">
   <canvas id="cc-canvas" style="display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none;"></canvas>
 
+  <div id="cc-release" style="position: absolute; inset: 0; background: rgba(40, 25, 5, 0.92); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 30; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #ffd866, #ffaa44); color: #2a1a00; max-width: 540px; width: 100%; border-radius: 16px; padding: 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.5); max-height: 90%; overflow-y: auto;">
+      <div style="text-align: center; margin-bottom: 14px;">
+        <div style="font-size: 38px; margin-bottom: 4px;">🎉✨</div>
+        <div style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">Version 3.0 is here!</div>
+        <div style="font-size: 14px; font-weight: 600; color: #8a4a00;">Land of Milk and Honey 🥛🍯</div>
+      </div>
+      <div style="background: rgba(255,255,255,0.45); border-radius: 12px; padding: 14px; margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #4a2400;">✨ WHAT'S NEW</div>
+        <ul style="margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6;">
+          <li><b>🥛 A whole new world!</b> The Land of Milk and Honey — milk rivers, honey pools, milk clouds, honeycomb hills!</li>
+          <li><b>🍯 New blocks:</b> Honeycomb, Milk, Honey, Honey Tree, Milk Cloud</li>
+          <li><b>🧙 The Wise Guardian</b> gives puzzles instead of fighting!</li>
+          <li><b>🏗️ 3 Build-a-shape puzzles:</b> easy 2×2 square, medium plus, hard 2-tall T</li>
+          <li><b>👑 NEW TITLE:</b> Become the <b>GOD OF CLAUDECRAFT!</b></li>
+          <li><b>🗺️ Secret cave:</b> Break the diamond heart with a diamond pickaxe!</li>
+          <li><b>⏰ More time:</b> 30 minutes (up from 25)</li>
+        </ul>
+      </div>
+      <div style="font-size: 11px; opacity: 0.75; text-align: center; margin-bottom: 14px;">
+        Previous: 2.0 (Underworld + Lava Demon) · 1.0 (Aether + Guardian)
+      </div>
+      <button id="cc-release-close" style="display: block; width: 100%; background: #4a1a00; color: #ffd866; border: none; padding: 12px; font-size: 15px; font-weight: 600; border-radius: 10px; cursor: pointer;">Let's play! ⚔️🥛🍯</button>
+    </div>
+  </div>
+
   <div id="cc-start" style="position: absolute; inset: 0; background: rgba(0,0,0,0.78); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 20; padding: 20px; text-align: center; overflow-y: auto;">
-    <div style="font-size: 32px; font-weight: 500; letter-spacing: 2px; margin-bottom: 4px;">CLAUDECRAFT</div>
-    <div style="font-size: 18px; color: #ff7755; font-weight: 500; margin-bottom: 6px;">🔥 2.0 — The Underworld 🔥</div>
-    <div style="font-size: 13px; color: #ffaa44; margin-bottom: 14px;">⏰ 25 minute challenge — Now with mobile controls!</div>
-    <div style="font-size: 12px; opacity: 0.85; margin-bottom: 14px; max-width: 540px; line-height: 1.6; text-align: left;">
-      <b>The quest:</b><br>
-      1. Beat the obsidian pillar dungeon<br>
-      2. Mine 12 gold → 3×4 rectangle → tap diamond+place to open Aether portal<br>
-      3. Beat the Aether Guardian for the crown 👑<br>
-      4. Mine 12 redstone → 3×4 rectangle → put coal ON TOP of one → tap diamond+place to open Fire Portal! 🔥<br>
-      5. Get diamond armor or LAVA HURTS!<br>
-      6. Beat the Lava Demon for the flaming sword! ⚔️🔥
+    <div style="font-size: 30px; font-weight: 500; letter-spacing: 2px; margin-bottom: 4px;">CLAUDECRAFT</div>
+    <div style="font-size: 17px; color: #ffd866; font-weight: 500; margin-bottom: 6px;">🥛🍯 3.0 — Land of Milk and Honey 🍯🥛</div>
+    <div style="font-size: 12px; color: #ffaa44; margin-bottom: 12px;">⏰ 30 minute challenge — FOUR worlds!</div>
+    <div style="font-size: 12px; opacity: 0.85; margin-bottom: 12px; max-width: 540px; line-height: 1.6; text-align: left;">
+      <b>The ultimate quest:</b><br>
+      1. Beat the obsidian pillar — but DON'T break the diamond heart yet!<br>
+      2. Get a DIAMOND PICKAXE, then mine the diamond heart to open the SECRET CAVE 🥛<br>
+      3. Solve the wise Guardian's <b>3 building puzzles</b><br>
+      4. Become the <b style="color:#ffd866;">GOD OF CLAUDECRAFT!</b> 👑✨
     </div>
     <div style="font-size: 11px; opacity: 0.75; margin-bottom: 12px;">
-      <b>Keyboard:</b> WASD move · C jump · Mouse look · Click break/place · 1-9 hotbar · E craft · P pause<br>
-      <b>Mobile:</b> Left joystick to move · Drag right side to look · ⛏️ break · 🧱 place · ⬆️ jump · 🛠️ craft
+      <b>Keyboard:</b> WASD · C jump · click break/place · 1-9 · E craft · P pause<br>
+      <b>Mobile:</b> joystick · tap-drag to look · ⛏️🧱⬆️🛠️ buttons
     </div>
-    <button id="cc-play" style="background: linear-gradient(135deg, #ff7755, #ff3344); color: #fff; border: none; padding: 14px 36px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer;">Begin the epic quest!</button>
+    <button id="cc-play" style="background: linear-gradient(135deg, #ffd866, #ff9944); color: #4a1a00; border: none; padding: 14px 36px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer; margin-bottom: 12px;">Begin the ultimate quest!</button>
+    <button id="cc-show-release" style="background: transparent; color: #ffd866; border: 1px solid #ffd866; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">📋 What's New in 3.0</button>
   </div>
 
   <div id="cc-hud" style="position: absolute; inset: 0; pointer-events: none; z-index: 5; display: none; color: white; text-shadow: 1px 1px 2px rgba(0,0,0,0.8);">
     <div style="position: absolute; top: 8px; left: 8px; font-size: 12px; line-height: 1.4;">
-      <div id="cc-timer" style="font-size: 20px; font-weight: 500; background: rgba(0,0,0,0.55); padding: 3px 8px; border-radius: 6px; display: inline-block; margin-bottom: 4px;">⏰ 25:00</div>
+      <div id="cc-timer" style="font-size: 20px; font-weight: 500; background: rgba(0,0,0,0.55); padding: 3px 8px; border-radius: 6px; display: inline-block; margin-bottom: 4px;">⏰ 30:00</div>
       <div id="cc-realm" style="font-size: 11px; padding: 2px 6px; background: rgba(106, 190, 48, 0.85); color: #042c1f; border-radius: 4px; display: inline-block; margin-left: 4px; font-weight: 600;">OVERWORLD</div>
       <div id="cc-hearts" style="margin-top: 3px; font-size: 14px;">❤️❤️❤️</div>
       <div id="cc-pos" style="font-size: 11px;">x: 0  y: 0  z: 0</div>
       <div id="cc-near" style="margin-top: 3px; padding: 2px 5px; background: rgba(74, 222, 128, 0.8); color: #042c1f; border-radius: 4px; display: none; font-weight: 500; font-size: 11px;">✓ Near crafting table</div>
       <div id="cc-portal-hint" style="margin-top: 3px; padding: 2px 5px; background: rgba(196, 168, 255, 0.85); color: #1a1033; border-radius: 4px; display: none; font-weight: 500; font-size: 11px;">✨ Aether portal ready → place diamond!</div>
       <div id="cc-fireportal-hint" style="margin-top: 3px; padding: 2px 5px; background: rgba(255, 90, 50, 0.9); color: #fff; border-radius: 4px; display: none; font-weight: 500; font-size: 11px;">🔥 Fire portal ready → place diamond!</div>
+      <div id="cc-puzzle-hint" style="margin-top: 3px; padding: 3px 7px; background: rgba(255, 216, 102, 0.92); color: #4a2c00; border-radius: 4px; display: none; font-weight: 600; font-size: 11px; max-width: 240px;"></div>
     </div>
 
     <div style="position: absolute; top: 8px; right: 8px; font-size: 12px; text-align: right; line-height: 1.5;">
-      <div style="font-weight: 500; margin-bottom: 2px; font-size: 12px;">Achievements <span id="cc-ach-count">0/16</span></div>
-      <div id="cc-ach-list" style="font-size: 10px; opacity: 0.85; max-height: 180px; overflow: hidden;"></div>
+      <div style="font-weight: 500; margin-bottom: 2px;">Achievements <span id="cc-ach-count">0/19</span></div>
+      <div id="cc-ach-list" style="font-size: 10px; opacity: 0.85; max-height: 200px; overflow: hidden;"></div>
     </div>
 
     <button id="cc-pause-btn" style="position: absolute; top: 8px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.65); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 4px 12px; border-radius: 6px; cursor: pointer; pointer-events: auto; font-size: 12px; font-weight: 500;">⏸️ Pause</button>
@@ -90,7 +110,7 @@
 
     <div id="cc-hotbar" style="position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%); display: flex; gap: 3px; background: rgba(0,0,0,0.45); padding: 3px; border-radius: 6px; pointer-events: auto; z-index: 6;"></div>
 
-    <div id="cc-toast" style="position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.82); color: white; padding: 10px 18px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; max-width: 90%; text-align: center; z-index: 7;"></div>
+    <div id="cc-toast" style="position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.85); color: white; padding: 10px 18px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; max-width: 90%; text-align: center; z-index: 7;"></div>
 
     <div id="cc-tool" style="position: absolute; bottom: 145px; right: 6px; background: rgba(0,0,0,0.55); padding: 5px 8px; border-radius: 6px; font-size: 11px; line-height: 1.3;">
       <div style="font-weight: 500;">Tools</div>
@@ -113,13 +133,9 @@
 
     <div id="cc-damage" style="position: absolute; inset: 0; background: radial-gradient(transparent 40%, rgba(255,0,0,0.55)); opacity: 0; transition: opacity 0.25s; pointer-events: none;"></div>
 
-    <!-- ==== MOBILE / TOUCH CONTROLS ==== -->
-    <!-- Joystick (left) -->
     <div id="cc-joy" style="position: absolute; left: 14px; bottom: 14px; width: 120px; height: 120px; background: rgba(255,255,255,0.12); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; pointer-events: auto; touch-action: none;">
       <div id="cc-joy-stick" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; background: rgba(255,255,255,0.55); border: 2px solid rgba(255,255,255,0.7); border-radius: 50%;"></div>
     </div>
-
-    <!-- Action buttons (right) -->
     <div id="cc-actions" style="position: absolute; right: 10px; bottom: 14px; display: flex; flex-direction: column; gap: 6px; pointer-events: auto;">
       <div style="display: flex; gap: 6px; justify-content: flex-end;">
         <button id="cc-jump-btn" style="width: 56px; height: 56px; border-radius: 50%; background: rgba(80,140,255,0.7); border: 2px solid rgba(255,255,255,0.6); color: white; font-size: 22px; font-weight: 600; cursor: pointer; touch-action: none;">⬆️</button>
@@ -130,8 +146,6 @@
         <button id="cc-place-btn" style="width: 64px; height: 64px; border-radius: 50%; background: rgba(60,180,90,0.85); border: 2px solid rgba(255,255,255,0.6); color: white; font-size: 24px; font-weight: 600; cursor: pointer; touch-action: none;">🧱</button>
       </div>
     </div>
-
-    <!-- Hotbar arrows for mobile -->
     <button id="cc-slot-left" style="position: absolute; bottom: 90px; left: 145px; width: 32px; height: 44px; background: rgba(0,0,0,0.55); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-size: 18px; cursor: pointer; pointer-events: auto; z-index: 7;">◀</button>
     <button id="cc-slot-right" style="position: absolute; bottom: 90px; right: 145px; width: 32px; height: 44px; background: rgba(0,0,0,0.55); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-size: 18px; cursor: pointer; pointer-events: auto; z-index: 7;">▶</button>
   </div>
@@ -139,7 +153,7 @@
   <div id="cc-pause" style="position: absolute; inset: 0; background: rgba(0,0,0,0.78); display: none; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 11; text-align: center;">
     <div style="font-size: 44px; margin-bottom: 8px;">⏸️</div>
     <div style="font-size: 28px; font-weight: 500; margin-bottom: 4px;">Paused</div>
-    <div style="font-size: 13px; opacity: 0.8; margin-bottom: 22px;">Take a breather! The timer is stopped.</div>
+    <div style="font-size: 13px; opacity: 0.8; margin-bottom: 22px;">Take a breather!</div>
     <button id="cc-resume-btn" style="background: #4ade80; color: #042c1f; border: none; padding: 12px 32px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer;">▶ Resume</button>
   </div>
 
@@ -154,18 +168,26 @@
     </div>
   </div>
 
-  <div id="cc-win" style="position: absolute; inset: 0; background: radial-gradient(circle, rgba(80,20,5,0.95), rgba(20,0,0,0.98)); display: none; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 9; text-align: center; padding: 20px;">
-    <div style="font-size: 56px; margin-bottom: 4px;">⚔️🔥</div>
-    <div style="font-size: 28px; font-weight: 500; margin-bottom: 8px; color: #ffaa44;">EMPEROR OF CLAUDECRAFT!</div>
-    <div id="cc-win-msg" style="font-size: 15px; opacity: 0.9; max-width: 440px; margin-bottom: 8px;"></div>
-    <div id="cc-win-rank" style="font-size: 20px; font-weight: 500; color: #ffd866; margin-bottom: 18px;"></div>
-    <button id="cc-win-close" style="background: #ffaa44; color: #4a1a00; border: none; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 500;">Keep exploring</button>
+  <div id="cc-puzzle" style="position: absolute; inset: 0; background: rgba(40, 25, 5, 0.92); display: none; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 9; text-align: center; padding: 20px;">
+    <div style="font-size: 48px; margin-bottom: 6px;">🧙</div>
+    <div id="cc-puzzle-title" style="font-size: 22px; font-weight: 500; margin-bottom: 6px; color: #ffd866;">The Guardian speaks...</div>
+    <div id="cc-puzzle-desc" style="font-size: 14px; opacity: 0.95; max-width: 460px; margin-bottom: 14px; line-height: 1.6;"></div>
+    <div id="cc-puzzle-shape" style="margin-bottom: 14px; background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 16px; white-space: pre; line-height: 1.2;"></div>
+    <button id="cc-puzzle-close" style="background: #ffd866; color: #4a2c00; border: none; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 500;">Got it — let me try!</button>
+  </div>
+
+  <div id="cc-win" style="position: absolute; inset: 0; background: radial-gradient(circle, rgba(255,216,102,0.95), rgba(60,40,5,0.98)); display: none; flex-direction: column; align-items: center; justify-content: center; color: #2a1a00; z-index: 9; text-align: center; padding: 20px;">
+    <div style="font-size: 64px; margin-bottom: 4px;">👑✨👑</div>
+    <div style="font-size: 30px; font-weight: 600; margin-bottom: 8px; color: #4a1a00;">GOD OF CLAUDECRAFT!</div>
+    <div id="cc-win-msg" style="font-size: 15px; opacity: 0.92; max-width: 440px; margin-bottom: 8px;"></div>
+    <div id="cc-win-rank" style="font-size: 20px; font-weight: 600; color: #884400; margin-bottom: 18px;"></div>
+    <button id="cc-win-close" style="background: #4a1a00; color: #ffd866; border: none; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 500;">Keep ruling</button>
   </div>
 
   <div id="cc-lose" style="position: absolute; inset: 0; background: rgba(80,0,0,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 9; text-align: center; padding: 20px;">
     <div id="cc-lose-icon" style="font-size: 56px; margin-bottom: 8px;">⏰</div>
     <div id="cc-lose-title" style="font-size: 32px; font-weight: 500; margin-bottom: 8px;">Time's up!</div>
-    <div id="cc-lose-msg" style="font-size: 13px; opacity: 0.9; max-width: 380px; margin-bottom: 18px;">The quest was tough! Want to try again?</div>
+    <div id="cc-lose-msg" style="font-size: 13px; opacity: 0.9; max-width: 380px; margin-bottom: 18px;">Want to try again?</div>
     <button id="cc-lose-retry" style="background: #ffaa44; color: #4a2c00; border: none; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 500;">Try again</button>
   </div>
 </div>
@@ -173,1030 +195,1051 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function(){
+  const CURRENT_VERSION = '3.0';
+  const releaseEl = document.getElementById('cc-release');
+  const startEl = document.getElementById('cc-start');
+
+  // Use localStorage to remember if user has seen the release notes
+  let seenVersion = null;
+  try { seenVersion = localStorage.getItem('cc_seen_version'); } catch (e) {}
+
+  function markSeen() {
+    try { localStorage.setItem('cc_seen_version', CURRENT_VERSION); } catch (e) {}
+    seenVersion = CURRENT_VERSION;
+  }
+  function showReleaseNotes() { releaseEl.style.display = 'flex'; startEl.style.display = 'none'; }
+  function hideReleaseNotes() { releaseEl.style.display = 'none'; startEl.style.display = 'flex'; }
+
+  document.getElementById('cc-release-close').addEventListener('click', () => { markSeen(); hideReleaseNotes(); });
+  document.getElementById('cc-show-release').addEventListener('click', () => { showReleaseNotes(); });
+
+  if (seenVersion !== CURRENT_VERSION) showReleaseNotes();
+
   const canvas = document.getElementById('cc-canvas');
   const root = document.getElementById('cc-root');
-  const startEl = document.getElementById('cc-start');
   const hudEl = document.getElementById('cc-hud');
   const craftEl = document.getElementById('cc-craft');
   const winEl = document.getElementById('cc-win');
   const loseEl = document.getElementById('cc-lose');
   const pauseEl = document.getElementById('cc-pause');
+  const puzzleEl = document.getElementById('cc-puzzle');
 
   const B = {
-    AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, WOOD: 4, LEAF: 5,
-    COAL: 6, IRON: 7, GOLD: 8, REDSTONE: 9, DIAMOND: 10,
-    CRAFTING: 11, OBSIDIAN: 12, BEDROCK: 13, GLOW: 14,
-    PORTAL: 16,
-    CLOUD: 17, AETHER_GRASS: 18, CRYSTAL: 19, RUINSTONE: 20, AETHERSTONE: 21,
-    CHEST: 22, BOSS: 23,
-    FIRE_PORTAL: 24, NETHERSTONE: 25, LAVA: 26, FIRE: 27, DEMON: 28, FIRECHEST: 29
+    AIR:0,GRASS:1,DIRT:2,STONE:3,WOOD:4,LEAF:5,COAL:6,IRON:7,GOLD:8,REDSTONE:9,DIAMOND:10,
+    CRAFTING:11,OBSIDIAN:12,BEDROCK:13,GLOW:14,PORTAL:16,
+    CLOUD:17,AETHER_GRASS:18,CRYSTAL:19,RUINSTONE:20,AETHERSTONE:21,CHEST:22,BOSS:23,
+    FIRE_PORTAL:24,NETHERSTONE:25,LAVA:26,FIRE:27,DEMON:28,FIRECHEST:29,
+    MILK:30,HONEY:31,HONEYCOMB:32,MILKCLOUD:33,HONEYTREE:34,GUARDIAN:35
   };
   const BLOCK_INFO = {
-    [B.GRASS]:    {name:'Grass', colors:{top:0x6abe30, side:0x8B5A2B, bot:0x8B5A2B}, needs:0},
-    [B.DIRT]:     {name:'Dirt', color:0x8B5A2B, needs:0},
-    [B.STONE]:    {name:'Stone', color:0x888888, needs:1},
-    [B.WOOD]:     {name:'Wood', colors:{top:0x6b4226, side:0x8a5a3b, bot:0x6b4226}, needs:0},
-    [B.LEAF]:     {name:'Leaves', color:0x2d8a3e, needs:0},
-    [B.COAL]:     {name:'Coal ore', color:0x2a2a2a, needs:1},
-    [B.IRON]:     {name:'Iron ore', color:0xc9a78d, needs:2},
-    [B.GOLD]:     {name:'Gold ore', color:0xf4d03f, needs:3},
-    [B.REDSTONE]: {name:'Redstone', color:0xd02b2b, needs:2},
-    [B.DIAMOND]:  {name:'Diamond', color:0x5be3e3, needs:3},
-    [B.CRAFTING]: {name:'Crafting table', colors:{top:0xff8800, side:0xdd6600, bot:0xdd6600}, needs:0},
-    [B.OBSIDIAN]: {name:'Obsidian', color:0x2a1a4a, needs:4},
-    [B.BEDROCK]:  {name:'Bedrock', color:0x1a1a1a, needs:99},
-    [B.GLOW]:     {name:'Glowstone', color:0xffd866, needs:0},
-    [B.PORTAL]:   {name:'Aether portal', color:0xc4a8ff, needs:99},
-    [B.CLOUD]:    {name:'Cloud', color:0xeeeeff, needs:0},
-    [B.AETHER_GRASS]: {name:'Aether grass', colors:{top:0xb8f0c0, side:0x9b8aff, bot:0x9b8aff}, needs:0},
-    [B.CRYSTAL]:  {name:'Crystal', color:0xff88dd, needs:3},
-    [B.RUINSTONE]:{name:'Ruin stone', color:0x7a6a8a, needs:2},
-    [B.AETHERSTONE]:{name:'Aether stone', color:0xffe8a8, needs:4},
-    [B.CHEST]:    {name:'Treasure', color:0xb8860b, needs:0},
-    [B.BOSS]:     {name:'Aether Guardian', color:0xff44aa, needs:99},
-    [B.FIRE_PORTAL]: {name:'Fire portal', color:0xff5520, needs:99},
-    [B.NETHERSTONE]: {name:'Netherrock', color:0x551515, needs:2},
-    [B.LAVA]: {name:'Lava', color:0xff5a10, needs:99},
-    [B.FIRE]: {name:'Fire', color:0xff8833, needs:99},
-    [B.DEMON]: {name:'Lava Demon', color:0xff2200, needs:99},
-    [B.FIRECHEST]: {name:'Fire chest', color:0xff7700, needs:0}
+    [B.GRASS]:{name:'Grass',colors:{top:0x6abe30,side:0x8B5A2B,bot:0x8B5A2B},needs:0},
+    [B.DIRT]:{name:'Dirt',color:0x8B5A2B,needs:0},
+    [B.STONE]:{name:'Stone',color:0x888888,needs:1},
+    [B.WOOD]:{name:'Wood',colors:{top:0x6b4226,side:0x8a5a3b,bot:0x6b4226},needs:0},
+    [B.LEAF]:{name:'Leaves',color:0x2d8a3e,needs:0},
+    [B.COAL]:{name:'Coal ore',color:0x2a2a2a,needs:1},
+    [B.IRON]:{name:'Iron ore',color:0xc9a78d,needs:2},
+    [B.GOLD]:{name:'Gold ore',color:0xf4d03f,needs:3},
+    [B.REDSTONE]:{name:'Redstone',color:0xd02b2b,needs:2},
+    [B.DIAMOND]:{name:'Diamond',color:0x5be3e3,needs:3},
+    [B.CRAFTING]:{name:'Crafting table',colors:{top:0xff8800,side:0xdd6600,bot:0xdd6600},needs:0},
+    [B.OBSIDIAN]:{name:'Obsidian',color:0x2a1a4a,needs:4},
+    [B.BEDROCK]:{name:'Bedrock',color:0x1a1a1a,needs:99},
+    [B.GLOW]:{name:'Glowstone',color:0xffd866,needs:0},
+    [B.PORTAL]:{name:'Aether portal',color:0xc4a8ff,needs:99},
+    [B.CLOUD]:{name:'Cloud',color:0xeeeeff,needs:0},
+    [B.AETHER_GRASS]:{name:'Aether grass',colors:{top:0xb8f0c0,side:0x9b8aff,bot:0x9b8aff},needs:0},
+    [B.CRYSTAL]:{name:'Crystal',color:0xff88dd,needs:3},
+    [B.RUINSTONE]:{name:'Ruin stone',color:0x7a6a8a,needs:2},
+    [B.AETHERSTONE]:{name:'Aether stone',color:0xffe8a8,needs:4},
+    [B.CHEST]:{name:'Treasure',color:0xb8860b,needs:0},
+    [B.BOSS]:{name:'Aether Guardian',color:0xff44aa,needs:99},
+    [B.FIRE_PORTAL]:{name:'Fire portal',color:0xff5520,needs:99},
+    [B.NETHERSTONE]:{name:'Netherrock',color:0x551515,needs:2},
+    [B.LAVA]:{name:'Lava',color:0xff5a10,needs:99},
+    [B.FIRE]:{name:'Fire',color:0xff8833,needs:99},
+    [B.DEMON]:{name:'Lava Demon',color:0xff2200,needs:99},
+    [B.FIRECHEST]:{name:'Fire chest',color:0xff7700,needs:0},
+    [B.MILK]:{name:'Milk',color:0xfaf5e0,needs:99},
+    [B.HONEY]:{name:'Honey',color:0xffb732,needs:99},
+    [B.HONEYCOMB]:{name:'Honeycomb',color:0xffa820,needs:2},
+    [B.MILKCLOUD]:{name:'Milk cloud',color:0xf8f6ee,needs:0},
+    [B.HONEYTREE]:{name:'Honey tree',colors:{top:0xd97f1f,side:0xb56b15,bot:0x8a5008},needs:1},
+    [B.GUARDIAN]:{name:'Wise Guardian',color:0xffe066,needs:99}
   };
-
   const PICK_TIERS = ['Hands','Wooden pick','Stone pick','Iron pick','Diamond pick'];
   const ARMOR_TYPES = ['iron','gold','redstone','diamond'];
-
-  const TIME_LIMIT = 25 * 60;
-  let timeLeft = TIME_LIMIT;
-  let timerRunning = false;
-  let gameOver = false;
-  let paused = false;
-  let currentRealm = 'overworld';
-  let playerHearts = 3;
-  let lavaTouchCooldown = 0;
+  const TIME_LIMIT = 30*60;
+  let timeLeft=TIME_LIMIT, timerRunning=false, gameOver=false, paused=false;
+  let currentRealm='overworld', playerHearts=3, lavaTouchCooldown=0;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x87CEEB);
   scene.fog = new THREE.Fog(0x87CEEB, 30, 100);
-
-  const W0 = root.clientWidth, H0 = root.clientHeight;
+  const W0=root.clientWidth, H0=root.clientHeight;
   const renderer = new THREE.WebGLRenderer({canvas:canvas, antialias:false});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(W0, H0, false);
-
   const camera = new THREE.PerspectiveCamera(75, W0/H0, 0.1, 250);
   scene.add(camera);
-
   const sun = new THREE.DirectionalLight(0xffffff, 0.85);
   sun.position.set(50, 80, 30);
   scene.add(sun);
   scene.add(new THREE.AmbientLight(0xffffff, 0.45));
 
-  const overworld = new Map();
-  const aether = new Map();
-  const underworld = new Map();
-  let blocks = overworld;
+  const overworld=new Map(), aether=new Map(), underworld=new Map(), milkhoney=new Map();
+  let blocks=overworld;
+  const WORLD_SIZE=80, WORLD_HEIGHT=24, AETHER_HEIGHT=18, UNDER_HEIGHT=20, MH_HEIGHT=22;
+  const key=(x,y,z)=>x+','+y+','+z;
+  function getHeight(){if(currentRealm==='aether')return AETHER_HEIGHT;if(currentRealm==='underworld')return UNDER_HEIGHT;if(currentRealm==='milkhoney')return MH_HEIGHT;return WORLD_HEIGHT;}
+  function getBlock(x,y,z){if(y<0||y>=getHeight())return B.AIR;return blocks.get(key(x,y,z))||B.AIR;}
+  function setBlock(x,y,z,v){const k=key(x,y,z);if(v===B.AIR)blocks.delete(k);else blocks.set(k,v);}
+  function setBlockIn(m,x,y,z,v){const k=key(x,y,z);if(v===B.AIR)m.delete(k);else m.set(k,v);}
+  function getBlockIn(m,x,y,z){return m.get(key(x,y,z))||B.AIR;}
+  function noise(x,z){return Math.sin(x*0.13+z*0.17)*0.5+Math.cos(x*0.07-z*0.11)*0.5+Math.sin(x*0.31+z*0.27)*0.3;}
 
-  const WORLD_SIZE = 80;
-  const WORLD_HEIGHT = 24;
-  const AETHER_HEIGHT = 18;
-  const UNDER_HEIGHT = 20;
+  let dungeonHeartPos=null, aetherBoss=null, demonBoss=null, guardianPos=null;
+  let mhSpawn={x:0,y:12,z:0};
 
-  const key = (x,y,z) => x + ',' + y + ',' + z;
-  function getHeight() {
-    if (currentRealm === 'aether') return AETHER_HEIGHT;
-    if (currentRealm === 'underworld') return UNDER_HEIGHT;
-    return WORLD_HEIGHT;
-  }
-  function getBlock(x,y,z) {
-    if (y < 0 || y >= getHeight()) return B.AIR;
-    return blocks.get(key(x,y,z)) || B.AIR;
-  }
-  function setBlock(x,y,z,v) {
-    const k = key(x,y,z);
-    if (v === B.AIR) blocks.delete(k);
-    else blocks.set(k, v);
-  }
-  function setBlockIn(realmMap, x,y,z,v) {
-    const k = key(x,y,z);
-    if (v === B.AIR) realmMap.delete(k);
-    else realmMap.set(k, v);
-  }
-  function getBlockIn(realmMap, x, y, z) {
-    return realmMap.get(key(x,y,z)) || B.AIR;
-  }
-  function noise(x, z) {
-    return Math.sin(x*0.13 + z*0.17)*0.5 + Math.cos(x*0.07 - z*0.11)*0.5 + Math.sin(x*0.31 + z*0.27)*0.3;
-  }
-
-  let dungeonHeartPos = null, aetherBoss = null, demonBoss = null;
-
-  function generateOverworld() {
-    const half = WORLD_SIZE / 2;
-    for (let x = -half; x < half; x++) for (let z = -half; z < half; z++) {
-      const h = Math.floor(8 + noise(x, z) * 3);
-      for (let y = 0; y <= h; y++) {
-        if (y === 0) setBlockIn(overworld, x,y,z,B.BEDROCK);
-        else if (y === h) setBlockIn(overworld, x,y,z,B.GRASS);
-        else if (y > h - 3) setBlockIn(overworld, x,y,z,B.DIRT);
-        else setBlockIn(overworld, x,y,z,B.STONE);
+  function generateOverworld(){
+    const half=WORLD_SIZE/2;
+    for(let x=-half;x<half;x++)for(let z=-half;z<half;z++){
+      const h=Math.floor(8+noise(x,z)*3);
+      for(let y=0;y<=h;y++){
+        if(y===0)setBlockIn(overworld,x,y,z,B.BEDROCK);
+        else if(y===h)setBlockIn(overworld,x,y,z,B.GRASS);
+        else if(y>h-3)setBlockIn(overworld,x,y,z,B.DIRT);
+        else setBlockIn(overworld,x,y,z,B.STONE);
       }
-      for (let y = 1; y < h - 2; y++) {
-        const r = Math.abs(Math.sin(x*7.3 + y*3.1 + z*1.7) * 9999) % 1;
-        if (r < 0.008) setBlockIn(overworld, x,y,z,B.DIAMOND);
-        else if (r < 0.035) setBlockIn(overworld, x,y,z,B.GOLD);
-        else if (r < 0.075) setBlockIn(overworld, x,y,z,B.REDSTONE);
-        else if (r < 0.105) setBlockIn(overworld, x,y,z,B.IRON);
-        else if (r < 0.16) setBlockIn(overworld, x,y,z,B.COAL);
+      for(let y=1;y<h-2;y++){
+        const r=Math.abs(Math.sin(x*7.3+y*3.1+z*1.7)*9999)%1;
+        if(r<0.008)setBlockIn(overworld,x,y,z,B.DIAMOND);
+        else if(r<0.035)setBlockIn(overworld,x,y,z,B.GOLD);
+        else if(r<0.075)setBlockIn(overworld,x,y,z,B.REDSTONE);
+        else if(r<0.105)setBlockIn(overworld,x,y,z,B.IRON);
+        else if(r<0.16)setBlockIn(overworld,x,y,z,B.COAL);
       }
     }
-    for (let i = 0; i < 100; i++) {
-      const tx = Math.floor((Math.random() - 0.5) * WORLD_SIZE * 0.9);
-      const tz = Math.floor((Math.random() - 0.5) * WORLD_SIZE * 0.9);
-      let ty = WORLD_HEIGHT - 1;
-      while (ty > 0 && getBlockIn(overworld, tx, ty, tz) === B.AIR) ty--;
-      if (getBlockIn(overworld, tx, ty, tz) !== B.GRASS) continue;
-      const baseY = ty + 1;
-      const trunkH = 4 + Math.floor(Math.random()*2);
-      for (let y = 0; y < trunkH; y++) setBlockIn(overworld, tx, baseY + y, tz, B.WOOD);
-      const top = baseY + trunkH;
-      for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) for (let dy = -1; dy <= 1; dy++) {
-        if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
-        if (dy === 1 && (Math.abs(dx) + Math.abs(dz)) > 2) continue;
-        const lx = tx+dx, ly = top+dy, lz = tz+dz;
-        if (getBlockIn(overworld, lx, ly, lz) === B.AIR) setBlockIn(overworld, lx, ly, lz, B.LEAF);
+    for(let i=0;i<100;i++){
+      const tx=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.9);
+      const tz=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.9);
+      let ty=WORLD_HEIGHT-1;
+      while(ty>0&&getBlockIn(overworld,tx,ty,tz)===B.AIR)ty--;
+      if(getBlockIn(overworld,tx,ty,tz)!==B.GRASS)continue;
+      const baseY=ty+1;
+      const trunkH=4+Math.floor(Math.random()*2);
+      for(let y=0;y<trunkH;y++)setBlockIn(overworld,tx,baseY+y,tz,B.WOOD);
+      const top=baseY+trunkH;
+      for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++)for(let dy=-1;dy<=1;dy++){
+        if(Math.abs(dx)===2&&Math.abs(dz)===2)continue;
+        if(dy===1&&(Math.abs(dx)+Math.abs(dz))>2)continue;
+        const lx=tx+dx,ly=top+dy,lz=tz+dz;
+        if(getBlockIn(overworld,lx,ly,lz)===B.AIR)setBlockIn(overworld,lx,ly,lz,B.LEAF);
       }
     }
-    for (let attempt = 0; attempt < 100; attempt++) {
-      const px = Math.floor((Math.random() - 0.5) * WORLD_SIZE * 0.8);
-      const pz = Math.floor((Math.random() - 0.5) * WORLD_SIZE * 0.8);
-      if (Math.abs(px) < 15 && Math.abs(pz) < 15) continue;
-      let py = WORLD_HEIGHT - 1;
-      while (py > 0 && getBlockIn(overworld, px, py, pz) === B.AIR) py--;
-      if (getBlockIn(overworld, px, py, pz) !== B.GRASS) continue;
-      const baseY = py + 1;
-      for (let dy = 0; dy < 10; dy++) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
-        if (dy === 9 && dx === 0 && dz === 0) setBlockIn(overworld, px+dx, baseY+dy, pz+dz, B.GLOW);
-        else if (dx === 0 && dz === 0 && dy >= 4 && dy <= 6) {
-          if (dy === 5) { setBlockIn(overworld, px, baseY+dy, pz, B.DIAMOND); dungeonHeartPos = {x: px, y: baseY+dy, z: pz}; }
-          else setBlockIn(overworld, px+dx, baseY+dy, pz+dz, B.AIR);
-        } else setBlockIn(overworld, px+dx, baseY+dy, pz+dz, B.OBSIDIAN);
+    for(let attempt=0;attempt<100;attempt++){
+      const px=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.8);
+      const pz=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.8);
+      if(Math.abs(px)<15&&Math.abs(pz)<15)continue;
+      let py=WORLD_HEIGHT-1;
+      while(py>0&&getBlockIn(overworld,px,py,pz)===B.AIR)py--;
+      if(getBlockIn(overworld,px,py,pz)!==B.GRASS)continue;
+      const baseY=py+1;
+      for(let dy=0;dy<10;dy++)for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){
+        if(dy===9&&dx===0&&dz===0)setBlockIn(overworld,px+dx,baseY+dy,pz+dz,B.GLOW);
+        else if(dx===0&&dz===0&&dy>=4&&dy<=6){
+          if(dy===5){setBlockIn(overworld,px,baseY+dy,pz,B.DIAMOND);dungeonHeartPos={x:px,y:baseY+dy,z:pz};}
+          else setBlockIn(overworld,px+dx,baseY+dy,pz+dz,B.AIR);
+        } else setBlockIn(overworld,px+dx,baseY+dy,pz+dz,B.OBSIDIAN);
       }
       break;
     }
   }
 
-  function generateAether() {
-    const islands = [
-      {cx: 0, cz: 0, r: 8, type: 'cloud'},
-      {cx: -20, cz: 5, r: 6, type: 'crystal'},
-      {cx: 18, cz: -3, r: 7, type: 'ruin'},
-      {cx: -5, cz: -22, r: 5, type: 'crystal'},
-      {cx: 22, cz: 22, r: 6, type: 'cloud'},
-      {cx: -25, cz: -18, r: 7, type: 'ruin'},
-      {cx: 8, cz: 20, r: 5, type: 'crystal'},
-      {cx: 0, cz: 28, r: 9, type: 'boss'}
+  function generateAether(){
+    const islands=[
+      {cx:0,cz:0,r:8,type:'cloud'},{cx:-20,cz:5,r:6,type:'crystal'},
+      {cx:18,cz:-3,r:7,type:'ruin'},{cx:-5,cz:-22,r:5,type:'crystal'},
+      {cx:22,cz:22,r:6,type:'cloud'},{cx:-25,cz:-18,r:7,type:'ruin'},
+      {cx:8,cz:20,r:5,type:'crystal'},{cx:0,cz:28,r:9,type:'boss'}
     ];
-    islands.forEach(island => {
-      const baseY = 8 + Math.floor((Math.random() - 0.5) * 3);
-      for (let dx = -island.r; dx <= island.r; dx++) for (let dz = -island.r; dz <= island.r; dz++) {
-        const dist = Math.sqrt(dx*dx + dz*dz);
-        if (dist > island.r) continue;
-        const x = island.cx + dx, z = island.cz + dz;
-        const thickness = Math.floor(island.r - dist) + 1;
-        for (let dy = 0; dy < thickness; dy++) {
-          const y = baseY - dy;
+    islands.forEach(island=>{
+      const baseY=8+Math.floor((Math.random()-0.5)*3);
+      for(let dx=-island.r;dx<=island.r;dx++)for(let dz=-island.r;dz<=island.r;dz++){
+        const dist=Math.sqrt(dx*dx+dz*dz);
+        if(dist>island.r)continue;
+        const x=island.cx+dx, z=island.cz+dz;
+        const thickness=Math.floor(island.r-dist)+1;
+        for(let dy=0;dy<thickness;dy++){
+          const y=baseY-dy;
           let block;
-          if (island.type === 'cloud') block = (dy === 0) ? B.AETHER_GRASS : B.CLOUD;
-          else if (island.type === 'crystal') block = (dy === 0) ? ((Math.random() < 0.3) ? B.CRYSTAL : B.AETHER_GRASS) : B.CLOUD;
-          else if (island.type === 'ruin') block = (dy === 0) ? ((Math.random() < 0.4) ? B.RUINSTONE : B.AETHER_GRASS) : B.RUINSTONE;
-          else if (island.type === 'boss') block = (dy === 0) ? B.RUINSTONE : B.CLOUD;
-          setBlockIn(aether, x, y, z, block);
+          if(island.type==='cloud')block=(dy===0)?B.AETHER_GRASS:B.CLOUD;
+          else if(island.type==='crystal')block=(dy===0)?((Math.random()<0.3)?B.CRYSTAL:B.AETHER_GRASS):B.CLOUD;
+          else if(island.type==='ruin')block=(dy===0)?((Math.random()<0.4)?B.RUINSTONE:B.AETHER_GRASS):B.RUINSTONE;
+          else if(island.type==='boss')block=(dy===0)?B.RUINSTONE:B.CLOUD;
+          setBlockIn(aether,x,y,z,block);
         }
-        if (island.type !== 'cloud' && island.type !== 'boss' && dist < island.r - 1 && Math.random() < 0.04) {
-          setBlockIn(aether, x, baseY - 1, z, B.AETHERSTONE);
-        }
+        if(island.type!=='cloud'&&island.type!=='boss'&&dist<island.r-1&&Math.random()<0.04)setBlockIn(aether,x,baseY-1,z,B.AETHERSTONE);
       }
-      if (island.type === 'crystal') {
-        for (let i = 0; i < 3; i++) {
-          const ox = island.cx + Math.floor((Math.random() - 0.5) * island.r);
-          const oz = island.cz + Math.floor((Math.random() - 0.5) * island.r);
-          for (let h = 1; h <= 2 + Math.floor(Math.random()*2); h++) {
-            if (getBlockIn(aether, ox, baseY + h - 1, oz) === B.AIR && getBlockIn(aether, ox, baseY, oz) !== B.AIR) {
-              setBlockIn(aether, ox, baseY + h, oz, B.CRYSTAL);
-            }
+      if(island.type==='crystal'){
+        for(let i=0;i<3;i++){
+          const ox=island.cx+Math.floor((Math.random()-0.5)*island.r);
+          const oz=island.cz+Math.floor((Math.random()-0.5)*island.r);
+          for(let h=1;h<=2+Math.floor(Math.random()*2);h++){
+            if(getBlockIn(aether,ox,baseY+h-1,oz)===B.AIR&&getBlockIn(aether,ox,baseY,oz)!==B.AIR)setBlockIn(aether,ox,baseY+h,oz,B.CRYSTAL);
           }
         }
-      } else if (island.type === 'ruin') {
-        for (let i = 0; i < 2; i++) {
-          const ox = island.cx + Math.floor((Math.random() - 0.5) * island.r);
-          const oz = island.cz + Math.floor((Math.random() - 0.5) * island.r);
-          const h = 2 + Math.floor(Math.random() * 3);
-          for (let dy = 1; dy <= h; dy++) {
-            if (getBlockIn(aether, ox, baseY, oz) !== B.AIR) setBlockIn(aether, ox, baseY + dy, oz, B.RUINSTONE);
-          }
+      } else if(island.type==='ruin'){
+        for(let i=0;i<2;i++){
+          const ox=island.cx+Math.floor((Math.random()-0.5)*island.r);
+          const oz=island.cz+Math.floor((Math.random()-0.5)*island.r);
+          const h=2+Math.floor(Math.random()*3);
+          for(let dy=1;dy<=h;dy++){if(getBlockIn(aether,ox,baseY,oz)!==B.AIR)setBlockIn(aether,ox,baseY+dy,oz,B.RUINSTONE);}
         }
-      } else if (island.type === 'boss') {
-        const bx = island.cx, bz = island.cz;
-        for (const corner of [[-4,-4],[4,-4],[-4,4],[4,4]]) {
-          for (let dy = 1; dy <= 3; dy++) setBlockIn(aether, bx+corner[0], baseY+dy, bz+corner[1], B.RUINSTONE);
-          setBlockIn(aether, bx+corner[0], baseY+4, bz+corner[1], B.GLOW);
+      } else if(island.type==='boss'){
+        const bx=island.cx, bz=island.cz;
+        for(const corner of [[-4,-4],[4,-4],[-4,4],[4,4]]){
+          for(let dy=1;dy<=3;dy++)setBlockIn(aether,bx+corner[0],baseY+dy,bz+corner[1],B.RUINSTONE);
+          setBlockIn(aether,bx+corner[0],baseY+4,bz+corner[1],B.GLOW);
         }
-        setBlockIn(aether, bx, baseY+1, bz, B.BOSS);
-        aetherBoss = {x: bx, y: baseY+1, z: bz, hp: 10};
-        setBlockIn(aether, bx, baseY+1, bz+2, B.CHEST);
+        setBlockIn(aether,bx,baseY+1,bz,B.BOSS);
+        aetherBoss={x:bx,y:baseY+1,z:bz,hp:10};
+        setBlockIn(aether,bx,baseY+1,bz+2,B.CHEST);
       }
     });
   }
 
-  function generateUnderworld() {
-    const half = WORLD_SIZE / 2;
-    const floorY = 1, ceilY = UNDER_HEIGHT - 1;
-    for (let x = -half; x < half; x++) for (let z = -half; z < half; z++) {
-      setBlockIn(underworld, x, 0, z, B.BEDROCK);
-      setBlockIn(underworld, x, ceilY, z, B.BEDROCK);
-      const h = floorY + Math.max(0, Math.floor(noise(x, z) * 2 + 2));
-      for (let y = floorY; y <= h; y++) setBlockIn(underworld, x, y, z, B.NETHERSTONE);
+  function generateUnderworld(){
+    const half=WORLD_SIZE/2;
+    const floorY=1, ceilY=UNDER_HEIGHT-1;
+    for(let x=-half;x<half;x++)for(let z=-half;z<half;z++){
+      setBlockIn(underworld,x,0,z,B.BEDROCK);
+      setBlockIn(underworld,x,ceilY,z,B.BEDROCK);
+      const h=floorY+Math.max(0,Math.floor(noise(x,z)*2+2));
+      for(let y=floorY;y<=h;y++)setBlockIn(underworld,x,y,z,B.NETHERSTONE);
     }
-    for (let i = 0; i < 8; i++) {
-      const lx = Math.floor((Math.random() - 0.5) * WORLD_SIZE * 0.7);
-      const lz = Math.floor((Math.random() - 0.5) * WORLD_SIZE * 0.7);
-      if (Math.abs(lx) < 10 && Math.abs(lz) < 10) continue;
-      const lr = 4 + Math.floor(Math.random() * 4);
-      for (let dx = -lr; dx <= lr; dx++) for (let dz = -lr; dz <= lr; dz++) {
-        if (dx*dx + dz*dz > lr*lr) continue;
-        const x = lx + dx, z = lz + dz;
-        let topY = floorY;
-        for (let y = floorY + 4; y > floorY; y--) {
-          if (getBlockIn(underworld, x, y, z) === B.NETHERSTONE) { topY = y; break; }
-        }
-        setBlockIn(underworld, x, topY, z, B.LAVA);
+    for(let i=0;i<8;i++){
+      const lx=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.7);
+      const lz=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.7);
+      if(Math.abs(lx)<10&&Math.abs(lz)<10)continue;
+      const lr=4+Math.floor(Math.random()*4);
+      for(let dx=-lr;dx<=lr;dx++)for(let dz=-lr;dz<=lr;dz++){
+        if(dx*dx+dz*dz>lr*lr)continue;
+        const x=lx+dx, z=lz+dz;
+        let topY=floorY;
+        for(let y=floorY+4;y>floorY;y--){if(getBlockIn(underworld,x,y,z)===B.NETHERSTONE){topY=y;break;}}
+        setBlockIn(underworld,x,topY,z,B.LAVA);
       }
     }
-    for (let i = 0; i < 25; i++) {
-      const gx = Math.floor((Math.random() - 0.5) * WORLD_SIZE * 0.9);
-      const gz = Math.floor((Math.random() - 0.5) * WORLD_SIZE * 0.9);
-      setBlockIn(underworld, gx, ceilY - 1, gz, B.GLOW);
+    for(let i=0;i<25;i++){
+      const gx=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.9);
+      const gz=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.9);
+      setBlockIn(underworld,gx,ceilY-1,gz,B.GLOW);
     }
-    const dx0 = 0, dz0 = 0;
-    let arenaY = floorY + 4;
-    for (let y = floorY; y < floorY + 6; y++) {
-      if (getBlockIn(underworld, dx0, y, dz0) === B.AIR) { arenaY = y; break; }
+    const dx0=0, dz0=0;
+    let arenaY=floorY+4;
+    for(let y=floorY;y<floorY+6;y++){if(getBlockIn(underworld,dx0,y,dz0)===B.AIR){arenaY=y;break;}}
+    for(let ax=-3;ax<=3;ax++)for(let az=-3;az<=3;az++){
+      setBlockIn(underworld,dx0+ax,arenaY-1,dz0+az,B.NETHERSTONE);
+      setBlockIn(underworld,dx0+ax,arenaY,dz0+az,B.AIR);
+      setBlockIn(underworld,dx0+ax,arenaY+1,dz0+az,B.AIR);
     }
-    for (let ax = -3; ax <= 3; ax++) for (let az = -3; az <= 3; az++) {
-      setBlockIn(underworld, dx0+ax, arenaY-1, dz0+az, B.NETHERSTONE);
-      setBlockIn(underworld, dx0+ax, arenaY, dz0+az, B.AIR);
-      setBlockIn(underworld, dx0+ax, arenaY+1, dz0+az, B.AIR);
+    for(const corner of [[-3,-3],[3,-3],[-3,3],[3,3]]){
+      for(let h=0;h<=2;h++)setBlockIn(underworld,dx0+corner[0],arenaY+h,dz0+corner[1],B.NETHERSTONE);
+      setBlockIn(underworld,dx0+corner[0],arenaY+3,dz0+corner[1],B.GLOW);
     }
-    for (const corner of [[-3,-3],[3,-3],[-3,3],[3,3]]) {
-      for (let h = 0; h <= 2; h++) setBlockIn(underworld, dx0+corner[0], arenaY+h, dz0+corner[1], B.NETHERSTONE);
-      setBlockIn(underworld, dx0+corner[0], arenaY+3, dz0+corner[1], B.GLOW);
-    }
-    setBlockIn(underworld, dx0, arenaY, dz0, B.DEMON);
-    demonBoss = {x: dx0, y: arenaY, z: dz0, hp: 15};
-    setBlockIn(underworld, dx0+2, arenaY, dz0, B.FIRECHEST);
+    setBlockIn(underworld,dx0,arenaY,dz0,B.DEMON);
+    demonBoss={x:dx0,y:arenaY,z:dz0,hp:15};
+    setBlockIn(underworld,dx0+2,arenaY,dz0,B.FIRECHEST);
   }
 
-  generateOverworld(); generateAether(); generateUnderworld();
+  function generateMilkAndHoney(){
+    const half=30;
+    for(let x=-half;x<half;x++)for(let z=-half;z<half;z++){
+      const h=5+Math.floor(noise(x,z)*2+Math.sin(x*0.2)*1+Math.cos(z*0.2)*1);
+      for(let y=0;y<=h;y++){
+        if(y===0)setBlockIn(milkhoney,x,y,z,B.BEDROCK);
+        else setBlockIn(milkhoney,x,y,z,B.HONEYCOMB);
+      }
+    }
+    for(let i=0;i<4;i++){
+      let mx=Math.floor((Math.random()-0.5)*half), mz=Math.floor((Math.random()-0.5)*half);
+      const len=25+Math.floor(Math.random()*15);
+      let dir=Math.random()*Math.PI*2;
+      for(let s=0;s<len;s++){
+        let topY=1;
+        for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,mx,y,mz)===B.HONEYCOMB){topY=y;break;}}
+        for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){
+          if(Math.abs(dx)+Math.abs(dz)>1)continue;
+          setBlockIn(milkhoney,mx+dx,topY,mz+dz,B.MILK);
+        }
+        dir+=(Math.random()-0.5)*0.4;
+        mx+=Math.round(Math.cos(dir));
+        mz+=Math.round(Math.sin(dir));
+      }
+    }
+    for(let i=0;i<5;i++){
+      const px=Math.floor((Math.random()-0.5)*half*1.5);
+      const pz=Math.floor((Math.random()-0.5)*half*1.5);
+      if(Math.abs(px)<5&&Math.abs(pz)<5)continue;
+      const r=2+Math.floor(Math.random()*2);
+      let topY=1;
+      for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,px,y,pz)===B.HONEYCOMB){topY=y;break;}}
+      for(let dx=-r;dx<=r;dx++)for(let dz=-r;dz<=r;dz++){
+        if(dx*dx+dz*dz>r*r)continue;
+        setBlockIn(milkhoney,px+dx,topY,pz+dz,B.HONEY);
+      }
+    }
+    for(let i=0;i<22;i++){
+      const tx=Math.floor((Math.random()-0.5)*half*1.6);
+      const tz=Math.floor((Math.random()-0.5)*half*1.6);
+      let ty=1;
+      for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,tx,y,tz)===B.HONEYCOMB){ty=y;break;}}
+      if(getBlockIn(milkhoney,tx,ty,tz)!==B.HONEYCOMB)continue;
+      const baseY=ty+1;
+      const trunkH=3+Math.floor(Math.random()*2);
+      for(let y=0;y<trunkH;y++)setBlockIn(milkhoney,tx,baseY+y,tz,B.HONEYTREE);
+      const top=baseY+trunkH;
+      for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++)for(let dy=0;dy<=1;dy++){
+        if(Math.abs(dx)===2&&Math.abs(dz)===2)continue;
+        const lx=tx+dx,ly=top+dy,lz=tz+dz;
+        if(getBlockIn(milkhoney,lx,ly,lz)===B.AIR)setBlockIn(milkhoney,lx,ly,lz,B.HONEY);
+      }
+    }
+    for(let i=0;i<10;i++){
+      const cx=Math.floor((Math.random()-0.5)*half*1.5);
+      const cz=Math.floor((Math.random()-0.5)*half*1.5);
+      const cy=14+Math.floor(Math.random()*4);
+      const cr=2+Math.floor(Math.random()*2);
+      for(let dx=-cr;dx<=cr;dx++)for(let dz=-cr;dz<=cr;dz++){
+        if(dx*dx+dz*dz>cr*cr)continue;
+        setBlockIn(milkhoney,cx+dx,cy,cz+dz,B.MILKCLOUD);
+      }
+    }
+    const gx=0, gz=-10;
+    let gy=1;
+    for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,gx,y,gz)===B.HONEYCOMB){gy=y+1;break;}}
+    for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++){
+      setBlockIn(milkhoney,gx+dx,gy-1,gz+dz,B.HONEYCOMB);
+      setBlockIn(milkhoney,gx+dx,gy,gz+dz,B.AIR);
+    }
+    setBlockIn(milkhoney,gx,gy,gz,B.GUARDIAN);
+    guardianPos={x:gx,y:gy,z:gz,currentPuzzle:0};
+    let sy=1;
+    for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,0,y,0)===B.HONEYCOMB){sy=y+1;break;}}
+    mhSpawn={x:0,y:sy+1,z:0};
+  }
+
+  generateOverworld(); generateAether(); generateUnderworld(); generateMilkAndHoney();
 
   const meshGroup = new THREE.Group();
   scene.add(meshGroup);
 
   const FACES = {
-    px: {dir:[1,0,0], corners:[[1,1,0],[1,1,1],[1,0,1],[1,0,0]], normal:[1,0,0]},
-    nx: {dir:[-1,0,0],corners:[[0,1,1],[0,1,0],[0,0,0],[0,0,1]], normal:[-1,0,0]},
-    py: {dir:[0,1,0], corners:[[0,1,1],[1,1,1],[1,1,0],[0,1,0]], normal:[0,1,0]},
-    ny: {dir:[0,-1,0],corners:[[0,0,0],[1,0,0],[1,0,1],[0,0,1]], normal:[0,-1,0]},
-    pz: {dir:[0,0,1], corners:[[1,1,1],[0,1,1],[0,0,1],[1,0,1]], normal:[0,0,1]},
-    nz: {dir:[0,0,-1],corners:[[0,1,0],[1,1,0],[1,0,0],[0,0,0]], normal:[0,0,-1]}
+    px:{dir:[1,0,0],corners:[[1,1,0],[1,1,1],[1,0,1],[1,0,0]],normal:[1,0,0]},
+    nx:{dir:[-1,0,0],corners:[[0,1,1],[0,1,0],[0,0,0],[0,0,1]],normal:[-1,0,0]},
+    py:{dir:[0,1,0],corners:[[0,1,1],[1,1,1],[1,1,0],[0,1,0]],normal:[0,1,0]},
+    ny:{dir:[0,-1,0],corners:[[0,0,0],[1,0,0],[1,0,1],[0,0,1]],normal:[0,-1,0]},
+    pz:{dir:[0,0,1],corners:[[1,1,1],[0,1,1],[0,0,1],[1,0,1]],normal:[0,0,1]},
+    nz:{dir:[0,0,-1],corners:[[0,1,0],[1,1,0],[1,0,0],[0,0,0]],normal:[0,0,-1]}
   };
-  function getFaceColor(blockId, face) {
-    const info = BLOCK_INFO[blockId];
-    if (!info) return 0xffffff;
-    if (info.colors) {
-      if (face === 'py') return info.colors.top;
-      if (face === 'ny') return info.colors.bot;
-      return info.colors.side;
-    }
+  function getFaceColor(blockId, face){
+    const info=BLOCK_INFO[blockId];
+    if(!info)return 0xffffff;
+    if(info.colors){if(face==='py')return info.colors.top;if(face==='ny')return info.colors.bot;return info.colors.side;}
     return info.color;
   }
-  let worldMesh = null;
-  function rebuildMesh() {
-    if (worldMesh) { meshGroup.remove(worldMesh); worldMesh.geometry.dispose(); worldMesh.material.dispose(); }
-    const positions = [], normals = [], colors = [], indices = [];
-    let idx = 0;
-    blocks.forEach((blockId, k) => {
-      const [xs, ys, zs] = k.split(',');
-      const x = +xs, y = +ys, z = +zs;
-      for (const face in FACES) {
-        const f = FACES[face];
-        const nx = x + f.dir[0], ny = y + f.dir[1], nz = z + f.dir[2];
-        const neighbor = blocks.get(key(nx,ny,nz)) || B.AIR;
-        if (neighbor !== B.AIR && neighbor !== B.LEAF && neighbor !== B.PORTAL && neighbor !== B.FIRE_PORTAL) continue;
-        if (neighbor === B.LEAF && blockId === B.LEAF) continue;
-        const col = getFaceColor(blockId, face);
-        const r = ((col >> 16) & 255) / 255, g = ((col >> 8) & 255) / 255, b = (col & 255) / 255;
-        let shade = 1;
-        if (face === 'py') shade = 1.0;
-        else if (face === 'ny') shade = 0.55;
-        else if (face === 'px' || face === 'nx') shade = 0.78;
-        else shade = 0.88;
-        if ([B.PORTAL, B.FIRE_PORTAL, B.GLOW, B.BOSS, B.DEMON, B.LAVA].includes(blockId)) shade = 1.0;
-        for (let i = 0; i < 4; i++) {
-          const c = f.corners[i];
-          positions.push(x + c[0], y + c[1], z + c[2]);
-          normals.push(f.normal[0], f.normal[1], f.normal[2]);
-          colors.push(r * shade, g * shade, b * shade);
+  let worldMesh=null;
+  function rebuildMesh(){
+    if(worldMesh){meshGroup.remove(worldMesh);worldMesh.geometry.dispose();worldMesh.material.dispose();}
+    const positions=[], normals=[], colors=[], indices=[];
+    let idx=0;
+    blocks.forEach((blockId,k)=>{
+      const [xs,ys,zs]=k.split(',');
+      const x=+xs,y=+ys,z=+zs;
+      for(const face in FACES){
+        const f=FACES[face];
+        const nx=x+f.dir[0], ny=y+f.dir[1], nz=z+f.dir[2];
+        const neighbor=blocks.get(key(nx,ny,nz))||B.AIR;
+        if(neighbor!==B.AIR&&neighbor!==B.LEAF&&neighbor!==B.PORTAL&&neighbor!==B.FIRE_PORTAL&&neighbor!==B.MILK&&neighbor!==B.HONEY)continue;
+        if(neighbor===B.LEAF&&blockId===B.LEAF)continue;
+        const col=getFaceColor(blockId,face);
+        const r=((col>>16)&255)/255, g=((col>>8)&255)/255, b=(col&255)/255;
+        let shade=1;
+        if(face==='py')shade=1.0;
+        else if(face==='ny')shade=0.55;
+        else if(face==='px'||face==='nx')shade=0.78;
+        else shade=0.88;
+        if([B.PORTAL,B.FIRE_PORTAL,B.GLOW,B.BOSS,B.DEMON,B.LAVA,B.GUARDIAN].includes(blockId))shade=1.0;
+        for(let i=0;i<4;i++){
+          const c=f.corners[i];
+          positions.push(x+c[0],y+c[1],z+c[2]);
+          normals.push(f.normal[0],f.normal[1],f.normal[2]);
+          colors.push(r*shade, g*shade, b*shade);
         }
-        indices.push(idx, idx+1, idx+2, idx, idx+2, idx+3);
-        idx += 4;
+        indices.push(idx,idx+1,idx+2,idx,idx+2,idx+3);
+        idx+=4;
       }
     });
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geom.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-    geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    const geom=new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+    geom.setAttribute('normal', new THREE.Float32BufferAttribute(normals,3));
+    geom.setAttribute('color', new THREE.Float32BufferAttribute(colors,3));
     geom.setIndex(indices);
-    worldMesh = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({vertexColors: true}));
+    worldMesh=new THREE.Mesh(geom, new THREE.MeshLambertMaterial({vertexColors:true}));
     meshGroup.add(worldMesh);
   }
   rebuildMesh();
 
-  const highlight = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(1.02, 1.02, 1.02)),
-    new THREE.LineBasicMaterial({color: 0x000000, linewidth: 2})
-  );
-  highlight.visible = false;
+  const highlight=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.02,1.02,1.02)),new THREE.LineBasicMaterial({color:0x000000,linewidth:2}));
+  highlight.visible=false;
   scene.add(highlight);
 
-  const player = {
-    pos: new THREE.Vector3(0, 14, 0), vel: new THREE.Vector3(0, 0, 0),
-    yaw: 0, pitch: 0, onGround: false,
-    radius: 0.3, height: 1.7, eyeOffset: 1.55
+  const player={
+    pos:new THREE.Vector3(0,14,0), vel:new THREE.Vector3(0,0,0),
+    yaw:0, pitch:0, onGround:false,
+    radius:0.3, height:1.7, eyeOffset:1.55
   };
-  for (let y = WORLD_HEIGHT - 1; y > 0; y--) {
-    if (getBlockIn(overworld, 0, y, 0) !== B.AIR) { player.pos.set(0.5, y + 2, 0.5); break; }
-  }
+  for(let y=WORLD_HEIGHT-1;y>0;y--){if(getBlockIn(overworld,0,y,0)!==B.AIR){player.pos.set(0.5,y+2,0.5);break;}}
 
-  const inventory = {};
-  const tools = { pickTier: 0, flameSword: false };
-  const armor = {};
-  const achievements = {};
+  const inventory={};
+  const tools={pickTier:0, flameSword:false};
+  const armor={};
+  const achievements={};
 
-  const ACHIEVEMENTS = [
-    {id:'wood5', label:'Get 5 wood', check: () => (inventory[B.WOOD]||0) >= 5},
-    {id:'wpick', label:'Wooden pickaxe', check: () => tools.pickTier >= 1},
-    {id:'spick', label:'Stone pickaxe', check: () => tools.pickTier >= 2},
-    {id:'ipick', label:'Iron pickaxe', check: () => tools.pickTier >= 3},
-    {id:'dpick', label:'Diamond pickaxe', check: () => tools.pickTier >= 4},
-    {id:'gold12', label:'Mine 12 gold', check: () => (inventory[B.GOLD]||0) >= 12 || achievements.portal},
-    {id:'redstone12', label:'Mine 12 redstone', check: () => (inventory[B.REDSTONE]||0) >= 12 || achievements.fireportal},
-    {id:'diamond', label:'Find diamond', check: () => (inventory[B.DIAMOND]||0) >= 1},
-    {id:'darmor', label:'Diamond armor', check: () => armor.diamond},
-    {id:'dungeon', label:'Clear pillar dungeon', check: () => achievements.dungeon},
-    {id:'portal', label:'Open Aether portal', check: () => achievements.portal},
-    {id:'crown', label:'Beat Aether Guardian', check: () => achievements.crown},
-    {id:'fireportal', label:'Open Fire portal', check: () => achievements.fireportal},
-    {id:'underworld', label:'Enter the Underworld', check: () => achievements.underworld},
-    {id:'lavasurvive', label:'Survive the lava', check: () => achievements.lavasurvive},
-    {id:'demon', label:'⚔️ BEAT LAVA DEMON', check: () => achievements.demon}
+  const ACHIEVEMENTS=[
+    {id:'wood5',label:'Get 5 wood',check:()=>(inventory[B.WOOD]||0)>=5},
+    {id:'wpick',label:'Wooden pickaxe',check:()=>tools.pickTier>=1},
+    {id:'spick',label:'Stone pickaxe',check:()=>tools.pickTier>=2},
+    {id:'ipick',label:'Iron pickaxe',check:()=>tools.pickTier>=3},
+    {id:'dpick',label:'Diamond pickaxe',check:()=>tools.pickTier>=4},
+    {id:'diamond',label:'Find diamond',check:()=>(inventory[B.DIAMOND]||0)>=1},
+    {id:'darmor',label:'Diamond armor',check:()=>armor.diamond},
+    {id:'dungeon',label:'Clear pillar dungeon',check:()=>achievements.dungeon},
+    {id:'portal',label:'Open Aether portal',check:()=>achievements.portal},
+    {id:'crown',label:'Beat Aether Guardian',check:()=>achievements.crown},
+    {id:'fireportal',label:'Open Fire portal',check:()=>achievements.fireportal},
+    {id:'underworld',label:'Enter Underworld',check:()=>achievements.underworld},
+    {id:'demon',label:'Beat Lava Demon',check:()=>achievements.demon},
+    {id:'milkhoney',label:'🥛 Enter Milk & Honey',check:()=>achievements.milkhoney},
+    {id:'taste',label:'Drink milk or eat honey',check:()=>achievements.taste},
+    {id:'puzzle1',label:'Solve Easy Puzzle',check:()=>achievements.puzzle1},
+    {id:'puzzle2',label:'Solve Medium Puzzle',check:()=>achievements.puzzle2},
+    {id:'puzzle3',label:'Solve Hard Puzzle',check:()=>achievements.puzzle3},
+    {id:'god',label:'👑 GOD OF CLAUDECRAFT!',check:()=>achievements.god}
   ];
 
-  function checkAchievements() {
-    let changed = false;
-    for (const a of ACHIEVEMENTS) {
-      if (!achievements[a.id] && a.check()) { achievements[a.id] = true; changed = true; toast('🏆 ' + a.label); }
-    }
-    if (changed) renderAchievements();
+  function checkAchievements(){
+    let changed=false;
+    for(const a of ACHIEVEMENTS){if(!achievements[a.id]&&a.check()){achievements[a.id]=true;changed=true;toast('🏆 '+a.label);}}
+    if(changed)renderAchievements();
   }
-  function toast(msg, dur) {
-    const el = document.getElementById('cc-toast');
-    el.textContent = msg;
-    el.style.opacity = '1';
+  function toast(msg,dur){
+    const el=document.getElementById('cc-toast');
+    el.textContent=msg;
+    el.style.opacity='1';
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => el.style.opacity = '0', dur || 2000);
+    toast._t=setTimeout(()=>el.style.opacity='0', dur||2200);
   }
-  function damagePlayer() {
+  function damagePlayer(){
     playerHearts--;
-    document.getElementById('cc-damage').style.opacity = '1';
-    setTimeout(() => document.getElementById('cc-damage').style.opacity = '0', 250);
+    document.getElementById('cc-damage').style.opacity='1';
+    setTimeout(()=>document.getElementById('cc-damage').style.opacity='0', 250);
     renderHearts();
-    if (playerHearts <= 0) {
-      gameOver = true; timerRunning = false;
-      document.getElementById('cc-lose-icon').textContent = '💀';
-      document.getElementById('cc-lose-title').textContent = 'You burned up!';
-      document.getElementById('cc-lose-msg').textContent = 'The lava was too much. Get diamond armor next time!';
-      loseEl.style.display = 'flex';
+    if(playerHearts<=0){
+      gameOver=true; timerRunning=false;
+      document.getElementById('cc-lose-icon').textContent='💀';
+      document.getElementById('cc-lose-title').textContent='You burned up!';
+      document.getElementById('cc-lose-msg').textContent='The lava was too much.';
+      loseEl.style.display='flex';
     }
   }
-  function renderHearts() {
-    document.getElementById('cc-hearts').textContent = '❤️'.repeat(Math.max(0, playerHearts)) + '🖤'.repeat(Math.max(0, 3 - playerHearts));
-  }
+  function renderHearts(){document.getElementById('cc-hearts').textContent='❤️'.repeat(Math.max(0,playerHearts))+'🖤'.repeat(Math.max(0,3-playerHearts));}
 
-  const hotbarSlots = [B.GRASS, B.DIRT, B.STONE, B.WOOD, B.COAL, B.IRON, B.GOLD, B.REDSTONE, B.DIAMOND];
-  let activeSlot = 0;
+  const hotbarSlots=[B.GRASS,B.DIRT,B.STONE,B.WOOD,B.COAL,B.IRON,B.GOLD,B.REDSTONE,B.DIAMOND];
+  let activeSlot=0;
 
-  function renderHotbar() {
-    const el = document.getElementById('cc-hotbar');
-    el.innerHTML = '';
-    hotbarSlots.forEach((bid, i) => {
-      const slot = document.createElement('div');
-      const info = BLOCK_INFO[bid];
-      const col = info.colors ? info.colors.side : info.color;
-      const hex = '#' + col.toString(16).padStart(6, '0');
-      slot.style.cssText = `width: 40px; height: 40px; background: ${hex}; border: 2px solid ${i === activeSlot ? 'white' : 'rgba(255,255,255,0.25)'}; border-radius: 4px; display: flex; align-items: flex-end; justify-content: center; font-size: 11px; color: white; text-shadow: 1px 1px 2px black; padding-bottom: 2px; cursor: pointer;`;
-      slot.textContent = inventory[bid] || 0;
-      slot.onclick = () => { activeSlot = i; renderHotbar(); };
-      slot.ontouchstart = (e) => { e.preventDefault(); activeSlot = i; renderHotbar(); };
+  function renderHotbar(){
+    const el=document.getElementById('cc-hotbar');
+    el.innerHTML='';
+    hotbarSlots.forEach((bid,i)=>{
+      const slot=document.createElement('div');
+      const info=BLOCK_INFO[bid];
+      const col=info.colors?info.colors.side:info.color;
+      const hex='#'+col.toString(16).padStart(6,'0');
+      slot.style.cssText=`width:40px;height:40px;background:${hex};border:2px solid ${i===activeSlot?'white':'rgba(255,255,255,0.25)'};border-radius:4px;display:flex;align-items:flex-end;justify-content:center;font-size:11px;color:white;text-shadow:1px 1px 2px black;padding-bottom:2px;cursor:pointer;`;
+      slot.textContent=inventory[bid]||0;
+      slot.onclick=()=>{activeSlot=i;renderHotbar();};
+      slot.ontouchstart=(e)=>{e.preventDefault();activeSlot=i;renderHotbar();};
       el.appendChild(slot);
     });
   }
-  function renderTools() {
-    document.getElementById('cc-tool-list').textContent = PICK_TIERS[tools.pickTier];
-    document.getElementById('cc-sword').style.display = tools.flameSword ? 'block' : 'none';
+  function renderTools(){document.getElementById('cc-tool-list').textContent=PICK_TIERS[tools.pickTier];document.getElementById('cc-sword').style.display=tools.flameSword?'block':'none';}
+  function renderArmor(){
+    const list=ARMOR_TYPES.filter(t=>armor[t]);
+    document.getElementById('cc-armor-list').textContent=list.length?list.map(s=>s[0].toUpperCase()+s.slice(1)).join(', '):'None';
   }
-  function renderArmor() {
-    const list = ARMOR_TYPES.filter(t => armor[t]);
-    document.getElementById('cc-armor-list').textContent = list.length ? list.map(s => s[0].toUpperCase()+s.slice(1)).join(', ') : 'None';
-  }
-  function renderAchievements() {
-    const el = document.getElementById('cc-ach-list');
-    const got = ACHIEVEMENTS.filter(a => achievements[a.id]).length;
-    document.getElementById('cc-ach-count').textContent = got + '/' + ACHIEVEMENTS.length;
-    el.innerHTML = ACHIEVEMENTS.map(a => {
-      const done = achievements[a.id];
-      return `<div style="opacity: ${done ? 1 : 0.55};">${done ? '✓' : '○'} ${a.label}</div>`;
-    }).join('');
+  function renderAchievements(){
+    const el=document.getElementById('cc-ach-list');
+    const got=ACHIEVEMENTS.filter(a=>achievements[a.id]).length;
+    document.getElementById('cc-ach-count').textContent=got+'/'+ACHIEVEMENTS.length;
+    el.innerHTML=ACHIEVEMENTS.map(a=>{const done=achievements[a.id];return `<div style="opacity:${done?1:0.55};">${done?'✓':'○'} ${a.label}</div>`;}).join('');
   }
   renderHotbar(); renderTools(); renderArmor(); renderAchievements(); renderHearts();
 
-  const recipes = [
-    {id:'wpick', name:'Wooden pickaxe', cost:{[B.WOOD]:5}, requiresTable:false, action: () => { tools.pickTier = Math.max(tools.pickTier, 1); toast('Crafted wooden pickaxe'); }},
-    {id:'table', name:'Crafting table', cost:{[B.WOOD]:4}, requiresTable:false, action: () => { inventory[B.CRAFTING] = (inventory[B.CRAFTING]||0) + 1; hotbarSlots[0] = B.CRAFTING; toast('Crafted a crafting table (slot 1)'); renderHotbar(); }},
-    {id:'spick', name:'Stone pickaxe', cost:{[B.STONE]:3, [B.WOOD]:2}, requiresTable:true, action: () => { tools.pickTier = Math.max(tools.pickTier, 2); toast('Crafted stone pickaxe'); }},
-    {id:'ipick', name:'Iron pickaxe', cost:{[B.IRON]:3, [B.WOOD]:2}, requiresTable:true, action: () => { tools.pickTier = Math.max(tools.pickTier, 3); toast('Crafted iron pickaxe'); }},
-    {id:'dpick', name:'Diamond pickaxe', cost:{[B.DIAMOND]:3, [B.WOOD]:2}, requiresTable:true, action: () => { tools.pickTier = Math.max(tools.pickTier, 4); toast('Crafted diamond pickaxe'); }},
-    {id:'iarmor', name:'Iron armor', cost:{[B.IRON]:8}, requiresTable:true, action: () => { armor.iron = true; toast('Crafted iron armor'); }},
-    {id:'garmor', name:'Gold armor', cost:{[B.GOLD]:8}, requiresTable:true, action: () => { armor.gold = true; toast('Crafted gold armor'); }},
-    {id:'rarmor', name:'Redstone armor', cost:{[B.REDSTONE]:8}, requiresTable:true, action: () => { armor.redstone = true; toast('Crafted redstone armor'); }},
-    {id:'darmor', name:'Diamond armor (LAVA PROOF!)', cost:{[B.DIAMOND]:8}, requiresTable:true, action: () => { armor.diamond = true; toast('🛡️ Diamond armor — lava-proof!'); }}
+  const recipes=[
+    {id:'wpick',name:'Wooden pickaxe',cost:{[B.WOOD]:5},requiresTable:false,action:()=>{tools.pickTier=Math.max(tools.pickTier,1);toast('Crafted wooden pickaxe');}},
+    {id:'table',name:'Crafting table',cost:{[B.WOOD]:4},requiresTable:false,action:()=>{inventory[B.CRAFTING]=(inventory[B.CRAFTING]||0)+1;hotbarSlots[0]=B.CRAFTING;toast('Crafted a crafting table (slot 1)');renderHotbar();}},
+    {id:'spick',name:'Stone pickaxe',cost:{[B.STONE]:3,[B.WOOD]:2},requiresTable:true,action:()=>{tools.pickTier=Math.max(tools.pickTier,2);toast('Crafted stone pickaxe');}},
+    {id:'ipick',name:'Iron pickaxe',cost:{[B.IRON]:3,[B.WOOD]:2},requiresTable:true,action:()=>{tools.pickTier=Math.max(tools.pickTier,3);toast('Crafted iron pickaxe');}},
+    {id:'dpick',name:'Diamond pickaxe',cost:{[B.DIAMOND]:3,[B.WOOD]:2},requiresTable:true,action:()=>{tools.pickTier=Math.max(tools.pickTier,4);toast('Crafted diamond pickaxe');}},
+    {id:'iarmor',name:'Iron armor',cost:{[B.IRON]:8},requiresTable:true,action:()=>{armor.iron=true;toast('Crafted iron armor');}},
+    {id:'garmor',name:'Gold armor',cost:{[B.GOLD]:8},requiresTable:true,action:()=>{armor.gold=true;toast('Crafted gold armor');}},
+    {id:'rarmor',name:'Redstone armor',cost:{[B.REDSTONE]:8},requiresTable:true,action:()=>{armor.redstone=true;toast('Crafted redstone armor');}},
+    {id:'darmor',name:'Diamond armor (LAVA PROOF!)',cost:{[B.DIAMOND]:8},requiresTable:true,action:()=>{armor.diamond=true;toast('🛡️ Diamond armor — lava-proof!');}}
   ];
 
-  function nearCraftingTable() {
-    const px = Math.floor(player.pos.x), py = Math.floor(player.pos.y), pz = Math.floor(player.pos.z);
-    for (let dx = -5; dx <= 5; dx++) for (let dy = -5; dy <= 5; dy++) for (let dz = -5; dz <= 5; dz++)
-      if (getBlock(px+dx, py+dy, pz+dz) === B.CRAFTING) return true;
+  function nearCraftingTable(){
+    const px=Math.floor(player.pos.x),py=Math.floor(player.pos.y),pz=Math.floor(player.pos.z);
+    for(let dx=-5;dx<=5;dx++)for(let dy=-5;dy<=5;dy++)for(let dz=-5;dz<=5;dz++)if(getBlock(px+dx,py+dy,pz+dz)===B.CRAFTING)return true;
     return false;
   }
-  function renderCraft() {
-    const near = nearCraftingTable();
-    document.getElementById('cc-craft-status').textContent = near ? 'Near crafting table — full recipes unlocked.' : 'No crafting table nearby — only basic recipes available.';
-    const el = document.getElementById('cc-craft-recipes');
-    el.innerHTML = '';
-    recipes.forEach(r => {
-      const canAfford = Object.entries(r.cost).every(([bid, n]) => (inventory[+bid]||0) >= n);
-      const tableOk = !r.requiresTable || near;
-      const enabled = canAfford && tableOk;
-      const costStr = Object.entries(r.cost).map(([bid, n]) => `${n} ${BLOCK_INFO[+bid].name.toLowerCase()}`).join(', ');
-      const row = document.createElement('div');
-      row.style.cssText = `display: flex; justify-content: space-between; align-items: center; background: ${enabled ? '#3a3a3a' : '#252525'}; padding: 6px 10px; border-radius: 6px; opacity: ${enabled ? 1 : 0.5};`;
-      row.innerHTML = `<div><div style="font-weight: 500;font-size:13px;">${r.name}</div><div style="font-size: 10px; opacity: 0.75;">${costStr}${r.requiresTable ? ' · needs table' : ''}</div></div>`;
-      const btn = document.createElement('button');
-      btn.textContent = 'Craft';
-      btn.disabled = !enabled;
-      btn.style.cssText = `background: ${enabled ? '#4ade80' : '#555'}; color: ${enabled ? '#042c1f' : '#aaa'}; border: none; padding: 6px 14px; border-radius: 4px; cursor: ${enabled ? 'pointer' : 'not-allowed'}; font-weight: 500;`;
-      btn.onclick = () => {
-        if (!enabled) return;
-        Object.entries(r.cost).forEach(([bid, n]) => { inventory[+bid] -= n; });
-        r.action();
-        renderHotbar(); renderTools(); renderArmor(); renderCraft();
-        checkAchievements();
-      };
+  function renderCraft(){
+    const near=nearCraftingTable();
+    document.getElementById('cc-craft-status').textContent=near?'Near crafting table — full recipes unlocked.':'No crafting table nearby — only basic recipes available.';
+    const el=document.getElementById('cc-craft-recipes');
+    el.innerHTML='';
+    recipes.forEach(r=>{
+      const canAfford=Object.entries(r.cost).every(([bid,n])=>(inventory[+bid]||0)>=n);
+      const tableOk=!r.requiresTable||near;
+      const enabled=canAfford&&tableOk;
+      const costStr=Object.entries(r.cost).map(([bid,n])=>`${n} ${BLOCK_INFO[+bid].name.toLowerCase()}`).join(', ');
+      const row=document.createElement('div');
+      row.style.cssText=`display:flex;justify-content:space-between;align-items:center;background:${enabled?'#3a3a3a':'#252525'};padding:6px 10px;border-radius:6px;opacity:${enabled?1:0.5};`;
+      row.innerHTML=`<div><div style="font-weight:500;font-size:13px;">${r.name}</div><div style="font-size:10px;opacity:0.75;">${costStr}${r.requiresTable?' · needs table':''}</div></div>`;
+      const btn=document.createElement('button');
+      btn.textContent='Craft';
+      btn.disabled=!enabled;
+      btn.style.cssText=`background:${enabled?'#4ade80':'#555'};color:${enabled?'#042c1f':'#aaa'};border:none;padding:6px 14px;border-radius:4px;cursor:${enabled?'pointer':'not-allowed'};font-weight:500;`;
+      btn.onclick=()=>{if(!enabled)return;Object.entries(r.cost).forEach(([bid,n])=>{inventory[+bid]-=n;});r.action();renderHotbar();renderTools();renderArmor();renderCraft();checkAchievements();};
       row.appendChild(btn);
       el.appendChild(row);
     });
   }
 
-  // ===== INPUT — KEYBOARD =====
-  const keys = {};
-  document.addEventListener('keydown', (e) => {
-    keys[e.code] = true;
-    if (e.code === 'KeyP') { e.preventDefault(); paused ? resumeGame() : pauseGame(); return; }
-    if (paused) return;
-    if (e.code === 'KeyE') {
-      e.preventDefault();
-      if (craftEl.style.display === 'flex') craftEl.style.display = 'none';
-      else { craftEl.style.display = 'flex'; renderCraft(); }
-    }
-    if (e.code === 'ArrowLeft') { e.preventDefault(); activeSlot = (activeSlot - 1 + hotbarSlots.length) % hotbarSlots.length; renderHotbar(); }
-    if (e.code === 'ArrowRight') { e.preventDefault(); activeSlot = (activeSlot + 1) % hotbarSlots.length; renderHotbar(); }
-    if (e.code.startsWith('Digit')) {
-      const n = parseInt(e.code.replace('Digit','')) - 1;
-      if (n >= 0 && n < hotbarSlots.length) { activeSlot = n; renderHotbar(); }
-    }
+  const keys={};
+  document.addEventListener('keydown',(e)=>{
+    keys[e.code]=true;
+    if(e.code==='KeyP'){e.preventDefault();paused?resumeGame():pauseGame();return;}
+    if(paused)return;
+    if(e.code==='KeyE'){e.preventDefault();if(craftEl.style.display==='flex')craftEl.style.display='none';else{craftEl.style.display='flex';renderCraft();}}
+    if(e.code==='ArrowLeft'){e.preventDefault();activeSlot=(activeSlot-1+hotbarSlots.length)%hotbarSlots.length;renderHotbar();}
+    if(e.code==='ArrowRight'){e.preventDefault();activeSlot=(activeSlot+1)%hotbarSlots.length;renderHotbar();}
+    if(e.code.startsWith('Digit')){const n=parseInt(e.code.replace('Digit',''))-1;if(n>=0&&n<hotbarSlots.length){activeSlot=n;renderHotbar();}}
   });
-  document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+  document.addEventListener('keyup',(e)=>{keys[e.code]=false;});
 
-  // ===== INPUT — MOUSE =====
-  let pointerLocked = false;
-  document.addEventListener('pointerlockchange', () => {
-    pointerLocked = (document.pointerLockElement === canvas);
-    if (!pointerLocked && !gameOver && hudEl.style.display === 'block' &&
-        craftEl.style.display !== 'flex' && winEl.style.display !== 'flex' &&
-        loseEl.style.display !== 'flex' && !paused) {
-      pauseGame();
-    }
+  let pointerLocked=false;
+  document.addEventListener('pointerlockchange',()=>{
+    pointerLocked=(document.pointerLockElement===canvas);
+    if(!pointerLocked&&!gameOver&&hudEl.style.display==='block'&&craftEl.style.display!=='flex'&&winEl.style.display!=='flex'&&loseEl.style.display!=='flex'&&puzzleEl.style.display!=='flex'&&!paused)pauseGame();
   });
-  document.addEventListener('mousemove', (e) => {
-    if (!pointerLocked || paused) return;
-    player.yaw -= e.movementX * 0.0025;
-    player.pitch -= e.movementY * 0.0025;
-    player.pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, player.pitch));
+  document.addEventListener('mousemove',(e)=>{
+    if(!pointerLocked||paused)return;
+    player.yaw-=e.movementX*0.0025;
+    player.pitch-=e.movementY*0.0025;
+    player.pitch=Math.max(-Math.PI/2+0.01,Math.min(Math.PI/2-0.01,player.pitch));
   });
-  canvas.addEventListener('mousedown', (e) => {
-    if (paused) return;
-    if (!pointerLocked && e.pointerType !== 'touch') { canvas.requestPointerLock(); return; }
-    if (e.button === 0) breakBlock();
-    else if (e.button === 2) placeBlock();
+  canvas.addEventListener('mousedown',(e)=>{
+    if(paused)return;
+    if(!pointerLocked&&e.pointerType!=='touch'){canvas.requestPointerLock();return;}
+    if(e.button===0)breakBlock();
+    else if(e.button===2)placeBlock();
   });
-  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('contextmenu',(e)=>e.preventDefault());
 
-  // ===== INPUT — TOUCH =====
-  // Joystick
-  const joyEl = document.getElementById('cc-joy');
-  const joyStick = document.getElementById('cc-joy-stick');
-  let joyActive = false, joyId = null, joyCenterX = 0, joyCenterY = 0;
-  let joyDX = 0, joyDY = 0;
-
-  joyEl.addEventListener('touchstart', (e) => {
+  const joyEl=document.getElementById('cc-joy');
+  const joyStick=document.getElementById('cc-joy-stick');
+  let joyActive=false, joyId=null, joyCenterX=0, joyCenterY=0, joyDX=0, joyDY=0;
+  joyEl.addEventListener('touchstart',(e)=>{
     e.preventDefault();
-    const t = e.changedTouches[0];
-    joyActive = true; joyId = t.identifier;
-    const rect = joyEl.getBoundingClientRect();
-    joyCenterX = rect.left + rect.width / 2;
-    joyCenterY = rect.top + rect.height / 2;
-  }, {passive:false});
-  document.addEventListener('touchmove', (e) => {
-    if (!joyActive) return;
-    for (const t of e.changedTouches) {
-      if (t.identifier === joyId) {
-        let dx = t.clientX - joyCenterX, dy = t.clientY - joyCenterY;
-        const max = 50;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist > max) { dx = dx * max / dist; dy = dy * max / dist; }
-        joyStick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-        joyDX = dx / max; joyDY = dy / max;
+    const t=e.changedTouches[0];
+    joyActive=true; joyId=t.identifier;
+    const rect=joyEl.getBoundingClientRect();
+    joyCenterX=rect.left+rect.width/2;
+    joyCenterY=rect.top+rect.height/2;
+  },{passive:false});
+  document.addEventListener('touchmove',(e)=>{
+    if(!joyActive)return;
+    for(const t of e.changedTouches){
+      if(t.identifier===joyId){
+        let dx=t.clientX-joyCenterX, dy=t.clientY-joyCenterY;
+        const max=50;
+        const dist=Math.sqrt(dx*dx+dy*dy);
+        if(dist>max){dx=dx*max/dist;dy=dy*max/dist;}
+        joyStick.style.transform=`translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        joyDX=dx/max; joyDY=dy/max;
       }
     }
-  }, {passive:false});
-  document.addEventListener('touchend', (e) => {
-    for (const t of e.changedTouches) {
-      if (t.identifier === joyId) {
-        joyActive = false; joyId = null; joyDX = 0; joyDY = 0;
-        joyStick.style.transform = 'translate(-50%, -50%)';
-      }
+  },{passive:false});
+  document.addEventListener('touchend',(e)=>{
+    for(const t of e.changedTouches){
+      if(t.identifier===joyId){joyActive=false;joyId=null;joyDX=0;joyDY=0;joyStick.style.transform='translate(-50%, -50%)';}
     }
-  }, {passive:false});
+  },{passive:false});
 
-  // Look — drag right half of canvas
-  let lookActive = false, lookId = null, lookLastX = 0, lookLastY = 0;
-  canvas.addEventListener('touchstart', (e) => {
-    if (paused) return;
-    for (const t of e.changedTouches) {
-      // skip if touching joystick area
-      if (t.clientX < root.getBoundingClientRect().left + 150) continue;
-      // skip if touching mobile buttons area (right side)
-      const rootRect = root.getBoundingClientRect();
-      const rx = t.clientX - rootRect.left;
-      const ry = t.clientY - rootRect.top;
-      if (rx > rootRect.width - 150 && ry > rootRect.height - 150) continue;
-      lookActive = true; lookId = t.identifier;
-      lookLastX = t.clientX; lookLastY = t.clientY;
+  let lookActive=false, lookId=null, lookLastX=0, lookLastY=0;
+  canvas.addEventListener('touchstart',(e)=>{
+    if(paused)return;
+    for(const t of e.changedTouches){
+      if(t.clientX<root.getBoundingClientRect().left+150)continue;
+      const rootRect=root.getBoundingClientRect();
+      const rx=t.clientX-rootRect.left, ry=t.clientY-rootRect.top;
+      if(rx>rootRect.width-150&&ry>rootRect.height-150)continue;
+      lookActive=true; lookId=t.identifier;
+      lookLastX=t.clientX; lookLastY=t.clientY;
       break;
     }
-  }, {passive:false});
-  canvas.addEventListener('touchmove', (e) => {
-    if (!lookActive || paused) return;
+  },{passive:false});
+  canvas.addEventListener('touchmove',(e)=>{
+    if(!lookActive||paused)return;
     e.preventDefault();
-    for (const t of e.changedTouches) {
-      if (t.identifier === lookId) {
-        const dx = t.clientX - lookLastX, dy = t.clientY - lookLastY;
-        player.yaw -= dx * 0.005;
-        player.pitch -= dy * 0.005;
-        player.pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, player.pitch));
-        lookLastX = t.clientX; lookLastY = t.clientY;
+    for(const t of e.changedTouches){
+      if(t.identifier===lookId){
+        const dx=t.clientX-lookLastX, dy=t.clientY-lookLastY;
+        player.yaw-=dx*0.005;
+        player.pitch-=dy*0.005;
+        player.pitch=Math.max(-Math.PI/2+0.01,Math.min(Math.PI/2-0.01,player.pitch));
+        lookLastX=t.clientX; lookLastY=t.clientY;
       }
     }
-  }, {passive:false});
-  canvas.addEventListener('touchend', (e) => {
-    for (const t of e.changedTouches) {
-      if (t.identifier === lookId) { lookActive = false; lookId = null; }
-    }
-  }, {passive:false});
+  },{passive:false});
+  canvas.addEventListener('touchend',(e)=>{
+    for(const t of e.changedTouches){if(t.identifier===lookId){lookActive=false;lookId=null;}}
+  },{passive:false});
 
-  // Action buttons
-  function tapButton(id, fn) {
-    const el = document.getElementById(id);
-    el.addEventListener('click', (e) => { e.preventDefault(); if (!paused) fn(); });
-    el.addEventListener('touchstart', (e) => { e.preventDefault(); if (!paused) fn(); }, {passive:false});
+  function tapButton(id,fn){
+    const el=document.getElementById(id);
+    el.addEventListener('click',(e)=>{e.preventDefault();if(!paused)fn();});
+    el.addEventListener('touchstart',(e)=>{e.preventDefault();if(!paused)fn();},{passive:false});
   }
-  let jumpHeld = false;
-  const jumpBtn = document.getElementById('cc-jump-btn');
-  jumpBtn.addEventListener('touchstart', (e) => { e.preventDefault(); jumpHeld = true; }, {passive:false});
-  jumpBtn.addEventListener('touchend', (e) => { e.preventDefault(); jumpHeld = false; }, {passive:false});
-  jumpBtn.addEventListener('mousedown', () => { jumpHeld = true; });
-  jumpBtn.addEventListener('mouseup', () => { jumpHeld = false; });
-  jumpBtn.addEventListener('mouseleave', () => { jumpHeld = false; });
+  let jumpHeld=false;
+  const jumpBtn=document.getElementById('cc-jump-btn');
+  jumpBtn.addEventListener('touchstart',(e)=>{e.preventDefault();jumpHeld=true;},{passive:false});
+  jumpBtn.addEventListener('touchend',(e)=>{e.preventDefault();jumpHeld=false;},{passive:false});
+  jumpBtn.addEventListener('mousedown',()=>{jumpHeld=true;});
+  jumpBtn.addEventListener('mouseup',()=>{jumpHeld=false;});
+  jumpBtn.addEventListener('mouseleave',()=>{jumpHeld=false;});
+  tapButton('cc-break-btn',breakBlock);
+  tapButton('cc-place-btn',placeBlock);
+  tapButton('cc-craft-btn',()=>{if(craftEl.style.display==='flex')craftEl.style.display='none';else{craftEl.style.display='flex';renderCraft();}});
+  tapButton('cc-slot-left',()=>{activeSlot=(activeSlot-1+hotbarSlots.length)%hotbarSlots.length;renderHotbar();});
+  tapButton('cc-slot-right',()=>{activeSlot=(activeSlot+1)%hotbarSlots.length;renderHotbar();});
 
-  tapButton('cc-break-btn', breakBlock);
-  tapButton('cc-place-btn', placeBlock);
-  tapButton('cc-craft-btn', () => {
-    if (craftEl.style.display === 'flex') craftEl.style.display = 'none';
-    else { craftEl.style.display = 'flex'; renderCraft(); }
+  function pauseGame(){if(gameOver)return;paused=true;pauseEl.style.display='flex';if(pointerLocked)document.exitPointerLock();}
+  function resumeGame(){paused=false;pauseEl.style.display='none';}
+  document.getElementById('cc-play').addEventListener('click',()=>{
+    startEl.style.display='none';
+    hudEl.style.display='block';
+    timerRunning=true;
+    if(!('ontouchstart' in window)||matchMedia('(pointer:fine)').matches)canvas.requestPointerLock();
   });
-  tapButton('cc-slot-left', () => { activeSlot = (activeSlot - 1 + hotbarSlots.length) % hotbarSlots.length; renderHotbar(); });
-  tapButton('cc-slot-right', () => { activeSlot = (activeSlot + 1) % hotbarSlots.length; renderHotbar(); });
+  document.getElementById('cc-craft-close').addEventListener('click',()=>{craftEl.style.display='none';});
+  document.getElementById('cc-win-close').addEventListener('click',()=>{winEl.style.display='none';});
+  document.getElementById('cc-lose-retry').addEventListener('click',()=>{location.reload();});
+  document.getElementById('cc-pause-btn').addEventListener('click',pauseGame);
+  document.getElementById('cc-resume-btn').addEventListener('click',resumeGame);
+  document.getElementById('cc-puzzle-close').addEventListener('click',()=>{puzzleEl.style.display='none';});
 
-  // ===== Menu buttons =====
-  function pauseGame() { if (gameOver) return; paused = true; pauseEl.style.display = 'flex'; if (pointerLocked) document.exitPointerLock(); }
-  function resumeGame() { paused = false; pauseEl.style.display = 'none'; }
-  document.getElementById('cc-play').addEventListener('click', () => {
-    startEl.style.display = 'none';
-    hudEl.style.display = 'block';
-    timerRunning = true;
-    // Only request pointer lock if we have a mouse (not touch)
-    if (!('ontouchstart' in window) || matchMedia('(pointer:fine)').matches) {
-      canvas.requestPointerLock();
+  function raycast(maxDist){
+    const origin=new THREE.Vector3(player.pos.x,player.pos.y+player.eyeOffset,player.pos.z);
+    const dir=new THREE.Vector3(-Math.sin(player.yaw)*Math.cos(player.pitch),Math.sin(player.pitch),-Math.cos(player.yaw)*Math.cos(player.pitch)).normalize();
+    let x=Math.floor(origin.x),y=Math.floor(origin.y),z=Math.floor(origin.z);
+    const stepX=Math.sign(dir.x),stepY=Math.sign(dir.y),stepZ=Math.sign(dir.z);
+    const tDeltaX=Math.abs(1/dir.x),tDeltaY=Math.abs(1/dir.y),tDeltaZ=Math.abs(1/dir.z);
+    let tMaxX=((stepX>0?(x+1):x)-origin.x)/dir.x;
+    let tMaxY=((stepY>0?(y+1):y)-origin.y)/dir.y;
+    let tMaxZ=((stepZ>0?(z+1):z)-origin.z)/dir.z;
+    if(!isFinite(tMaxX))tMaxX=Infinity;
+    if(!isFinite(tMaxY))tMaxY=Infinity;
+    if(!isFinite(tMaxZ))tMaxZ=Infinity;
+    let face=null, traveled=0;
+    while(traveled<maxDist){
+      if(tMaxX<tMaxY&&tMaxX<tMaxZ){x+=stepX;traveled=tMaxX;tMaxX+=tDeltaX;face=[-stepX,0,0];}
+      else if(tMaxY<tMaxZ){y+=stepY;traveled=tMaxY;tMaxY+=tDeltaY;face=[0,-stepY,0];}
+      else{z+=stepZ;traveled=tMaxZ;tMaxZ+=tDeltaZ;face=[0,0,-stepZ];}
+      const b=getBlock(x,y,z);
+      if(b!==B.AIR&&b!==B.PORTAL&&b!==B.FIRE_PORTAL&&b!==B.MILK&&b!==B.HONEY)return {hit:true,x,y,z,blockId:b,face};
     }
-  });
-  document.getElementById('cc-craft-close').addEventListener('click', () => { craftEl.style.display = 'none'; });
-  document.getElementById('cc-win-close').addEventListener('click', () => { winEl.style.display = 'none'; });
-  document.getElementById('cc-lose-retry').addEventListener('click', () => { location.reload(); });
-  document.getElementById('cc-pause-btn').addEventListener('click', pauseGame);
-  document.getElementById('cc-resume-btn').addEventListener('click', resumeGame);
-
-  function raycast(maxDist) {
-    const origin = new THREE.Vector3(player.pos.x, player.pos.y + player.eyeOffset, player.pos.z);
-    const dir = new THREE.Vector3(
-      -Math.sin(player.yaw) * Math.cos(player.pitch),
-      Math.sin(player.pitch),
-      -Math.cos(player.yaw) * Math.cos(player.pitch)
-    ).normalize();
-    let x = Math.floor(origin.x), y = Math.floor(origin.y), z = Math.floor(origin.z);
-    const stepX = Math.sign(dir.x), stepY = Math.sign(dir.y), stepZ = Math.sign(dir.z);
-    const tDeltaX = Math.abs(1 / dir.x), tDeltaY = Math.abs(1 / dir.y), tDeltaZ = Math.abs(1 / dir.z);
-    let tMaxX = ((stepX > 0 ? (x+1) : x) - origin.x) / dir.x;
-    let tMaxY = ((stepY > 0 ? (y+1) : y) - origin.y) / dir.y;
-    let tMaxZ = ((stepZ > 0 ? (z+1) : z) - origin.z) / dir.z;
-    if (!isFinite(tMaxX)) tMaxX = Infinity;
-    if (!isFinite(tMaxY)) tMaxY = Infinity;
-    if (!isFinite(tMaxZ)) tMaxZ = Infinity;
-    let face = null, traveled = 0;
-    while (traveled < maxDist) {
-      if (tMaxX < tMaxY && tMaxX < tMaxZ) { x += stepX; traveled = tMaxX; tMaxX += tDeltaX; face = [-stepX, 0, 0]; }
-      else if (tMaxY < tMaxZ) { y += stepY; traveled = tMaxY; tMaxY += tDeltaY; face = [0, -stepY, 0]; }
-      else { z += stepZ; traveled = tMaxZ; tMaxZ += tDeltaZ; face = [0, 0, -stepZ]; }
-      const b = getBlock(x, y, z);
-      if (b !== B.AIR && b !== B.PORTAL && b !== B.FIRE_PORTAL) return {hit: true, x, y, z, blockId: b, face};
-    }
-    return {hit: false};
+    return {hit:false};
   }
 
-  function detectAetherFrame() {
-    const r = raycast(6);
-    if (!r.hit || r.blockId !== B.GOLD) return null;
-    const y = r.y;
-    function checkRect(x0, z0, w, l) {
-      for (let dx = 0; dx < w; dx++) for (let dz = 0; dz < l; dz++) {
-        if (getBlock(x0 + dx, y, z0 + dz) !== B.GOLD) return false;
-      }
-      return true;
-    }
-    for (const [w, l] of [[3, 4], [4, 3]]) {
-      for (let ox = 0; ox < w; ox++) for (let oz = 0; oz < l; oz++) {
-        const x0 = r.x - ox, z0 = r.z - oz;
-        if (checkRect(x0, z0, w, l)) return {x0, z0, w, l, y, activateY: y + 1};
-      }
+  function detectAetherFrame(){
+    const r=raycast(6);
+    if(!r.hit||r.blockId!==B.GOLD)return null;
+    const y=r.y;
+    function checkRect(x0,z0,w,l){for(let dx=0;dx<w;dx++)for(let dz=0;dz<l;dz++)if(getBlock(x0+dx,y,z0+dz)!==B.GOLD)return false;return true;}
+    for(const [w,l] of [[3,4],[4,3]]){
+      for(let ox=0;ox<w;ox++)for(let oz=0;oz<l;oz++){const x0=r.x-ox,z0=r.z-oz;if(checkRect(x0,z0,w,l))return {x0,z0,w,l,y,activateY:y+1};}
     }
     return null;
   }
-  function detectFireFrame() {
-    const r = raycast(6);
-    if (!r.hit || r.blockId !== B.REDSTONE) return null;
-    const y = r.y;
-    function checkRect(x0, z0, w, l) {
-      for (let dx = 0; dx < w; dx++) for (let dz = 0; dz < l; dz++) {
-        if (getBlock(x0 + dx, y, z0 + dz) !== B.REDSTONE) return false;
-      }
-      let hasCoal = false;
-      for (let dx = 0; dx < w; dx++) for (let dz = 0; dz < l; dz++) {
-        if (getBlock(x0 + dx, y + 1, z0 + dz) === B.COAL) { hasCoal = true; break; }
-      }
+  function detectFireFrame(){
+    const r=raycast(6);
+    if(!r.hit||r.blockId!==B.REDSTONE)return null;
+    const y=r.y;
+    function checkRect(x0,z0,w,l){
+      for(let dx=0;dx<w;dx++)for(let dz=0;dz<l;dz++)if(getBlock(x0+dx,y,z0+dz)!==B.REDSTONE)return false;
+      let hasCoal=false;
+      for(let dx=0;dx<w;dx++)for(let dz=0;dz<l;dz++){if(getBlock(x0+dx,y+1,z0+dz)===B.COAL){hasCoal=true;break;}}
       return hasCoal;
     }
-    for (const [w, l] of [[3, 4], [4, 3]]) {
-      for (let ox = 0; ox < w; ox++) for (let oz = 0; oz < l; oz++) {
-        const x0 = r.x - ox, z0 = r.z - oz;
-        if (checkRect(x0, z0, w, l)) return {x0, z0, w, l, y, activateY: y + 1};
-      }
+    for(const [w,l] of [[3,4],[4,3]]){
+      for(let ox=0;ox<w;ox++)for(let oz=0;oz<l;oz++){const x0=r.x-ox,z0=r.z-oz;if(checkRect(x0,z0,w,l))return {x0,z0,w,l,y,activateY:y+1};}
     }
     return null;
   }
-  function activateAetherPortal(frame) {
-    for (let dx = 0; dx < frame.w; dx++) for (let dz = 0; dz < frame.l; dz++) {
-      if (getBlock(frame.x0 + dx, frame.activateY, frame.z0 + dz) === B.AIR) {
-        setBlock(frame.x0 + dx, frame.activateY, frame.z0 + dz, B.PORTAL);
-      }
-    }
-    rebuildMesh(); achievements.portal = true; checkAchievements();
-    toast('✨ AETHER PORTAL OPENED! Walk on the purple blocks!', 4500);
+  function activateAetherPortal(frame){
+    for(let dx=0;dx<frame.w;dx++)for(let dz=0;dz<frame.l;dz++){if(getBlock(frame.x0+dx,frame.activateY,frame.z0+dz)===B.AIR)setBlock(frame.x0+dx,frame.activateY,frame.z0+dz,B.PORTAL);}
+    rebuildMesh(); achievements.portal=true; checkAchievements();
+    toast('✨ AETHER PORTAL OPENED!',4500);
   }
-  function activateFirePortal(frame) {
-    for (let dx = 0; dx < frame.w; dx++) for (let dz = 0; dz < frame.l; dz++) {
-      const above = getBlock(frame.x0 + dx, frame.activateY, frame.z0 + dz);
-      if (above === B.AIR || above === B.COAL) setBlock(frame.x0 + dx, frame.activateY, frame.z0 + dz, B.FIRE_PORTAL);
-    }
-    rebuildMesh(); achievements.fireportal = true; checkAchievements();
-    toast('🔥 FIRE PORTAL OPENED! WARNING: get diamond armor first!', 5500);
+  function activateFirePortal(frame){
+    for(let dx=0;dx<frame.w;dx++)for(let dz=0;dz<frame.l;dz++){const above=getBlock(frame.x0+dx,frame.activateY,frame.z0+dz);if(above===B.AIR||above===B.COAL)setBlock(frame.x0+dx,frame.activateY,frame.z0+dz,B.FIRE_PORTAL);}
+    rebuildMesh(); achievements.fireportal=true; checkAchievements();
+    toast('🔥 FIRE PORTAL OPENED! Get diamond armor first!',5500);
   }
 
-  function teleportTo(realm) {
-    currentRealm = realm;
-    if (realm === 'aether') {
-      blocks = aether;
-      scene.background = new THREE.Color(0xddccff); scene.fog.color.set(0xddccff);
-      scene.fog.near = 30; scene.fog.far = 80;
-      player.pos.set(0.5, 11, 0.5); player.vel.set(0,0,0);
-      document.getElementById('cc-realm').textContent = '✨ AETHER';
-      document.getElementById('cc-realm').style.background = 'rgba(196, 168, 255, 0.85)';
-      document.getElementById('cc-realm').style.color = '#1a1033';
-      toast('☁️ Welcome to the Aether!', 3500);
-    } else if (realm === 'underworld') {
-      blocks = underworld;
-      scene.background = new THREE.Color(0x4a1010); scene.fog.color.set(0x4a1010);
-      scene.fog.near = 20; scene.fog.far = 50;
-      let safeY = 12;
-      for (let y = UNDER_HEIGHT - 2; y > 1; y--) {
-        if (getBlockIn(underworld, 0, y, 6) === B.NETHERSTONE) { safeY = y + 1; break; }
-      }
-      player.pos.set(0.5, safeY + 1, 6.5); player.vel.set(0,0,0);
-      document.getElementById('cc-realm').textContent = '🔥 UNDERWORLD';
-      document.getElementById('cc-realm').style.background = 'rgba(255, 90, 50, 0.9)';
-      document.getElementById('cc-realm').style.color = '#fff';
-      achievements.underworld = true; checkAchievements();
-      toast('🔥 You entered the Underworld! Avoid the lava!', 4500);
+  function teleportTo(realm){
+    currentRealm=realm;
+    if(realm==='aether'){
+      blocks=aether;
+      scene.background=new THREE.Color(0xddccff); scene.fog.color.set(0xddccff);
+      scene.fog.near=30; scene.fog.far=80;
+      player.pos.set(0.5,11,0.5); player.vel.set(0,0,0);
+      document.getElementById('cc-realm').textContent='✨ AETHER';
+      document.getElementById('cc-realm').style.background='rgba(196,168,255,0.85)';
+      document.getElementById('cc-realm').style.color='#1a1033';
+      toast('☁️ Welcome to the Aether!',3500);
+    } else if(realm==='underworld'){
+      blocks=underworld;
+      scene.background=new THREE.Color(0x4a1010); scene.fog.color.set(0x4a1010);
+      scene.fog.near=20; scene.fog.far=50;
+      let safeY=12;
+      for(let y=UNDER_HEIGHT-2;y>1;y--){if(getBlockIn(underworld,0,y,6)===B.NETHERSTONE){safeY=y+1;break;}}
+      player.pos.set(0.5,safeY+1,6.5); player.vel.set(0,0,0);
+      document.getElementById('cc-realm').textContent='🔥 UNDERWORLD';
+      document.getElementById('cc-realm').style.background='rgba(255,90,50,0.9)';
+      document.getElementById('cc-realm').style.color='#fff';
+      achievements.underworld=true; checkAchievements();
+      toast('🔥 Underworld! Avoid lava!',4500);
+    } else if(realm==='milkhoney'){
+      blocks=milkhoney;
+      scene.background=new THREE.Color(0xfff4d8); scene.fog.color.set(0xfff4d8);
+      scene.fog.near=30; scene.fog.far=90;
+      player.pos.set(mhSpawn.x+0.5,mhSpawn.y+1,mhSpawn.z+0.5); player.vel.set(0,0,0);
+      document.getElementById('cc-realm').textContent='🥛 MILK & HONEY';
+      document.getElementById('cc-realm').style.background='rgba(255,216,102,0.92)';
+      document.getElementById('cc-realm').style.color='#4a2c00';
+      achievements.milkhoney=true; checkAchievements();
+      toast('🥛🍯 Land of Milk and Honey! Find the Wise Guardian!',5500);
     } else {
-      blocks = overworld;
-      scene.background = new THREE.Color(0x87CEEB); scene.fog.color.set(0x87CEEB);
-      scene.fog.near = 30; scene.fog.far = 100;
-      for (let y = WORLD_HEIGHT - 1; y > 0; y--) {
-        if (getBlockIn(overworld, 0, y, 0) !== B.AIR) { player.pos.set(0.5, y + 2, 0.5); break; }
-      }
+      blocks=overworld;
+      scene.background=new THREE.Color(0x87CEEB); scene.fog.color.set(0x87CEEB);
+      scene.fog.near=30; scene.fog.far=100;
+      for(let y=WORLD_HEIGHT-1;y>0;y--){if(getBlockIn(overworld,0,y,0)!==B.AIR){player.pos.set(0.5,y+2,0.5);break;}}
       player.vel.set(0,0,0);
-      document.getElementById('cc-realm').textContent = 'OVERWORLD';
-      document.getElementById('cc-realm').style.background = 'rgba(106, 190, 48, 0.85)';
-      document.getElementById('cc-realm').style.color = '#042c1f';
+      document.getElementById('cc-realm').textContent='OVERWORLD';
+      document.getElementById('cc-realm').style.background='rgba(106,190,48,0.85)';
+      document.getElementById('cc-realm').style.color='#042c1f';
       toast('🌍 Back in the Overworld');
     }
     rebuildMesh();
   }
 
-  function breakBlock() {
-    if (gameOver || paused) return;
-    const r = raycast(6);
-    if (!r.hit) return;
-    const info = BLOCK_INFO[r.blockId];
-    if (r.blockId === B.BOSS) {
-      if (tools.pickTier < 3) { toast('Need iron pickaxe to hurt the Guardian!'); return; }
-      const dmg = tools.pickTier >= 4 ? 2 : 1;
-      aetherBoss.hp = Math.max(0, aetherBoss.hp - dmg);
-      showBoss('⚔️ AETHER GUARDIAN', aetherBoss.hp, 10);
-      if (aetherBoss.hp <= 0) {
-        setBlock(r.x, r.y, r.z, B.AIR);
-        achievements.crown = true;
-        document.getElementById('cc-boss').style.display = 'none';
-        toast('👑 GUARDIAN DEFEATED! Now make a fire portal!', 5500);
-        rebuildMesh(); checkAchievements(); return;
+  const PUZZLES=[
+    {name:'Easy: Build a 2x2 Square',desc:'Place honeycomb blocks in a 2x2 square on the ground.',shape:'⬛⬛\n⬛⬛',cells:[[0,0,0],[1,0,0],[0,0,1],[1,0,1]]},
+    {name:'Medium: Build a Plus Sign',desc:'Place 5 honeycomb blocks in a plus (+) shape.',shape:'  ⬛\n⬛⬛⬛\n  ⬛',cells:[[1,0,0],[0,0,1],[1,0,1],[2,0,1],[1,0,2]]},
+    {name:'Hard: Build a 2-tall T',desc:'Place 5 honeycomb blocks: a 3-wide top row, then 2 stacked below the middle.',shape:'⬛⬛⬛\n  ⬛\n  ⬛',cells:[[0,2,0],[1,2,0],[2,2,0],[1,1,0],[1,0,0]]}
+  ];
+
+  let puzzleOrigin=null, activePuzzleIndex=0, waitingForPuzzleSolve=false;
+
+  function startPuzzle(index){
+    if(index>=PUZZLES.length)return;
+    activePuzzleIndex=index;
+    const p=PUZZLES[index];
+    document.getElementById('cc-puzzle-title').textContent=p.name;
+    document.getElementById('cc-puzzle-desc').textContent=p.desc+' Use Honeycomb blocks (the Guardian gives you 10!).';
+    document.getElementById('cc-puzzle-shape').textContent=p.shape;
+    puzzleEl.style.display='flex';
+    if(pointerLocked)document.exitPointerLock();
+    inventory[B.HONEYCOMB]=(inventory[B.HONEYCOMB]||0)+10;
+    if(!hotbarSlots.includes(B.HONEYCOMB))hotbarSlots[2]=B.HONEYCOMB;
+    renderHotbar();
+    if(guardianPos){
+      puzzleOrigin={x:guardianPos.x-1,y:guardianPos.y,z:guardianPos.z+3};
+      for(let dx=0;dx<3;dx++)for(let dy=0;dy<3;dy++)for(let dz=0;dz<3;dz++){
+        const x=puzzleOrigin.x+dx, y=puzzleOrigin.y+dy, z=puzzleOrigin.z+dz;
+        if(getBlock(x,y,z)!==B.BEDROCK)setBlock(x,y,z,B.AIR);
       }
-      toast('⚔️ Hit Guardian! HP: ' + aetherBoss.hp); return;
-    }
-    if (r.blockId === B.DEMON) {
-      if (!tools.flameSword && tools.pickTier < 4) {
-        toast('🔥 Need diamond pickaxe or flame sword!'); return;
+      for(let dx=-1;dx<4;dx++)for(let dz=-1;dz<4;dz++){
+        const x=puzzleOrigin.x+dx, z=puzzleOrigin.z+dz;
+        if(getBlock(x,puzzleOrigin.y-1,z)===B.AIR)setBlock(x,puzzleOrigin.y-1,z,B.HONEYCOMB);
       }
-      const dmg = tools.flameSword ? 5 : 1;
-      demonBoss.hp = Math.max(0, demonBoss.hp - dmg);
-      showBoss('🔥 LAVA DEMON', demonBoss.hp, 15);
-      if (demonBoss.hp <= 0) {
-        setBlock(r.x, r.y, r.z, B.AIR);
-        achievements.demon = true;
-        document.getElementById('cc-boss').style.display = 'none';
-        rebuildMesh(); winGame(); return;
-      }
-      toast('⚔️ Hit Lava Demon! HP: ' + demonBoss.hp); return;
+      const cornerY=puzzleOrigin.y-1;
+      setBlock(puzzleOrigin.x-1,cornerY,puzzleOrigin.z-1,B.GLOW);
+      setBlock(puzzleOrigin.x+3,cornerY,puzzleOrigin.z-1,B.GLOW);
+      setBlock(puzzleOrigin.x-1,cornerY,puzzleOrigin.z+3,B.GLOW);
+      setBlock(puzzleOrigin.x+3,cornerY,puzzleOrigin.z+3,B.GLOW);
+      rebuildMesh();
     }
-    if (r.blockId === B.CHEST) {
-      inventory[B.AETHERSTONE] = (inventory[B.AETHERSTONE]||0) + 5;
-      inventory[B.DIAMOND] = (inventory[B.DIAMOND]||0) + 3;
-      toast('🎁 Treasure! +5 Aether stone, +3 Diamond!', 3500);
-      setBlock(r.x, r.y, r.z, B.AIR); rebuildMesh(); renderHotbar(); checkAchievements(); return;
+    waitingForPuzzleSolve=true;
+  }
+
+  function checkPuzzleSolved(){
+    if(!waitingForPuzzleSolve||!puzzleOrigin)return;
+    const p=PUZZLES[activePuzzleIndex];
+    for(const [dx,dy,dz] of p.cells){if(getBlock(puzzleOrigin.x+dx,puzzleOrigin.y+dy,puzzleOrigin.z+dz)!==B.HONEYCOMB)return;}
+    let extra=0;
+    for(let dx=0;dx<3;dx++)for(let dy=0;dy<3;dy++)for(let dz=0;dz<3;dz++){if(getBlock(puzzleOrigin.x+dx,puzzleOrigin.y+dy,puzzleOrigin.z+dz)===B.HONEYCOMB)extra++;}
+    if(extra!==p.cells.length)return;
+    waitingForPuzzleSolve=false;
+    if(activePuzzleIndex===0){achievements.puzzle1=true;toast('✅ Puzzle 1 solved! Talk to the Guardian for puzzle 2!',5000);}
+    else if(activePuzzleIndex===1){achievements.puzzle2=true;toast('✅ Puzzle 2 solved! One more puzzle...',5000);}
+    else if(activePuzzleIndex===2){
+      achievements.puzzle3=true; achievements.god=true;
+      toast('✨👑 ALL PUZZLES SOLVED! GOD OF CLAUDECRAFT!',6000);
+      checkAchievements();
+      setTimeout(()=>winGame(),1200);
+      return;
     }
-    if (r.blockId === B.FIRECHEST) {
-      tools.flameSword = true;
-      inventory[B.DIAMOND] = (inventory[B.DIAMOND]||0) + 5;
-      toast('⚔️🔥 THE FLAMING SWORD IS YOURS!', 5500);
-      setBlock(r.x, r.y, r.z, B.AIR); rebuildMesh(); renderTools(); renderHotbar(); return;
+    checkAchievements();
+  }
+
+  function breakBlock(){
+    if(gameOver||paused)return;
+    const r=raycast(6);
+    if(!r.hit)return;
+    const info=BLOCK_INFO[r.blockId];
+    if(r.blockId===B.BOSS){
+      if(tools.pickTier<3){toast('Need iron pickaxe to hurt the Guardian!');return;}
+      const dmg=tools.pickTier>=4?2:1;
+      aetherBoss.hp=Math.max(0,aetherBoss.hp-dmg);
+      showBoss('⚔️ AETHER GUARDIAN',aetherBoss.hp,10);
+      if(aetherBoss.hp<=0){setBlock(r.x,r.y,r.z,B.AIR);achievements.crown=true;document.getElementById('cc-boss').style.display='none';toast('👑 GUARDIAN DEFEATED!',5500);rebuildMesh();checkAchievements();return;}
+      toast('⚔️ Hit! HP: '+aetherBoss.hp); return;
     }
-    if (r.blockId === B.BEDROCK) { toast('Bedrock is unbreakable'); return; }
-    if (r.blockId === B.PORTAL || r.blockId === B.FIRE_PORTAL) { toast('Can\'t break portals!'); return; }
-    if (r.blockId === B.LAVA) { toast('You can\'t break lava!'); return; }
-    if (info.needs > tools.pickTier) { toast('Need ' + PICK_TIERS[info.needs] + ' to break ' + info.name); return; }
-    let drop = r.blockId;
-    if (r.blockId === B.GRASS) drop = B.DIRT;
-    inventory[drop] = (inventory[drop] || 0) + 1;
-    if (dungeonHeartPos && currentRealm === 'overworld' &&
-        r.x === dungeonHeartPos.x && r.y === dungeonHeartPos.y && r.z === dungeonHeartPos.z) {
-      achievements.dungeon = true;
-      toast('🏆 Pillar cleared! Mine 12 gold for Aether portal!', 5000);
+    if(r.blockId===B.DEMON){
+      if(!tools.flameSword&&tools.pickTier<4){toast('🔥 Need diamond pickaxe or flame sword!');return;}
+      const dmg=tools.flameSword?5:1;
+      demonBoss.hp=Math.max(0,demonBoss.hp-dmg);
+      showBoss('🔥 LAVA DEMON',demonBoss.hp,15);
+      if(demonBoss.hp<=0){setBlock(r.x,r.y,r.z,B.AIR);achievements.demon=true;document.getElementById('cc-boss').style.display='none';toast('⚔️🔥 LAVA DEMON DEFEATED!',6000);rebuildMesh();checkAchievements();return;}
+      toast('⚔️ Hit Demon! HP: '+demonBoss.hp); return;
     }
-    setBlock(r.x, r.y, r.z, B.AIR);
+    if(r.blockId===B.GUARDIAN){
+      if(achievements.god){toast('🧙 "You are the God of ClaudeCraft, my friend."',4500);return;}
+      if(!achievements.puzzle1)startPuzzle(0);
+      else if(!achievements.puzzle2)startPuzzle(1);
+      else if(!achievements.puzzle3)startPuzzle(2);
+      return;
+    }
+    if(r.blockId===B.CHEST){
+      inventory[B.AETHERSTONE]=(inventory[B.AETHERSTONE]||0)+5;
+      inventory[B.DIAMOND]=(inventory[B.DIAMOND]||0)+3;
+      toast('🎁 +5 Aether stone, +3 Diamond!',3500);
+      setBlock(r.x,r.y,r.z,B.AIR); rebuildMesh(); renderHotbar(); checkAchievements();
+      return;
+    }
+    if(r.blockId===B.FIRECHEST){
+      tools.flameSword=true;
+      inventory[B.DIAMOND]=(inventory[B.DIAMOND]||0)+5;
+      toast('⚔️🔥 THE FLAMING SWORD IS YOURS!',5500);
+      setBlock(r.x,r.y,r.z,B.AIR); rebuildMesh(); renderTools(); renderHotbar();
+      return;
+    }
+    if(dungeonHeartPos&&currentRealm==='overworld'&&r.x===dungeonHeartPos.x&&r.y===dungeonHeartPos.y&&r.z===dungeonHeartPos.z){
+      achievements.dungeon=true;
+      if(tools.pickTier>=4){
+        toast('💫 The diamond heart cracks! A glowing cave opens!',5500);
+        setBlock(r.x,r.y,r.z,B.AIR);
+        rebuildMesh(); checkAchievements();
+        setTimeout(()=>teleportTo('milkhoney'),1200);
+        return;
+      } else toast('🏆 Pillar cleared! Need DIAMOND pickaxe to break the heart!',5500);
+    }
+    if(r.blockId===B.BEDROCK){toast('Bedrock is unbreakable');return;}
+    if(r.blockId===B.PORTAL||r.blockId===B.FIRE_PORTAL){toast("Can't break portals!");return;}
+    if(r.blockId===B.LAVA){toast("Can't break lava!");return;}
+    if(r.blockId===B.MILK){inventory[B.MILK]=(inventory[B.MILK]||0)+1;toast('🥛 You drank some milk!');achievements.taste=true;checkAchievements();renderHotbar();return;}
+    if(r.blockId===B.HONEY){inventory[B.HONEY]=(inventory[B.HONEY]||0)+1;toast('🍯 Sweet honey!');achievements.taste=true;checkAchievements();renderHotbar();return;}
+    if(info.needs>tools.pickTier){toast('Need '+PICK_TIERS[info.needs]+' to break '+info.name);return;}
+    let drop=r.blockId;
+    if(r.blockId===B.GRASS)drop=B.DIRT;
+    inventory[drop]=(inventory[drop]||0)+1;
+    setBlock(r.x,r.y,r.z,B.AIR);
     rebuildMesh(); renderHotbar(); checkAchievements();
+    if(waitingForPuzzleSolve)checkPuzzleSolved();
   }
-  function showBoss(name, hp, max) {
-    document.getElementById('cc-boss').style.display = 'block';
-    document.getElementById('cc-boss-name').textContent = name;
-    document.getElementById('cc-boss-bar').style.width = (hp / max * 100) + '%';
-    document.getElementById('cc-boss-hp').textContent = hp + ' / ' + max;
+  function showBoss(name,hp,max){
+    document.getElementById('cc-boss').style.display='block';
+    document.getElementById('cc-boss-name').textContent=name;
+    document.getElementById('cc-boss-bar').style.width=(hp/max*100)+'%';
+    document.getElementById('cc-boss-hp').textContent=hp+' / '+max;
   }
-  function placeBlock() {
-    if (gameOver || paused) return;
-    const r = raycast(6);
-    if (!r.hit) return;
-    const bid = hotbarSlots[activeSlot];
-    if (bid === B.DIAMOND && (inventory[B.DIAMOND]||0) > 0) {
-      const fireFrame = detectFireFrame();
-      if (fireFrame) { inventory[B.DIAMOND]--; activateFirePortal(fireFrame); renderHotbar(); return; }
-      const aetherFrame = detectAetherFrame();
-      if (aetherFrame) { inventory[B.DIAMOND]--; activateAetherPortal(aetherFrame); renderHotbar(); return; }
+  function placeBlock(){
+    if(gameOver||paused)return;
+    const r=raycast(6);
+    if(!r.hit)return;
+    const bid=hotbarSlots[activeSlot];
+    if(bid===B.DIAMOND&&(inventory[B.DIAMOND]||0)>0){
+      const fireFrame=detectFireFrame();
+      if(fireFrame){inventory[B.DIAMOND]--;activateFirePortal(fireFrame);renderHotbar();return;}
+      const aetherFrame=detectAetherFrame();
+      if(aetherFrame){inventory[B.DIAMOND]--;activateAetherPortal(aetherFrame);renderHotbar();return;}
     }
-    if (!inventory[bid] || inventory[bid] <= 0) { toast('No ' + BLOCK_INFO[bid].name.toLowerCase() + ' to place'); return; }
-    const px = r.x + r.face[0], py = r.y + r.face[1], pz = r.z + r.face[2];
-    if (getBlock(px, py, pz) !== B.AIR) return;
-    const feetX = Math.floor(player.pos.x), feetY = Math.floor(player.pos.y), feetZ = Math.floor(player.pos.z);
-    if (px === feetX && pz === feetZ && (py === feetY || py === feetY + 1)) return;
-    setBlock(px, py, pz, bid);
+    if(!inventory[bid]||inventory[bid]<=0){toast('No '+BLOCK_INFO[bid].name.toLowerCase()+' to place');return;}
+    const px=r.x+r.face[0], py=r.y+r.face[1], pz=r.z+r.face[2];
+    if(getBlock(px,py,pz)!==B.AIR)return;
+    const feetX=Math.floor(player.pos.x),feetY=Math.floor(player.pos.y),feetZ=Math.floor(player.pos.z);
+    if(px===feetX&&pz===feetZ&&(py===feetY||py===feetY+1))return;
+    setBlock(px,py,pz,bid);
     inventory[bid]--;
     rebuildMesh(); renderHotbar();
+    if(waitingForPuzzleSolve)checkPuzzleSolved();
   }
-  function isSolid(x, y, z) {
-    const b = getBlock(x, y, z);
-    return b !== B.AIR && b !== B.LEAF && b !== B.PORTAL && b !== B.FIRE_PORTAL && b !== B.LAVA;
-  }
-  function collide(pos, vel, dt) {
-    const newPos = pos.clone();
-    const tryMove = (axis) => {
-      newPos[axis] += vel[axis] * dt;
-      const minX = Math.floor(newPos.x - player.radius), maxX = Math.floor(newPos.x + player.radius);
-      const minY = Math.floor(newPos.y), maxY = Math.floor(newPos.y + player.height);
-      const minZ = Math.floor(newPos.z - player.radius), maxZ = Math.floor(newPos.z + player.radius);
-      let collided = false;
-      for (let x = minX; x <= maxX; x++) for (let y = minY; y <= maxY; y++) for (let z = minZ; z <= maxZ; z++) {
-        if (isSolid(x, y, z)) { collided = true; break; }
-      }
-      if (collided) {
-        newPos[axis] -= vel[axis] * dt;
-        if (axis === 'y') { if (vel.y < 0) player.onGround = true; vel.y = 0; }
-        else vel[axis] = 0;
-      } else if (axis === 'y' && vel.y !== 0) player.onGround = false;
+  function isSolid(x,y,z){const b=getBlock(x,y,z);return b!==B.AIR&&b!==B.LEAF&&b!==B.PORTAL&&b!==B.FIRE_PORTAL&&b!==B.LAVA&&b!==B.MILK&&b!==B.HONEY;}
+  function collide(pos,vel,dt){
+    const newPos=pos.clone();
+    const tryMove=(axis)=>{
+      newPos[axis]+=vel[axis]*dt;
+      const minX=Math.floor(newPos.x-player.radius),maxX=Math.floor(newPos.x+player.radius);
+      const minY=Math.floor(newPos.y),maxY=Math.floor(newPos.y+player.height);
+      const minZ=Math.floor(newPos.z-player.radius),maxZ=Math.floor(newPos.z+player.radius);
+      let collided=false;
+      for(let x=minX;x<=maxX;x++)for(let y=minY;y<=maxY;y++)for(let z=minZ;z<=maxZ;z++){if(isSolid(x,y,z)){collided=true;break;}}
+      if(collided){newPos[axis]-=vel[axis]*dt;if(axis==='y'){if(vel.y<0)player.onGround=true;vel.y=0;}else vel[axis]=0;}
+      else if(axis==='y'&&vel.y!==0)player.onGround=false;
     };
-    player.onGround = false;
-    tryMove('y'); tryMove('x'); tryMove('z');
+    player.onGround=false;
+    tryMove('y');tryMove('x');tryMove('z');
     pos.copy(newPos);
   }
-  function winGame() {
-    gameOver = true; timerRunning = false;
-    const timeUsed = TIME_LIMIT - timeLeft;
-    const mins = Math.floor(timeUsed / 60), secs = Math.floor(timeUsed % 60);
+  function winGame(){
+    gameOver=true; timerRunning=false;
+    const timeUsed=TIME_LIMIT-timeLeft;
+    const mins=Math.floor(timeUsed/60), secs=Math.floor(timeUsed%60);
     let rank, msg;
-    if (timeUsed < 10 * 60) { rank = '🏆 LEGENDARY EMPEROR!'; msg = 'INCREDIBLE!'; }
-    else if (timeUsed < 15 * 60) { rank = '⭐ AMAZING RULER!'; msg = 'Three worlds, one master!'; }
-    else if (timeUsed < 20 * 60) { rank = '👑 NOBLE EMPEROR!'; msg = 'You rule them all!'; }
-    else { rank = '😅 PHEW!'; msg = 'Just barely!'; }
-    document.getElementById('cc-win-msg').textContent = `Beat the Lava Demon in ${mins}m ${secs}s!`;
-    document.getElementById('cc-win-rank').textContent = rank + ' ' + msg;
-    winEl.style.display = 'flex';
+    if(timeUsed<12*60){rank='🏆 LEGENDARY GOD!';msg='INCREDIBLE!';}
+    else if(timeUsed<18*60){rank='⭐ MIGHTY GOD!';msg='Four worlds, one ruler!';}
+    else if(timeUsed<24*60){rank='👑 NOBLE GOD!';msg='You rule them all!';}
+    else{rank='😅 BARELY!';msg='Just made it!';}
+    document.getElementById('cc-win-msg').textContent=`Solved all 3 puzzles in ${mins}m ${secs}s!`;
+    document.getElementById('cc-win-rank').textContent=rank+' '+msg;
+    winEl.style.display='flex';
   }
-  function loseGame() {
-    gameOver = true; timerRunning = false;
-    document.getElementById('cc-lose-icon').textContent = '⏰';
-    document.getElementById('cc-lose-title').textContent = 'Time\'s up!';
-    document.getElementById('cc-lose-msg').textContent = 'The quest was tough!';
-    loseEl.style.display = 'flex';
+  function loseGame(){
+    gameOver=true; timerRunning=false;
+    document.getElementById('cc-lose-icon').textContent='⏰';
+    document.getElementById('cc-lose-title').textContent="Time's up!";
+    document.getElementById('cc-lose-msg').textContent='The quest was tough!';
+    loseEl.style.display='flex';
   }
-  function formatTime(s) {
-    const m = Math.floor(s / 60), sec = Math.floor(s % 60);
-    return m + ':' + (sec < 10 ? '0' : '') + sec;
-  }
+  function formatTime(s){const m=Math.floor(s/60),sec=Math.floor(s%60);return m+':'+(sec<10?'0':'')+sec;}
 
-  let last = performance.now();
-  function update(now) {
-    const dt = Math.min(0.05, (now - last) / 1000);
-    last = now;
-    if (paused) { renderer.render(scene, camera); requestAnimationFrame(update); return; }
-    if (timerRunning && !gameOver) {
-      timeLeft -= dt;
-      if (timeLeft <= 0) { timeLeft = 0; loseGame(); }
+  let last=performance.now();
+  function update(now){
+    const dt=Math.min(0.05,(now-last)/1000);
+    last=now;
+    if(paused||puzzleEl.style.display==='flex'||releaseEl.style.display==='flex'){renderer.render(scene,camera);requestAnimationFrame(update);return;}
+    if(timerRunning&&!gameOver){timeLeft-=dt;if(timeLeft<=0){timeLeft=0;loseGame();}}
+    const speed=5.8;
+    const forward=new THREE.Vector3(-Math.sin(player.yaw),0,-Math.cos(player.yaw));
+    const right=new THREE.Vector3(Math.cos(player.yaw),0,-Math.sin(player.yaw));
+    let mx=0,mz=0;
+    if(keys['KeyW'])mz+=1;
+    if(keys['KeyS'])mz-=1;
+    if(keys['KeyD'])mx+=1;
+    if(keys['KeyA'])mx-=1;
+    if(joyActive){mz+=-joyDY;mx+=joyDX;}
+    const move=new THREE.Vector3();
+    move.addScaledVector(forward,mz);
+    move.addScaledVector(right,mx);
+    if(move.lengthSq()>0){const len=move.length();const sc=Math.min(1,len)*speed;move.normalize().multiplyScalar(sc);}
+    player.vel.x=move.x; player.vel.z=move.z;
+    player.vel.y-=22*dt;
+    if(player.vel.y<-30)player.vel.y=-30;
+    if((keys['KeyC']||jumpHeld)&&player.onGround)player.vel.y=8.2;
+    collide(player.pos,player.vel,dt);
+    if(currentRealm==='overworld'&&player.pos.y<-5){player.pos.set(0.5,16,0.5);player.vel.set(0,0,0);}
+    if(currentRealm==='aether'&&player.pos.y<-5)teleportTo('overworld');
+    if(currentRealm==='underworld'&&player.pos.y<-5)teleportTo('overworld');
+    if(currentRealm==='milkhoney'&&player.pos.y<-5)teleportTo('overworld');
+    const px=Math.floor(player.pos.x),py=Math.floor(player.pos.y),pz=Math.floor(player.pos.z);
+    if(currentRealm==='overworld'){
+      if(getBlock(px,py,pz)===B.PORTAL||getBlock(px,py+1,pz)===B.PORTAL)teleportTo('aether');
+      else if(getBlock(px,py,pz)===B.FIRE_PORTAL||getBlock(px,py+1,pz)===B.FIRE_PORTAL)teleportTo('underworld');
     }
-    const speed = 5.8;
-    const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
-    const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
-    let mx = 0, mz = 0;
-    if (keys['KeyW']) mz += 1;
-    if (keys['KeyS']) mz -= 1;
-    if (keys['KeyD']) mx += 1;
-    if (keys['KeyA']) mx -= 1;
-    // Joystick input
-    if (joyActive) { mz += -joyDY; mx += joyDX; }
-    const move = new THREE.Vector3();
-    move.addScaledVector(forward, mz);
-    move.addScaledVector(right, mx);
-    if (move.lengthSq() > 0) {
-      const len = move.length();
-      const sc = Math.min(1, len) * speed;
-      move.normalize().multiplyScalar(sc);
+    if(currentRealm==='underworld'){
+      lavaTouchCooldown-=dt;
+      const touchingLava=getBlock(px,py,pz)===B.LAVA||getBlock(px,py+1,pz)===B.LAVA;
+      if(touchingLava&&!armor.diamond&&lavaTouchCooldown<=0){damagePlayer();lavaTouchCooldown=1.2;}
     }
-    player.vel.x = move.x; player.vel.z = move.z;
-    player.vel.y -= 22 * dt;
-    if (player.vel.y < -30) player.vel.y = -30;
-    if ((keys['KeyC'] || jumpHeld) && player.onGround) player.vel.y = 8.2;
-
-    collide(player.pos, player.vel, dt);
-
-    if (currentRealm === 'overworld' && player.pos.y < -5) { player.pos.set(0.5, 16, 0.5); player.vel.set(0,0,0); }
-    if (currentRealm === 'aether' && player.pos.y < -5) teleportTo('overworld');
-    if (currentRealm === 'underworld' && player.pos.y < -5) teleportTo('overworld');
-
-    const px = Math.floor(player.pos.x), py = Math.floor(player.pos.y), pz = Math.floor(player.pos.z);
-    if (currentRealm === 'overworld') {
-      if (getBlock(px, py, pz) === B.PORTAL || getBlock(px, py+1, pz) === B.PORTAL) teleportTo('aether');
-      else if (getBlock(px, py, pz) === B.FIRE_PORTAL || getBlock(px, py+1, pz) === B.FIRE_PORTAL) teleportTo('underworld');
+    camera.position.set(player.pos.x,player.pos.y+player.eyeOffset,player.pos.z);
+    camera.rotation.order='YXZ';
+    camera.rotation.y=player.yaw;
+    camera.rotation.x=player.pitch;
+    const r=raycast(6);
+    if(r.hit){highlight.visible=true;highlight.position.set(r.x+0.5,r.y+0.5,r.z+0.5);}
+    else highlight.visible=false;
+    const aFrame=detectAetherFrame(), fFrame=detectFireFrame();
+    const holdingDiamond=hotbarSlots[activeSlot]===B.DIAMOND;
+    document.getElementById('cc-portal-hint').style.display=(aFrame&&currentRealm==='overworld'&&holdingDiamond)?'inline-block':'none';
+    document.getElementById('cc-fireportal-hint').style.display=(fFrame&&currentRealm==='overworld'&&holdingDiamond)?'inline-block':'none';
+    const puzzleHint=document.getElementById('cc-puzzle-hint');
+    if(currentRealm==='milkhoney'&&guardianPos&&!achievements.god){
+      const dist=Math.sqrt((player.pos.x-guardianPos.x)**2+(player.pos.z-guardianPos.z)**2);
+      if(dist<12){
+        let txt='';
+        if(!achievements.puzzle1)txt='🧙 Walk to the golden Guardian and break it (left-click) for Puzzle 1!';
+        else if(!achievements.puzzle2&&!waitingForPuzzleSolve)txt='🧙 Talk to Guardian for Puzzle 2!';
+        else if(!achievements.puzzle3&&achievements.puzzle2&&!waitingForPuzzleSolve)txt='🧙 Final Puzzle awaits!';
+        else if(waitingForPuzzleSolve)txt='🏗️ Solve the puzzle in the glowing area!';
+        puzzleHint.textContent=txt;
+        puzzleHint.style.display=txt?'inline-block':'none';
+      } else puzzleHint.style.display='none';
+    } else puzzleHint.style.display='none';
+    document.getElementById('cc-near').style.display=nearCraftingTable()?'inline-block':'none';
+    if(currentRealm==='aether'&&aetherBoss&&aetherBoss.hp>0){
+      const distXZ=Math.sqrt((player.pos.x-aetherBoss.x)**2+(player.pos.z-aetherBoss.z)**2);
+      if(distXZ>12&&aetherBoss.hp===10)document.getElementById('cc-boss').style.display='none';
     }
-    if (currentRealm === 'underworld') {
-      lavaTouchCooldown -= dt;
-      const touchingLava = getBlock(px, py, pz) === B.LAVA || getBlock(px, py+1, pz) === B.LAVA;
-      if (touchingLava && !armor.diamond && lavaTouchCooldown <= 0) { damagePlayer(); lavaTouchCooldown = 1.2; }
-      if (touchingLava && armor.diamond && !achievements.lavasurvive) {
-        achievements.lavasurvive = true; toast('🛡️ Diamond armor protects you!'); checkAchievements();
-      }
+    if(currentRealm==='underworld'&&demonBoss&&demonBoss.hp>0){
+      const distXZ=Math.sqrt((player.pos.x-demonBoss.x)**2+(player.pos.z-demonBoss.z)**2);
+      if(distXZ<8)showBoss('🔥 LAVA DEMON',demonBoss.hp,15);
+      else if(demonBoss.hp===15)document.getElementById('cc-boss').style.display='none';
     }
-
-    camera.position.set(player.pos.x, player.pos.y + player.eyeOffset, player.pos.z);
-    camera.rotation.order = 'YXZ';
-    camera.rotation.y = player.yaw;
-    camera.rotation.x = player.pitch;
-
-    const r = raycast(6);
-    if (r.hit) { highlight.visible = true; highlight.position.set(r.x + 0.5, r.y + 0.5, r.z + 0.5); }
-    else highlight.visible = false;
-
-    const aFrame = detectAetherFrame();
-    const fFrame = detectFireFrame();
-    const holdingDiamond = hotbarSlots[activeSlot] === B.DIAMOND;
-    document.getElementById('cc-portal-hint').style.display = (aFrame && currentRealm === 'overworld' && holdingDiamond) ? 'inline-block' : 'none';
-    document.getElementById('cc-fireportal-hint').style.display = (fFrame && currentRealm === 'overworld' && holdingDiamond) ? 'inline-block' : 'none';
-    document.getElementById('cc-near').style.display = nearCraftingTable() ? 'inline-block' : 'none';
-
-    if (currentRealm === 'aether' && aetherBoss && aetherBoss.hp > 0) {
-      const distXZ = Math.sqrt((player.pos.x - aetherBoss.x)**2 + (player.pos.z - aetherBoss.z)**2);
-      if (distXZ > 12 && aetherBoss.hp === 10) document.getElementById('cc-boss').style.display = 'none';
-    }
-    if (currentRealm === 'underworld' && demonBoss && demonBoss.hp > 0) {
-      const distXZ = Math.sqrt((player.pos.x - demonBoss.x)**2 + (player.pos.z - demonBoss.z)**2);
-      if (distXZ < 8) showBoss('🔥 LAVA DEMON', demonBoss.hp, 15);
-      else if (demonBoss.hp === 15) document.getElementById('cc-boss').style.display = 'none';
-    }
-
-    const timerEl = document.getElementById('cc-timer');
-    timerEl.textContent = '⏰ ' + formatTime(timeLeft);
-    if (timeLeft < 60) { timerEl.style.background = 'rgba(220, 40, 40, 0.85)'; }
-    else if (timeLeft < 5 * 60) { timerEl.style.background = 'rgba(255, 170, 68, 0.85)'; timerEl.style.color = '#4a2c00'; }
-    else { timerEl.style.background = 'rgba(0,0,0,0.55)'; timerEl.style.color = '#fff'; }
-
-    document.getElementById('cc-pos').textContent =
-      `x: ${Math.round(player.pos.x)}  y: ${Math.round(player.pos.y)}  z: ${Math.round(player.pos.z)}`;
-    renderer.render(scene, camera);
+    const timerEl=document.getElementById('cc-timer');
+    timerEl.textContent='⏰ '+formatTime(timeLeft);
+    if(timeLeft<60){timerEl.style.background='rgba(220,40,40,0.85)';}
+    else if(timeLeft<5*60){timerEl.style.background='rgba(255,170,68,0.85)';timerEl.style.color='#4a2c00';}
+    else{timerEl.style.background='rgba(0,0,0,0.55)';timerEl.style.color='#fff';}
+    document.getElementById('cc-pos').textContent=`x: ${Math.round(player.pos.x)}  y: ${Math.round(player.pos.y)}  z: ${Math.round(player.pos.z)}`;
+    renderer.render(scene,camera);
     requestAnimationFrame(update);
   }
 
-  const ro = new ResizeObserver(() => {
-    const w = root.clientWidth, h = root.clientHeight;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
+  const ro=new ResizeObserver(()=>{
+    const w=root.clientWidth, h=root.clientHeight;
+    renderer.setSize(w,h,false);
+    camera.aspect=w/h;
     camera.updateProjectionMatrix();
   });
   ro.observe(root);
-
   requestAnimationFrame(update);
 })();
+
 </script>
 </body>
 </html>
