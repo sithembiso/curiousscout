@@ -5,81 +5,146 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CuriousScout</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNjQgNjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJQbGF5Ij48cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHJ4PSIxNSIgZmlsbD0iIzFhMWEyZSIvPjxyZWN0IHg9IjEyIiB5PSIxMiIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iNSIgZmlsbD0iI0ZGNkI2QiIvPjxyZWN0IHg9IjM0IiB5PSIxMiIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iNSIgZmlsbD0iIzREOTZGRiIvPjxyZWN0IHg9IjEyIiB5PSIzNCIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iNSIgZmlsbD0iIzZCQ0I3NyIvPjxyZWN0IHg9IjM0IiB5PSIzNCIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iNSIgZmlsbD0iI0IzODhGRiIvPjwvc3ZnPgo=">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Press+Start+2P&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    html, body {
-      height: 100%;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      color: #1a1a2e;
-      background: linear-gradient(180deg, #87CEEB 0%, #B0E0FF 45%, #FFE4B5 100%);
-      background-attachment: fixed;
-    }
+    html, body { height: 100%; }
 
     body {
       min-height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #e9e9ff;
+      background:
+        radial-gradient(circle at 50% -10%, #2a1f5e 0%, #120e2e 50%, #07060f 100%);
+      background-attachment: fixed;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 48px 24px 64px;
+      padding: 56px 24px 40px;
+      position: relative;
+      overflow-x: hidden;
     }
 
-    header {
-      text-align: center;
-      margin-bottom: 40px;
-      max-width: 720px;
+    /* Synthwave glowing grid */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(130,120,255,0.10) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(130,120,255,0.10) 1px, transparent 1px);
+      background-size: 42px 42px;
+      -webkit-mask-image: radial-gradient(circle at 50% 28%, #000 25%, transparent 78%);
+      mask-image: radial-gradient(circle at 50% 28%, #000 25%, transparent 78%);
     }
 
-    h1 {
-      font-size: clamp(2.25rem, 5vw, 3.5rem);
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      margin-bottom: 8px;
-      background: linear-gradient(90deg, #FF6B6B, #FFA500, #6BCB77, #4D96FF, #B388FF);
+    /* CRT scanlines */
+    .scanlines {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        rgba(0,0,0,0) 0px,
+        rgba(0,0,0,0) 2px,
+        rgba(0,0,0,0.16) 3px,
+        rgba(0,0,0,0) 4px
+      );
+      mix-blend-mode: overlay;
+      opacity: 0.55;
+    }
+
+    header { text-align: center; margin-bottom: 30px; max-width: 760px; position: relative; z-index: 1; }
+
+    .logo {
+      font-family: "Press Start 2P", monospace;
+      font-size: clamp(1.15rem, 5.5vw, 2.15rem);
+      line-height: 1.45;
+      letter-spacing: 1px;
+      background: linear-gradient(90deg, #ff4d6d, #ffae00, #4de1a0, #4d96ff, #b388ff);
       -webkit-background-clip: text;
       background-clip: text;
       color: transparent;
+      filter: drop-shadow(0 0 18px rgba(140,120,255,0.55));
     }
 
     .subtitle {
-      font-size: 1.1rem;
-      color: #3a3a5e;
-      opacity: 0.85;
+      margin-top: 18px;
+      font-size: 1.05rem;
+      color: #b9b6e0;
+      opacity: 0.9;
     }
 
     .byline {
       margin-top: 10px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: #3a3a5e;
-      opacity: 0.7;
+      font-family: "Orbitron", sans-serif;
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #8be0ff;
+      text-shadow: 0 0 10px rgba(77,150,255,0.6);
     }
+
+    .prompt {
+      margin-top: 22px;
+      font-family: "Press Start 2P", monospace;
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: #ffd166;
+      text-shadow: 0 0 10px rgba(255,209,102,0.8);
+      animation: blink 1.1s steps(1) infinite;
+    }
+
+    @keyframes blink { 50% { opacity: 0.2; } }
 
     main {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 24px;
+      gap: 22px;
       width: 100%;
-      max-width: 880px;
+      max-width: 900px;
+      position: relative;
+      z-index: 1;
     }
 
     .card {
+      position: relative;
       display: flex;
       flex-direction: column;
-      padding: 28px 24px;
-      background: rgba(255, 255, 255, 0.92);
-      border-radius: 20px;
+      padding: 26px 22px 22px;
+      background: rgba(22, 18, 48, 0.66);
+      border: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+      border-radius: 16px;
       text-decoration: none;
-      color: inherit;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-      transition: transform 0.18s ease, box-shadow 0.18s ease;
-      border: 2px solid transparent;
+      color: #eaeaff;
+      backdrop-filter: blur(7px);
+      -webkit-backdrop-filter: blur(7px);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04), 0 8px 26px rgba(0,0,0,0.55);
+      transition: transform 0.18s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--accent);
+      box-shadow: 0 0 14px var(--accent);
     }
 
     .card:hover, .card:focus-visible {
-      transform: translateY(-4px);
-      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.14);
-      border-color: rgba(255, 255, 255, 1);
+      transform: translateY(-6px);
+      border-color: var(--accent);
+      box-shadow:
+        0 0 26px color-mix(in srgb, var(--accent) 55%, transparent),
+        0 12px 34px rgba(0,0,0,0.6);
       outline: none;
     }
 
@@ -87,69 +152,111 @@
       width: 64px;
       height: 64px;
       margin-bottom: 16px;
-      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.12));
+      filter: drop-shadow(0 0 12px color-mix(in srgb, var(--accent) 60%, transparent));
+      animation: float 3.6s ease-in-out infinite;
     }
 
-    .icon svg {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
+    .card:nth-child(2) .icon { animation-delay: 0.4s; }
+    .card:nth-child(3) .icon { animation-delay: 0.8s; }
+    .card:nth-child(4) .icon { animation-delay: 1.2s; }
+
+    @keyframes float { 50% { transform: translateY(-6px); } }
+
+    .icon svg { display: block; width: 100%; height: 100%; }
 
     .card h2 {
-      font-size: 1.5rem;
+      font-family: "Orbitron", sans-serif;
+      font-size: 1.3rem;
       font-weight: 700;
-      margin-bottom: 6px;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .card h2 .ver {
+      font-size: 0.7rem;
+      font-weight: 900;
+      color: var(--accent);
+      text-shadow: 0 0 8px var(--accent);
+      vertical-align: middle;
     }
 
     .card p {
-      font-size: 0.98rem;
-      color: #4a4a6e;
-      line-height: 1.45;
+      font-size: 0.95rem;
+      color: #b6b4d8;
+      line-height: 1.5;
     }
+
+    .play {
+      margin-top: 18px;
+      font-family: "Press Start 2P", monospace;
+      font-size: 9px;
+      letter-spacing: 1px;
+      color: var(--accent);
+      text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent);
+      transition: transform 0.18s ease;
+    }
+
+    .card:hover .play { transform: translateX(4px); }
 
     footer {
       margin-top: auto;
-      padding-top: 48px;
-      font-size: 0.85rem;
-      color: #3a3a5e;
-      opacity: 0.6;
+      padding-top: 44px;
+      font-family: "Press Start 2P", monospace;
+      font-size: 8px;
+      letter-spacing: 1px;
+      line-height: 1.8;
+      text-align: center;
+      color: #7b78a8;
+      position: relative;
+      z-index: 1;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .icon, .prompt { animation: none; }
     }
   </style>
 </head>
 <body>
+  <div class="scanlines"></div>
+
   <header>
-    <h1>CuriousScout</h1>
+    <div class="logo">CuriousScout</div>
     <p class="subtitle">A little arcade of homemade games. Pick one and have fun.</p>
     <p class="byline">By Lunga Khumalo</p>
+    <p class="prompt">&#9654; SELECT YOUR GAME &#9664;</p>
   </header>
 
   <main>
-    <a class="card" href="balloon%20pop/">
+    <a class="card" href="balloon%20pop/" style="--accent:#FF4D6D;">
       <div class="icon"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Balloons Pop"><rect width="64" height="64" rx="15" fill="#FF6B6B"/><ellipse cx="32" cy="26" rx="13" ry="16" fill="#fff"/><path d="M27 16a8 13 0 0 0-3 9" stroke="#ffd2d2" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M32 42l-3 4h6z" fill="#fff"/><path d="M32 46q-4 7 2 14" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" opacity="0.9"/></svg></div>
       <h2>Balloons Pop</h2>
       <p>Tap the balloons before they drift away.</p>
+      <div class="play">PLAY &#9654;</div>
     </a>
 
-    <a class="card" href="math%20mine/">
+    <a class="card" href="math%20mine/" style="--accent:#4D96FF;">
       <div class="icon"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Times Tables Mine"><rect width="64" height="64" rx="15" fill="#4D96FF"/><path d="M13 25q19-11 38 0-9-3-19 3-10-6-19-3z" fill="#fff"/><rect x="29.5" y="24" width="5" height="27" rx="2.5" fill="#fff"/><path d="M45 35l7 6-7 9-7-9z" fill="#FFD166"/><path d="M45 35l7 6-7 3-7-3z" fill="#ffe199"/></svg></div>
       <h2>Times Tables Mine</h2>
       <p>Dig through multiplication problems to strike gold.</p>
+      <div class="play">PLAY &#9654;</div>
     </a>
 
-    <a class="card" href="geo-jump/">
+    <a class="card" href="geo-jump/" style="--accent:#B388FF;">
       <div class="icon"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Geo Jump"><rect width="64" height="64" rx="15" fill="#B388FF"/><rect x="10" y="45" width="44" height="4" rx="2" fill="#fff" opacity="0.5"/><path d="M34 45l6-11 6 11z" fill="#fff" opacity="0.85"/><rect x="15" y="19" width="17" height="17" rx="3.5" fill="#fff" transform="rotate(-15 23.5 27.5)"/><rect x="21.5" y="24.5" width="5.5" height="5.5" rx="1.4" fill="#B388FF" transform="rotate(-15 23.5 27.5)"/></svg></div>
       <h2>Geo Jump</h2>
       <p>Time your jumps and flights through a neon obstacle run.</p>
+      <div class="play">PLAY &#9654;</div>
     </a>
 
-    <a class="card" href="claudecraft/">
+    <a class="card" href="claudecraft/" style="--accent:#4DE1A0;">
       <div class="icon"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Claudecraft"><rect width="64" height="64" rx="15" fill="#7CC6E8"/><path d="M32 12 50 22 32 32 14 22Z" fill="#6BCB77"/><path d="M14 22 32 32 32 52 14 42Z" fill="#9c6b3f"/><path d="M50 22 32 32 32 52 50 42Z" fill="#7e5230"/><path d="M32 12 50 22 32 32 14 22Z" fill="none" stroke="#57b463" stroke-width="1.2" stroke-linejoin="round"/></svg></div>
-      <h2>Claudecraft <span style="font-size: 0.9rem; font-weight: 700; color: #c08a00;">3.0</span></h2>
+      <h2>Claudecraft <span class="ver">3.0</span></h2>
       <p>Mine, craft, and conquer four worlds in a 30-minute quest — now with the Land of Milk &amp; Honey.</p>
+      <div class="play">PLAY &#9654;</div>
     </a>
   </main>
 
-  <footer>Made with care · CuriousScout · By Lunga Khumalo</footer>
+  <footer>Made with care &middot; CuriousScout &middot; By Lunga Khumalo</footer>
 </body>
 </html>
