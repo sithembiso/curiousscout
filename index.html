@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Play</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNjQgNjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJQbGF5Ij48cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHJ4PSIxNSIgZmlsbD0iIzFhMWEyZSIvPjxyZWN0IHg9IjEyIiB5PSIxMiIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iNSIgZmlsbD0iI0ZGNkI2QiIvPjxyZWN0IHg9IjM0IiB5PSIxMiIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iNSIgZmlsbD0iIzREOTZGRiIvPjxyZWN0IHg9IjEyIiB5PSIzNCIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iNSIgZmlsbD0iIzZCQ0I3NyIvPjxyZWN0IHg9IjM0IiB5PSIzNCIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iNSIgZmlsbD0iI0IzODhGRiIvPjwvc3ZnPgo=">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -74,10 +75,17 @@
       outline: none;
     }
 
-    .emoji {
-      font-size: 3.5rem;
-      line-height: 1;
+    .icon {
+      width: 64px;
+      height: 64px;
       margin-bottom: 16px;
+      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.12));
+    }
+
+    .icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
     }
 
     .card h2 {
@@ -109,19 +117,25 @@
 
   <main>
     <a class="card" href="balloon%20pop/">
-      <div class="emoji">🎈</div>
+      <div class="icon"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Balloons Pop"><rect width="64" height="64" rx="15" fill="#FF6B6B"/><ellipse cx="32" cy="26" rx="13" ry="16" fill="#fff"/><path d="M27 16a8 13 0 0 0-3 9" stroke="#ffd2d2" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M32 42l-3 4h6z" fill="#fff"/><path d="M32 46q-4 7 2 14" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" opacity="0.9"/></svg></div>
       <h2>Balloons Pop</h2>
       <p>Tap the balloons before they drift away.</p>
     </a>
 
     <a class="card" href="math%20mine/">
-      <div class="emoji">⛏️</div>
+      <div class="icon"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Times Tables Mine"><rect width="64" height="64" rx="15" fill="#4D96FF"/><path d="M13 25q19-11 38 0-9-3-19 3-10-6-19-3z" fill="#fff"/><rect x="29.5" y="24" width="5" height="27" rx="2.5" fill="#fff"/><path d="M45 35l7 6-7 9-7-9z" fill="#FFD166"/><path d="M45 35l7 6-7 3-7-3z" fill="#ffe199"/></svg></div>
       <h2>Times Tables Mine</h2>
       <p>Dig through multiplication problems to strike gold.</p>
     </a>
 
+    <a class="card" href="geo-jump/">
+      <div class="icon"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Geo Jump"><rect width="64" height="64" rx="15" fill="#B388FF"/><rect x="10" y="45" width="44" height="4" rx="2" fill="#fff" opacity="0.5"/><path d="M34 45l6-11 6 11z" fill="#fff" opacity="0.85"/><rect x="15" y="19" width="17" height="17" rx="3.5" fill="#fff" transform="rotate(-15 23.5 27.5)"/><rect x="21.5" y="24.5" width="5.5" height="5.5" rx="1.4" fill="#B388FF" transform="rotate(-15 23.5 27.5)"/></svg></div>
+      <h2>Geo Jump</h2>
+      <p>Time your jumps and flights through a neon obstacle run.</p>
+    </a>
+
     <a class="card" href="claudecraft/">
-      <div class="emoji">🟩</div>
+      <div class="icon"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Claudecraft"><rect width="64" height="64" rx="15" fill="#7CC6E8"/><path d="M32 12 50 22 32 32 14 22Z" fill="#6BCB77"/><path d="M14 22 32 32 32 52 14 42Z" fill="#9c6b3f"/><path d="M50 22 32 32 32 52 50 42Z" fill="#7e5230"/><path d="M32 12 50 22 32 32 14 22Z" fill="none" stroke="#57b463" stroke-width="1.2" stroke-linejoin="round"/></svg></div>
       <h2>Claudecraft <span style="font-size: 0.9rem; font-weight: 700; color: #c08a00;">3.0</span></h2>
       <p>Mine, craft, and conquer four worlds in a 30-minute quest — now with the Land of Milk &amp; Honey.</p>
     </a>
