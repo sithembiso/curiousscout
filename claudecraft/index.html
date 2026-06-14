@@ -517,8 +517,8 @@
     }
   }
 
+  const pets=[];  // {type, x, y, z, tamed, vx, vz}
   generateOverworld(); generateAether(); generateUnderworld(); generateMilkAndHoney();
-  rebuildPetMeshes();
 
   const meshGroup = new THREE.Group();
   scene.add(meshGroup);
@@ -630,6 +630,7 @@
       petMeshes.push(m);
     });
   }
+  rebuildPetMeshes();
 
   const player={
     pos:new THREE.Vector3(0,14,0), vel:new THREE.Vector3(0,0,0),
@@ -642,7 +643,6 @@
   const tools={pickTier:0, swordTier:0, flameSword:false};
   const armor={};
   const achievements={};
-  const pets=[];  // {type, x, y, z, tamed, vx, vz}
 
   const ACHIEVEMENTS=[
     {id:'wood5',label:'Get 5 wood',check:()=>(inventory[B.WOOD]||0)>=5},
