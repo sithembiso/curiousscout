@@ -2,38 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>ClaudeCraft 3.0 - Land of Milk and Honey</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNjQgNjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJDbGF1ZGVjcmFmdCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTUiIGZpbGw9IiM3Q0M2RTgiLz48cGF0aCBkPSJNMzIgMTIgNTAgMjIgMzIgMzIgMTQgMjJaIiBmaWxsPSIjNkJDQjc3Ii8+PHBhdGggZD0iTTE0IDIyIDMyIDMyIDMyIDUyIDE0IDQyWiIgZmlsbD0iIzljNmIzZiIvPjxwYXRoIGQ9Ik01MCAyMiAzMiAzMiAzMiA1MiA1MCA0MloiIGZpbGw9IiM3ZTUyMzAiLz48cGF0aCBkPSJNMzIgMTIgNTAgMjIgMzIgMzIgMTQgMjJaIiBmaWxsPSJub25lIiBzdHJva2U9IiM1N2I0NjMiIHN0cm9rZS13aWR0aD0iMS4yIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+Cg==">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ClaudeCraft 5.0 - Swords & Pets</title>
 <style>
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #87CEEB; font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif); user-select: none; touch-action: none; overscroll-behavior: none; }
-  #cc-root {
-    position: relative;
-    width: 100vw !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    overflow: hidden;
-    border-radius: 0 !important;
-    font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
-  }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #87CEEB; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; user-select: none; touch-action: none; }
+  #cc-root { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
   button { font-family: inherit; }
-  /* Lift bottom-anchored controls above iOS Safari toolbar / home indicator. */
-  #cc-joy,
-  #cc-actions {
-    bottom: calc(14px + env(safe-area-inset-bottom, 0px)) !important;
-  }
-  #cc-hotbar,
-  #cc-slot-left,
-  #cc-slot-right {
-    bottom: calc(90px + env(safe-area-inset-bottom, 0px)) !important;
-  }
-  #cc-tool,
-  #cc-armor {
-    bottom: calc(145px + env(safe-area-inset-bottom, 0px)) !important;
-  }
 </style>
 </head>
 <body>
@@ -43,24 +17,23 @@
   <div id="cc-release" style="position: absolute; inset: 0; background: rgba(40, 25, 5, 0.92); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 30; padding: 20px;">
     <div style="background: linear-gradient(135deg, #ffd866, #ffaa44); color: #2a1a00; max-width: 540px; width: 100%; border-radius: 16px; padding: 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.5); max-height: 90%; overflow-y: auto;">
       <div style="text-align: center; margin-bottom: 14px;">
-        <div style="font-size: 38px; margin-bottom: 4px;">🎉✨</div>
-        <div style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">Version 3.0 is here!</div>
-        <div style="font-size: 14px; font-weight: 600; color: #8a4a00;">Land of Milk and Honey 🥛🍯</div>
+        <div style="font-size: 38px; margin-bottom: 4px;">⚔️🐺</div>
+        <div style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">Versions 4.0 & 5.0 are here!</div>
+        <div style="font-size: 14px; font-weight: 600; color: #8a4a00;">Swords & Pets ⚔️🐺🐱</div>
       </div>
       <div style="background: rgba(255,255,255,0.45); border-radius: 12px; padding: 14px; margin-bottom: 14px;">
         <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #4a2400;">✨ WHAT'S NEW</div>
         <ul style="margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6;">
-          <li><b>🥛 A whole new world!</b> The Land of Milk and Honey — milk rivers, honey pools, milk clouds, honeycomb hills!</li>
-          <li><b>🍯 New blocks:</b> Honeycomb, Milk, Honey, Honey Tree, Milk Cloud</li>
-          <li><b>🧙 The Wise Guardian</b> gives puzzles instead of fighting!</li>
-          <li><b>🏗️ 3 Build-a-shape puzzles:</b> easy 2×2 square, medium plus, hard 2-tall T</li>
-          <li><b>👑 NEW TITLE:</b> Become the <b>GOD OF CLAUDECRAFT!</b></li>
-          <li><b>🗺️ Secret cave:</b> Break the diamond heart with a diamond pickaxe!</li>
-          <li><b>⏰ More time:</b> 30 minutes (up from 25)</li>
+          <li><b>⚔️ SWORDS!</b> Craft a sword from any ore: wood, stone, iron, gold, diamond</li>
+          <li><b>💥 More boss damage:</b> Diamond sword deals 6 damage — defeat bosses way faster!</li>
+          <li><b>🐺 PETS:</b> Find wolves and cats in the Land of Milk and Honey</li>
+          <li><b>🐱 Tame them:</b> Left-click any wolf or cat to make it your forever pet</li>
+          <li><b>🦮 Pets follow you</b> across ALL worlds — they even teleport so they never get lost!</li>
+          <li><b>🏆 3 new achievements:</b> Craft sword, Diamond sword, Tame a pet</li>
         </ul>
       </div>
       <div style="font-size: 11px; opacity: 0.75; text-align: center; margin-bottom: 14px;">
-        Previous: 2.0 (Underworld + Lava Demon) · 1.0 (Aether + Guardian)
+        Previous: 3.0 (Milk & Honey) · 2.0 (Underworld) · 1.0 (Aether)
       </div>
       <button id="cc-release-close" style="display: block; width: 100%; background: #4a1a00; color: #ffd866; border: none; padding: 12px; font-size: 15px; font-weight: 600; border-radius: 10px; cursor: pointer;">Let's play! ⚔️🥛🍯</button>
     </div>
@@ -68,7 +41,7 @@
 
   <div id="cc-start" style="position: absolute; inset: 0; background: rgba(0,0,0,0.78); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 20; padding: 20px; text-align: center; overflow-y: auto;">
     <div style="font-size: 30px; font-weight: 500; letter-spacing: 2px; margin-bottom: 4px;">CLAUDECRAFT</div>
-    <div style="font-size: 17px; color: #ffd866; font-weight: 500; margin-bottom: 6px;">🥛🍯 3.0 — Land of Milk and Honey 🍯🥛</div>
+    <div style="font-size: 17px; color: #ffd866; font-weight: 500; margin-bottom: 6px;">⚔️🐺 5.0 — Swords & Pets! 🐱⚔️</div>
     <div style="font-size: 12px; color: #ffaa44; margin-bottom: 12px;">⏰ 30 minute challenge — FOUR worlds!</div>
     <div style="font-size: 12px; opacity: 0.85; margin-bottom: 12px; max-width: 540px; line-height: 1.6; text-align: left;">
       <b>The ultimate quest:</b><br>
@@ -81,8 +54,8 @@
       <b>Keyboard:</b> WASD · C jump · click break/place · 1-9 · E craft · P pause<br>
       <b>Mobile:</b> joystick · tap-drag to look · ⛏️🧱⬆️🛠️ buttons
     </div>
-    <button id="cc-play" style="background: linear-gradient(135deg, #ffd866, #ff9944); color: #4a1a00; border: none; padding: 14px 36px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer; margin-bottom: 12px;">Begin the ultimate quest!</button>
-    <button id="cc-show-release" style="background: transparent; color: #ffd866; border: 1px solid #ffd866; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">📋 What's New in 3.0</button>
+    <button id="cc-play" style="background: linear-gradient(135deg, #4ade80, #16a34a); color: #042c1f; border: none; padding: 14px 36px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer; margin-bottom: 12px;">Begin the ultimate quest!</button>
+    <button id="cc-show-release" style="background: transparent; color: #4ade80; border: 1px solid #4ade80; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">📋 What's New in 5.0</button>
   </div>
 
   <div id="cc-hud" style="position: absolute; inset: 0; pointer-events: none; z-index: 5; display: none; color: white; text-shadow: 1px 1px 2px rgba(0,0,0,0.8);">
@@ -98,7 +71,7 @@
     </div>
 
     <div style="position: absolute; top: 8px; right: 8px; font-size: 12px; text-align: right; line-height: 1.5;">
-      <div style="font-weight: 500; margin-bottom: 2px;">Achievements <span id="cc-ach-count">0/19</span></div>
+      <div style="font-weight: 500; margin-bottom: 2px;">Achievements <span id="cc-ach-count">0/22</span></div>
       <div id="cc-ach-list" style="font-size: 10px; opacity: 0.85; max-height: 200px; overflow: hidden;"></div>
     </div>
 
@@ -137,7 +110,7 @@
     <div id="cc-joy" style="position: absolute; left: 14px; bottom: 14px; width: 120px; height: 120px; background: rgba(255,255,255,0.12); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; pointer-events: auto; touch-action: none;">
       <div id="cc-joy-stick" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; background: rgba(255,255,255,0.55); border: 2px solid rgba(255,255,255,0.7); border-radius: 50%;"></div>
     </div>
-    <div id="cc-actions" style="position: absolute; right: 10px; bottom: 14px; display: flex; flex-direction: column; gap: 6px; pointer-events: auto;">
+    <div style="position: absolute; right: 10px; bottom: 14px; display: flex; flex-direction: column; gap: 6px; pointer-events: auto;">
       <div style="display: flex; gap: 6px; justify-content: flex-end;">
         <button id="cc-jump-btn" style="width: 56px; height: 56px; border-radius: 50%; background: rgba(80,140,255,0.7); border: 2px solid rgba(255,255,255,0.6); color: white; font-size: 22px; font-weight: 600; cursor: pointer; touch-action: none;">⬆️</button>
         <button id="cc-craft-btn" style="width: 56px; height: 56px; border-radius: 50%; background: rgba(180,130,60,0.85); border: 2px solid rgba(255,255,255,0.6); color: white; font-size: 22px; cursor: pointer; touch-action: none;">🛠️</button>
@@ -196,7 +169,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function(){
-  const CURRENT_VERSION = '3.0';
+  const CURRENT_VERSION = '5.0';
   const releaseEl = document.getElementById('cc-release');
   const startEl = document.getElementById('cc-start');
 
@@ -230,7 +203,7 @@
     CRAFTING:11,OBSIDIAN:12,BEDROCK:13,GLOW:14,PORTAL:16,
     CLOUD:17,AETHER_GRASS:18,CRYSTAL:19,RUINSTONE:20,AETHERSTONE:21,CHEST:22,BOSS:23,
     FIRE_PORTAL:24,NETHERSTONE:25,LAVA:26,FIRE:27,DEMON:28,FIRECHEST:29,
-    MILK:30,HONEY:31,HONEYCOMB:32,MILKCLOUD:33,HONEYTREE:34,GUARDIAN:35
+    MILK:30,HONEY:31,HONEYCOMB:32,MILKCLOUD:33,HONEYTREE:34,GUARDIAN:35,WOLF:36,CAT:37
   };
   const BLOCK_INFO = {
     [B.GRASS]:{name:'Grass',colors:{top:0x6abe30,side:0x8B5A2B,bot:0x8B5A2B},needs:0},
@@ -266,9 +239,13 @@
     [B.HONEYCOMB]:{name:'Honeycomb',color:0xffa820,needs:2},
     [B.MILKCLOUD]:{name:'Milk cloud',color:0xf8f6ee,needs:0},
     [B.HONEYTREE]:{name:'Honey tree',colors:{top:0xd97f1f,side:0xb56b15,bot:0x8a5008},needs:1},
-    [B.GUARDIAN]:{name:'Wise Guardian',color:0xffe066,needs:99}
+    [B.GUARDIAN]:{name:'Wise Guardian',color:0xffe066,needs:99},
+    [B.WOLF]:{name:'Wolf',color:0xb8b8b8,needs:99},
+    [B.CAT]:{name:'Cat',color:0xff9933,needs:99}
   };
   const PICK_TIERS = ['Hands','Wooden pick','Stone pick','Iron pick','Diamond pick'];
+  const SWORD_TIERS = ['No sword','Wood sword','Stone sword','Iron sword','Gold sword','Diamond sword'];
+  const SWORD_DAMAGE = [0, 2, 3, 4, 4, 6];
   const ARMOR_TYPES = ['iron','gold','redstone','diamond'];
   const TIME_LIMIT = 30*60;
   let timeLeft=TIME_LIMIT, timerRunning=false, gameOver=false, paused=false;
@@ -529,9 +506,19 @@
     let sy=1;
     for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,0,y,0)===B.HONEYCOMB){sy=y+1;break;}}
     mhSpawn={x:0,y:sy+1,z:0};
+    // Spawn pets! 3 wolves + 3 cats scattered around milk & honey
+    for(let i=0;i<6;i++){
+      const px=Math.floor((Math.random()-0.5)*40);
+      const pz=Math.floor((Math.random()-0.5)*40);
+      let py=1;
+      for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,px,y,pz)===B.HONEYCOMB){py=y+1;break;}}
+      const type=i<3?B.WOLF:B.CAT;
+      pets.push({type, x:px+0.5, y:py, z:pz+0.5, tamed:false, vx:0, vz:0, lastMove:0});
+    }
   }
 
   generateOverworld(); generateAether(); generateUnderworld(); generateMilkAndHoney();
+  rebuildPetMeshes();
 
   const meshGroup = new THREE.Group();
   scene.add(meshGroup);
@@ -596,6 +583,54 @@
   highlight.visible=false;
   scene.add(highlight);
 
+  // Pet meshes
+  const petMeshGroup = new THREE.Group();
+  scene.add(petMeshGroup);
+  const petMeshes = []; // parallel array to pets
+
+  function createPetMesh(type) {
+    const g = new THREE.Group();
+    const isWolf = type === B.WOLF;
+    const color = isWolf ? 0xb8b8b8 : 0xff9933;
+    const mat = new THREE.MeshLambertMaterial({color});
+    // body
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 1.1), mat);
+    body.position.y = 0.25;
+    g.add(body);
+    // head
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), mat);
+    head.position.set(0, 0.45, 0.55);
+    g.add(head);
+    // ears
+    const earGeom = new THREE.BoxGeometry(0.15, 0.2, 0.1);
+    const earL = new THREE.Mesh(earGeom, mat); earL.position.set(-0.18, 0.78, 0.55); g.add(earL);
+    const earR = new THREE.Mesh(earGeom, mat); earR.position.set(0.18, 0.78, 0.55); g.add(earR);
+    // legs
+    const legGeom = new THREE.BoxGeometry(0.18, 0.3, 0.18);
+    for (const [lx, lz] of [[-0.22, 0.4],[0.22, 0.4],[-0.22, -0.4],[0.22, -0.4]]) {
+      const leg = new THREE.Mesh(legGeom, mat);
+      leg.position.set(lx, -0.05, lz);
+      g.add(leg);
+    }
+    // tail
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.4), mat);
+    tail.position.set(0, 0.35, -0.65);
+    g.add(tail);
+    return g;
+  }
+  function rebuildPetMeshes() {
+    // clear all
+    while(petMeshGroup.children.length) petMeshGroup.remove(petMeshGroup.children[0]);
+    petMeshes.length = 0;
+    // only show pets in the current realm: untamed only in milkhoney, tamed everywhere
+    pets.forEach(p => {
+      if (!p.tamed && currentRealm !== 'milkhoney') { petMeshes.push(null); return; }
+      const m = createPetMesh(p.type);
+      petMeshGroup.add(m);
+      petMeshes.push(m);
+    });
+  }
+
   const player={
     pos:new THREE.Vector3(0,14,0), vel:new THREE.Vector3(0,0,0),
     yaw:0, pitch:0, onGround:false,
@@ -604,9 +639,10 @@
   for(let y=WORLD_HEIGHT-1;y>0;y--){if(getBlockIn(overworld,0,y,0)!==B.AIR){player.pos.set(0.5,y+2,0.5);break;}}
 
   const inventory={};
-  const tools={pickTier:0, flameSword:false};
+  const tools={pickTier:0, swordTier:0, flameSword:false};
   const armor={};
   const achievements={};
+  const pets=[];  // {type, x, y, z, tamed, vx, vz}
 
   const ACHIEVEMENTS=[
     {id:'wood5',label:'Get 5 wood',check:()=>(inventory[B.WOOD]||0)>=5},
@@ -627,7 +663,10 @@
     {id:'puzzle1',label:'Solve Easy Puzzle',check:()=>achievements.puzzle1},
     {id:'puzzle2',label:'Solve Medium Puzzle',check:()=>achievements.puzzle2},
     {id:'puzzle3',label:'Solve Hard Puzzle',check:()=>achievements.puzzle3},
-    {id:'god',label:'👑 GOD OF CLAUDECRAFT!',check:()=>achievements.god}
+    {id:'god',label:'👑 GOD OF CLAUDECRAFT!',check:()=>achievements.god},
+    {id:'sword',label:'⚔️ Craft your first sword',check:()=>tools.swordTier>=1},
+    {id:'dsword',label:'💎 Diamond sword',check:()=>tools.swordTier>=5},
+    {id:'pet',label:'🐺 Tame a pet',check:()=>pets.some(p=>p.tamed)}
   ];
 
   function checkAchievements(){
@@ -675,7 +714,10 @@
       el.appendChild(slot);
     });
   }
-  function renderTools(){document.getElementById('cc-tool-list').textContent=PICK_TIERS[tools.pickTier];document.getElementById('cc-sword').style.display=tools.flameSword?'block':'none';}
+  function renderTools(){
+    document.getElementById('cc-tool-list').innerHTML = PICK_TIERS[tools.pickTier] + (tools.swordTier>0 ? '<br>'+SWORD_TIERS[tools.swordTier]+' ⚔️' : '');
+    document.getElementById('cc-sword').style.display=tools.flameSword?'block':'none';
+  }
   function renderArmor(){
     const list=ARMOR_TYPES.filter(t=>armor[t]);
     document.getElementById('cc-armor-list').textContent=list.length?list.map(s=>s[0].toUpperCase()+s.slice(1)).join(', '):'None';
@@ -697,7 +739,12 @@
     {id:'iarmor',name:'Iron armor',cost:{[B.IRON]:8},requiresTable:true,action:()=>{armor.iron=true;toast('Crafted iron armor');}},
     {id:'garmor',name:'Gold armor',cost:{[B.GOLD]:8},requiresTable:true,action:()=>{armor.gold=true;toast('Crafted gold armor');}},
     {id:'rarmor',name:'Redstone armor',cost:{[B.REDSTONE]:8},requiresTable:true,action:()=>{armor.redstone=true;toast('Crafted redstone armor');}},
-    {id:'darmor',name:'Diamond armor (LAVA PROOF!)',cost:{[B.DIAMOND]:8},requiresTable:true,action:()=>{armor.diamond=true;toast('🛡️ Diamond armor — lava-proof!');}}
+    {id:'darmor',name:'Diamond armor (LAVA PROOF!)',cost:{[B.DIAMOND]:8},requiresTable:true,action:()=>{armor.diamond=true;toast('🛡️ Diamond armor — lava-proof!');}},
+    {id:'wsword',name:'⚔️ Wood sword',cost:{[B.WOOD]:3},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,1);toast('⚔️ Crafted wood sword!');}},
+    {id:'ssword',name:'⚔️ Stone sword',cost:{[B.STONE]:3,[B.WOOD]:1},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,2);toast('⚔️ Crafted stone sword!');}},
+    {id:'isword',name:'⚔️ Iron sword',cost:{[B.IRON]:3,[B.WOOD]:1},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,3);toast('⚔️ Crafted iron sword!');}},
+    {id:'gsword',name:'⚔️ Gold sword (shiny but weak)',cost:{[B.GOLD]:3,[B.WOOD]:1},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,4);toast('⚔️ Crafted gold sword!');}},
+    {id:'dsword',name:'💎 Diamond sword',cost:{[B.DIAMOND]:3,[B.WOOD]:1},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,5);toast('💎 Crafted DIAMOND sword!');}}
   ];
 
   function nearCraftingTable(){
@@ -956,6 +1003,7 @@
       toast('🌍 Back in the Overworld');
     }
     rebuildMesh();
+    rebuildPetMeshes();
   }
 
   const PUZZLES=[
@@ -1020,20 +1068,47 @@
 
   function breakBlock(){
     if(gameOver||paused)return;
+    // Check if player clicked a pet first
+    const origin=new THREE.Vector3(player.pos.x,player.pos.y+player.eyeOffset,player.pos.z);
+    const dir=new THREE.Vector3(-Math.sin(player.yaw)*Math.cos(player.pitch),Math.sin(player.pitch),-Math.cos(player.yaw)*Math.cos(player.pitch)).normalize();
+    for(let i=0;i<pets.length;i++){
+      const p=pets[i];
+      if(p.tamed)continue;
+      // skip if not visible (untamed pets only show in milkhoney)
+      if(currentRealm!=='milkhoney')continue;
+      const dx=p.x-origin.x, dy=(p.y+0.4)-origin.y, dz=p.z-origin.z;
+      const dist=Math.sqrt(dx*dx+dy*dy+dz*dz);
+      if(dist>5)continue;
+      // dot product check — is pet in front of player?
+      const dot=(dx*dir.x + dy*dir.y + dz*dir.z)/dist;
+      if(dot>0.92){
+        p.tamed=true;
+        const name=p.type===B.WOLF?'🐺 Wolf':'🐱 Cat';
+        toast(name+' tamed! It will follow you forever!',4500);
+        rebuildPetMeshes();
+        checkAchievements();
+        return;
+      }
+    }
     const r=raycast(6);
     if(!r.hit)return;
     const info=BLOCK_INFO[r.blockId];
     if(r.blockId===B.BOSS){
-      if(tools.pickTier<3){toast('Need iron pickaxe to hurt the Guardian!');return;}
-      const dmg=tools.pickTier>=4?2:1;
+      const swordDmg=SWORD_DAMAGE[tools.swordTier]||0;
+      const pickDmg=tools.pickTier>=3?(tools.pickTier>=4?2:1):0;
+      const dmg=Math.max(swordDmg,pickDmg);
+      if(dmg===0){toast('Need an iron pickaxe or any sword to hurt the Guardian!');return;}
       aetherBoss.hp=Math.max(0,aetherBoss.hp-dmg);
       showBoss('⚔️ AETHER GUARDIAN',aetherBoss.hp,10);
       if(aetherBoss.hp<=0){setBlock(r.x,r.y,r.z,B.AIR);achievements.crown=true;document.getElementById('cc-boss').style.display='none';toast('👑 GUARDIAN DEFEATED!',5500);rebuildMesh();checkAchievements();return;}
       toast('⚔️ Hit! HP: '+aetherBoss.hp); return;
     }
     if(r.blockId===B.DEMON){
-      if(!tools.flameSword&&tools.pickTier<4){toast('🔥 Need diamond pickaxe or flame sword!');return;}
-      const dmg=tools.flameSword?5:1;
+      const swordDmg=SWORD_DAMAGE[tools.swordTier]||0;
+      const pickDmg=tools.pickTier>=4?1:0;
+      const flameDmg=tools.flameSword?5:0;
+      const dmg=Math.max(swordDmg,pickDmg,flameDmg);
+      if(dmg===0){toast('🔥 Need diamond pickaxe, sword, or flame sword!');return;}
       demonBoss.hp=Math.max(0,demonBoss.hp-dmg);
       showBoss('🔥 LAVA DEMON',demonBoss.hp,15);
       if(demonBoss.hp<=0){setBlock(r.x,r.y,r.z,B.AIR);achievements.demon=true;document.getElementById('cc-boss').style.display='none';toast('⚔️🔥 LAVA DEMON DEFEATED!',6000);rebuildMesh();checkAchievements();return;}
@@ -1227,6 +1302,56 @@
     else if(timeLeft<5*60){timerEl.style.background='rgba(255,170,68,0.85)';timerEl.style.color='#4a2c00';}
     else{timerEl.style.background='rgba(0,0,0,0.55)';timerEl.style.color='#fff';}
     document.getElementById('cc-pos').textContent=`x: ${Math.round(player.pos.x)}  y: ${Math.round(player.pos.y)}  z: ${Math.round(player.pos.z)}`;
+
+    // Update pets: tamed pets follow player, untamed wander a bit
+    for(let i=0;i<pets.length;i++){
+      const p=pets[i];
+      const m=petMeshes[i];
+      if(!m)continue;
+      if(p.tamed){
+        // Teleport in front of player at a comfortable distance
+        const dx=player.pos.x-p.x, dz=player.pos.z-p.z;
+        const dist=Math.sqrt(dx*dx+dz*dz);
+        if(dist>8){
+          // Teleport close
+          p.x=player.pos.x-Math.sin(player.yaw)*2+(Math.random()-0.5)*1.5;
+          p.z=player.pos.z-Math.cos(player.yaw)*2+(Math.random()-0.5)*1.5;
+          // Find ground
+          for(let y=Math.floor(player.pos.y)+2;y>0;y--){
+            if(getBlock(Math.floor(p.x),y-1,Math.floor(p.z))!==B.AIR){p.y=y;break;}
+          }
+        } else if(dist>2.5){
+          // Walk toward player
+          const sp=2.5*dt;
+          p.x += (dx/dist)*sp;
+          p.z += (dz/dist)*sp;
+          // Settle Y to ground
+          for(let y=Math.floor(p.y)+2;y>0;y--){
+            if(getBlock(Math.floor(p.x),y-1,Math.floor(p.z))!==B.AIR){p.y=y;break;}
+          }
+        }
+        // Rotate to face player
+        m.rotation.y = Math.atan2(dx, dz);
+      } else {
+        // Slow random wander
+        p.lastMove=(p.lastMove||0)-dt;
+        if(p.lastMove<=0){
+          p.vx=(Math.random()-0.5)*0.6;
+          p.vz=(Math.random()-0.5)*0.6;
+          p.lastMove=1+Math.random()*2;
+        }
+        const nx=p.x+p.vx*dt, nz=p.z+p.vz*dt;
+        // Only move if ground is solid below
+        if(getBlock(Math.floor(nx),Math.floor(p.y)-1,Math.floor(nz))!==B.AIR){
+          p.x=nx; p.z=nz;
+        } else {
+          p.vx=-p.vx; p.vz=-p.vz;
+        }
+        m.rotation.y = Math.atan2(p.vx, p.vz);
+      }
+      m.position.set(p.x, p.y, p.z);
+    }
+
     renderer.render(scene,camera);
     requestAnimationFrame(update);
   }
