@@ -71,6 +71,9 @@
   .lvl[data-c="cyan"]{--ac:var(--cyan);}
   .lvl[data-c="magenta"]{--ac:var(--magenta);}
   .lvl[data-c="gold"]{--ac:var(--gold);}
+  .lvl[data-c="green"]{--ac:#7cffb2;}
+  .lvl[data-c="red"]{--ac:#ff3344;}
+  .lvl[data-c="purple"]{--ac:#c850ff;}
   .lvl:hover,.lvl:focus-visible{border-color:var(--ac);
     box-shadow:0 0 24px -6px var(--ac), inset 0 0 0 1px var(--ac);}
   .lvl .d{color:var(--ac);}
@@ -145,17 +148,29 @@
     <div class="title">Geo<br>Jump</div>
     <div class="sub">One button · ride the beat</div>
     <div class="levels">
-      <button class="lvl" data-c="cyan" data-lvl="0">
+      <button class="lvl" data-c="green" data-lvl="0">
+        <span class="n">Start here</span><span class="t">Tutorial</span>
+        <span class="d">Learn the controls</span>
+      </button>
+      <button class="lvl" data-c="cyan" data-lvl="1">
         <span class="n">Level 01</span><span class="t">Ignition</span>
         <span class="d">Warm up · jump &amp; fly</span>
       </button>
-      <button class="lvl" data-c="magenta" data-lvl="1">
+      <button class="lvl" data-c="magenta" data-lvl="2">
         <span class="n">Level 02</span><span class="t">Overdrive</span>
         <span class="d">Add gravity flips</span>
       </button>
-      <button class="lvl" data-c="gold" data-lvl="2">
+      <button class="lvl" data-c="gold" data-lvl="3">
         <span class="n">Level 03</span><span class="t">Meltdown</span>
         <span class="d">Everything, faster</span>
+      </button>
+      <button class="lvl" data-c="red" data-lvl="4">
+        <span class="n">Level 04</span><span class="t">Raging Anger</span>
+        <span class="d">Spikes &amp; moving platforms</span>
+      </button>
+      <button class="lvl" data-c="purple" data-lvl="5">
+        <span class="n">Boss · Level 05</span><span class="t">The Death Run</span>
+        <span class="d">Five-spike precision</span>
       </button>
     </div>
     <div class="hint">Tap / click / Space to play</div>
@@ -215,13 +230,18 @@
   function L(cfg){
     const ob = [];
     const seg = [];
+    const hints = [];
     let x = cfg.start;
     let cur = null;
+    let curHint = null;
     function closeSeg(){ if(cur){ cur.end = x; seg.push(cur); cur=null; } }
+    function closeHint(){ if(curHint){ curHint.to = x; if(curHint.text) hints.push(curHint); curHint=null; } }
     const api = {
       gap(px){ x += px; return api; },
       // open a new segment at the current cursor; it runs until the next mode()/end()
-      mode(m){ closeSeg(); cur = {mode:m, start:x, end:x}; return api; },
+      mode(m){ closeHint(); closeSeg(); cur = {mode:m, start:x, end:x}; return api; },
+      // coaching prompt shown from here until the next hint()/mode()/end()
+      hint(text, sub){ closeHint(); curHint = {from:x, to:x, text:text||'', sub:sub||''}; return api; },
       // cube pieces (placed at current x, advancing x by w)
       spikes(n){ for(let i=0;i<n;i++){ ob.push({x:x, type:'spike'}); x+=40; } return api; },
       block(h, w){ ob.push({x:x, type:'block', h:(h||1), w:(w||1)}); x += 40*(w||1); return api; },
@@ -229,8 +249,20 @@
       pillar(gapTop, gapH){ ob.push({x:x, type:'pillar', gapTop, gapH}); x += 44; return api; },
       // flip spikes: side = 'floor' | 'ceil'
       fspike(side, n){ for(let i=0;i<(n||1);i++){ ob.push({x:x, type: side==='ceil'?'cspike':'spike'}); x+=40; } return api; },
-      end(){ closeSeg(); return {name:cfg.name, color:cfg.color, ac:cfg.ac, speed:cfg.speed,
-                     bpm:cfg.bpm, len:x, segs:seg, obs:ob}; }
+      // a deadly spike pit crossed by N oscillating platforms
+      bridge(o){
+        const n=o.movers, w=o.w, gap=o.gap;
+        const span = n*w + (n-1)*gap;
+        ob.push({x:x, type:'pit', w:span});
+        for(let i=0;i<n;i++){
+          ob.push({x:x + i*(w+gap), type:'mover', w,
+            baseY:o.baseY, amp:(o.amp||0), period:(o.period||2.4), phase:i*(o.stagger||1.3)});
+        }
+        x += span;
+        return api;
+      },
+      end(){ closeHint(); closeSeg(); return {name:cfg.name, color:cfg.color, ac:cfg.ac, speed:cfg.speed,
+                     bpm:cfg.bpm, len:x, segs:seg, obs:ob, hints:hints}; }
     };
     cfg.build(api);
     return api.end();
@@ -242,8 +274,40 @@
     return CUBE;
   }
 
-  // ---------- the three levels ----------
+  // ---------- the levels ----------
   const LEVELS = [
+    L({ name:'TUTORIAL', color:'#7cffb2', ac:'#7cffb2', speed:250, bpm:112, start:600,
+      build(a){
+        a.mode(CUBE)
+          .hint('TAP TO JUMP', 'space  ·  click  ·  tap the screen')
+          .gap(680).spikes(1)
+          .hint('NICE — ONE MORE', 'one tap clears one spike')
+          .gap(460).spikes(1)
+          .hint('')
+          .gap(460).spikes(2)
+          .gap(560);
+        a.mode(SHIP)
+          .hint('HOLD TO FLY', 'hold = rise   ·   release = fall')
+          .gap(560).pillar(120,320)
+          .gap(420).pillar(120,320)
+          .hint('STAY IN THE GAP', '')
+          .gap(420).pillar(140,300)
+          .gap(560);
+        a.mode(FLIP)
+          .hint('TAP TO FLIP GRAVITY', 'snap between floor and ceiling')
+          .gap(620).fspike('ceil',2)
+          .hint('FLIP UP TO DODGE', 'spikes are on the floor now')
+          .gap(480).fspike('floor',2)
+          .hint('')
+          .gap(480).fspike('ceil',2)
+          .gap(560);
+        a.mode(CUBE)
+          .hint("YOU'RE READY!", 'now try the real levels')
+          .gap(560).spikes(1)
+          .gap(700);
+      }
+    }),
+
     L({ name:'IGNITION', color:'#00e5ff', ac:'var(--cyan)', speed:330, bpm:128, start:600,
       build(a){
         a.mode(CUBE)
@@ -355,6 +419,84 @@
           .gap(270).spikes(3);
         a.gap(700);
       }
+    }),
+
+    L({ name:'RAGING ANGER', color:'#ff3344', ac:'#ff3344', speed:470, bpm:158, start:600,
+      build(a){
+        a.mode(CUBE)
+          .gap(720).spikes(3)
+          .gap(270).spikes(2)
+          .gap(280).spikes(4)
+          .gap(280).spikes(3)
+          .gap(270).spikes(2)
+          .gap(290).spikes(4);
+        a.gap(300);
+        a.mode(CUBE)
+          .hint('JUMP THE PLATFORMS', 'the floor is death — ride across')
+          .gap(340).bridge({movers:4, w:160, gap:120, baseY:390, amp:26, period:2.8})
+          .gap(340).spikes(3)
+          .gap(270).spikes(3)
+          .gap(290).spikes(4);
+        a.gap(280);
+        a.mode(FLIP)
+          .gap(320).fspike('ceil',3)
+          .gap(230).fspike('floor',3)
+          .gap(230).fspike('ceil',3)
+          .gap(230).fspike('floor',3)
+          .gap(230).fspike('ceil',2);
+        a.gap(300);
+        a.mode(CUBE)
+          .hint('AGAIN — FASTER', '')
+          .gap(300).bridge({movers:5, w:150, gap:125, baseY:388, amp:30, period:1.9})
+          .gap(340).spikes(4)
+          .gap(270).spikes(3)
+          .gap(290).spikes(4)
+          .gap(270).spikes(3);
+        a.gap(700);
+      }
+    }),
+
+    L({ name:'THE DEATH RUN', color:'#c850ff', ac:'#c850ff', speed:500, bpm:166, start:600,
+      build(a){
+        // opening — precision spike clusters, climbing to fives
+        a.mode(CUBE)
+          .gap(760).spikes(3)
+          .gap(280).spikes(5)
+          .gap(300).spikes(4)
+          .gap(280).spikes(5)
+          .gap(300).spikes(3)
+          .gap(280).spikes(5);
+        a.gap(300);
+        // bridge 1 — narrow, fast platforms
+        a.mode(CUBE)
+          .hint('PERFECT TIMING ONLY', 'one slip = death')
+          .gap(320).bridge({movers:5, w:140, gap:120, baseY:390, amp:28, period:1.7})
+          .gap(320).spikes(5)
+          .gap(300).spikes(4);
+        a.gap(280);
+        // gravity-flip chaos
+        a.mode(FLIP)
+          .gap(320).fspike('ceil',3)
+          .gap(210).fspike('floor',4)
+          .gap(210).fspike('ceil',3)
+          .gap(210).fspike('floor',4)
+          .gap(210).fspike('ceil',3);
+        a.gap(300);
+        // bridge 2 — six platforms, fastest
+        a.mode(CUBE)
+          .gap(300).bridge({movers:6, w:140, gap:120, baseY:390, amp:26, period:1.6})
+          .gap(320).spikes(5)
+          .gap(290).spikes(5)
+          .gap(300).spikes(4);
+        a.gap(280);
+        // final gauntlet — back-to-back fives
+        a.mode(CUBE)
+          .hint('THE DEATH RUN', 'finish it')
+          .gap(320).spikes(5)
+          .gap(280).spikes(5)
+          .gap(280).spikes(5);
+        a.gap(700);
+      }
     })
   ];
 
@@ -460,6 +602,7 @@
     level:null, lvlIndex:0,
     attempts:1,
     wx:0,                // world scroll distance
+    clock:0,             // time accumulator for moving platforms
     p:null,              // player
     particles:[],
     trail:[],
@@ -474,7 +617,7 @@
   function startLevel(i){
     game.lvlIndex=i; game.level=LEVELS[i];
     document.documentElement.style.setProperty('--ac', game.level.color);
-    game.wx=0; game.particles=[]; game.trail=[];
+    game.wx=0; game.clock=0; game.particles=[]; game.trail=[];
     resetPlayer();
     game.state='play'; game.deadT=0; game.shakeT=0;
     show('hud'); hide('menu'); hide('end');
@@ -598,6 +741,7 @@
 
     // advance world
     game.wx += lv.speed*dt;
+    game.clock += dt;
     p.mode = modeAt(lv, lv.segs[0].start + game.wx);
 
     // trail
@@ -610,11 +754,11 @@
       p.grav=1;
       if(justPressed) p.jumpBuf=0.12;          // remember a press briefly
       if(p.jumpBuf>0) p.jumpBuf-=dt;
+      p.onGround=false;
       p.vy += GRAV_CUBE*dt;
       p.y += p.vy*dt;
       if(p.y >= FLOOR-PSIZE){ p.y=FLOOR-PSIZE; p.vy=0; p.onGround=true; p.rot=Math.round(p.rot/90)*90; }
       else { p.rot += dt*360; }
-      if(p.onGround && p.jumpBuf>0){ p.vy=-JUMP_V; p.onGround=false; p.jumpBuf=0; Audio.sfx('jump'); }
     }
     else if(p.mode===FLIP){
       if(justPressed){ p.grav*=-1; Audio.sfx('flip'); p.onGround=false;
@@ -668,10 +812,32 @@
           if(py1 > botY) return die();
         }
       }
+      else if(o.type==='pit'){
+        // deadly floor (spike carpet) spanning the bridge — only the platforms are safe
+        if(px1>sx+4 && px0<sx+o.w-4 && py1 > FLOOR-26) return die();
+      }
+      else if(o.type==='mover'){
+        // one-way moving platform: land on top while descending, never kills
+        const top = movTop(o);
+        if(px1>sx+4 && px0<sx+o.w-4){
+          const feet = p.y+PSIZE;
+          if(p.vy>=-40 && feet >= top-6 && feet <= top+16){
+            p.y = top-PSIZE; p.vy=0; p.onGround=true;
+          }
+        }
+      }
+    }
+
+    // jump executes after collisions so moving platforms (and blocks) count as ground
+    if(p.mode===CUBE && p.onGround && p.jumpBuf>0){
+      p.vy=-JUMP_V; p.onGround=false; p.jumpBuf=0; Audio.sfx('jump');
     }
 
     if(progress()>=1) return win();
   }
+
+  // current top-edge Y of a moving platform
+  function movTop(o){ return o.baseY + o.amp*Math.sin(game.clock*(6.2832/o.period)+o.phase); }
 
   // triangle-ish spike hit: shrink to be forgiving
   function triHit(px0,px1,feetOrHead, sx, base, isFloor){
@@ -686,6 +852,28 @@
   }
 
   // ---------- render ----------
+  function drawHints(lv){
+    if(!lv.hints || !lv.hints.length || game.state==='dead') return;
+    const pos = lv.segs[0].start + game.wx;        // player's world position
+    let h=null;
+    for(const k of lv.hints){ if(pos>=k.from && pos<k.to){ h=k; break; } }
+    if(!h) return;
+    const a = Math.max(0, Math.min(1, (pos-h.from)/90, (h.to-pos)/90));  // fade in/out
+    ctx.save();
+    ctx.globalAlpha=a;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.shadowColor=lv.color; ctx.shadowBlur=20;
+    ctx.fillStyle='#fff';
+    ctx.font='700 32px Orbitron, system-ui, sans-serif';
+    ctx.fillText(h.text, W/2, 132);
+    if(h.sub){
+      ctx.shadowBlur=0; ctx.globalAlpha=a*0.85; ctx.fillStyle=lv.color;
+      ctx.font='600 18px Rajdhani, system-ui, sans-serif';
+      ctx.fillText(h.sub, W/2, 170);
+    }
+    ctx.restore();
+  }
+
   function draw(){
     ctx.setTransform(dpr,0,0,dpr,0,0);   // crisp scaling; draw in logical W×H
     ctx.clearRect(0,0,W,H);
@@ -703,6 +891,7 @@
     if(game.state!=='menu' && lv){
       drawObstacles(lv);
       drawPlayer(lv, beat);
+      drawHints(lv);
     }
     drawParticles();
 
@@ -764,8 +953,33 @@
       else if(o.type==='cspike') drawSpike(sx, CEIL, false, lv.color);
       else if(o.type==='block') drawBlock(sx, 40*(o.w||1), 40*(o.h||1), lv.color);
       else if(o.type==='pillar') drawPillar(sx, o, lv.color);
+      else if(o.type==='pit') drawPit(sx, o.w);
+      else if(o.type==='mover') drawMover(sx, o, lv.color);
     }
     ctx.restore();
+  }
+  function drawPit(sx, w){
+    // jagged deadly carpet of spikes along the floor
+    for(let x=sx; x<sx+w; x+=40){
+      ctx.shadowColor='#ff2e63'; ctx.shadowBlur=10;
+      ctx.fillStyle='#ff2e63';
+      ctx.beginPath();
+      ctx.moveTo(x,FLOOR); ctx.lineTo(x+20,FLOOR-30); ctx.lineTo(x+40,FLOOR);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.shadowBlur=0;
+  }
+  function drawMover(sx, o, color){
+    const top=movTop(o), h=18;
+    ctx.shadowColor=color; ctx.shadowBlur=18;
+    ctx.fillStyle=color; ctx.globalAlpha=.22; ctx.fillRect(sx,top,o.w,h); ctx.globalAlpha=1;
+    ctx.lineWidth=2; ctx.strokeStyle=color; ctx.strokeRect(sx+1,top+1,o.w-2,h-2);
+    ctx.fillStyle=color; ctx.fillRect(sx,top,o.w,4);      // bright top edge
+    ctx.shadowBlur=0;
+    // support glow streaks hinting it's airborne
+    ctx.globalAlpha=.35; ctx.fillStyle=color;
+    ctx.fillRect(sx+o.w*0.5-1, top+h, 2, 10);
+    ctx.globalAlpha=1;
   }
   function drawSpike(sx, base, floor, color){
     ctx.shadowBlur=12;
