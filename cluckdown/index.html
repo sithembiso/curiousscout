@@ -201,22 +201,25 @@
     text-shadow:0 0 16px rgba(77,159,255,.6);opacity:0;
     animation:leadFade 6s ease forwards;}
   @keyframes leadFade{0%{opacity:0;}18%{opacity:1;}80%{opacity:1;}100%{opacity:0;}}
-  .crawl-window{position:absolute;inset:0;overflow:hidden;
-    -webkit-mask-image:linear-gradient(to top,transparent 2%,#000 28%,#000 62%,transparent 96%);
-    mask-image:linear-gradient(to top,transparent 2%,#000 28%,#000 62%,transparent 96%);
-    perspective:320px;}
-  .crawl-text{position:absolute;left:50%;top:100%;width:min(680px,86%);
-    transform:translateX(-50%) rotateX(42deg);transform-origin:50% 0;
+  .crawl-window{position:absolute;inset:0;overflow:hidden;perspective:400px;perspective-origin:50% 0;
+    -webkit-mask-image:linear-gradient(to top,transparent 4%,#000 30%,#000 60%,transparent 92%);
+    mask-image:linear-gradient(to top,transparent 4%,#000 30%,#000 60%,transparent 92%);}
+  .crawl-text{position:absolute;left:50%;top:0;width:min(600px,82%);
+    transform-origin:50% 100%;
+    transform:translateX(-50%) rotateX(45deg) translateY(100%);
     color:var(--toxic);font-family:'Orbitron';font-weight:700;text-align:center;
     text-shadow:0 0 18px rgba(163,255,60,.4);
-    animation:crawlUp 44s linear 5.2s forwards;}
-  .crawl-text h2{font-size:clamp(22px,6vw,46px);font-weight:900;
+    animation:crawlUp 50s linear 5.2s forwards;}
+  .crawl-text h2{font-size:clamp(20px,5vw,40px);font-weight:900;
     background:linear-gradient(180deg,#fff,var(--toxic));-webkit-background-clip:text;
     background-clip:text;color:transparent;margin-bottom:6px;line-height:1;}
-  .crawl-text .ep{display:block;font-size:clamp(13px,3vw,20px);letter-spacing:.18em;opacity:.9;
-    text-transform:uppercase;margin-bottom:34px;color:var(--acid);}
-  .crawl-text p{font-size:clamp(16px,3.4vw,27px);line-height:1.5;margin:0 0 26px;letter-spacing:.01em;}
-  @keyframes crawlUp{from{top:100%;}to{top:-260%;}}
+  .crawl-text .ep{display:block;font-size:clamp(12px,2.6vw,18px);letter-spacing:.16em;opacity:.9;
+    text-transform:uppercase;margin-bottom:30px;color:var(--acid);}
+  .crawl-text p{font-size:clamp(14px,3vw,23px);line-height:1.5;margin:0 0 24px;letter-spacing:.01em;}
+  @keyframes crawlUp{
+    from{transform:translateX(-50%) rotateX(45deg) translateY(100%);}
+    to{transform:translateX(-50%) rotateX(45deg) translateY(-210%);}
+  }
   .crawl-skip{position:absolute;bottom:max(18px,env(safe-area-inset-bottom));left:50%;
     transform:translateX(-50%);z-index:2;}
   @media (prefers-reduced-motion: reduce){
@@ -465,6 +468,10 @@ function sfx(kind,opt){
     case 'shield':{
       note(880,t,0.18,'sine',0.16,1.6); note(1320,t+0.08,0.2,'sine',0.12,1.2);
       break; }
+    case 'clutch':{   // descending bullet-time "whoom"
+      note(660,t,0.5,'sine',0.13,120/660);
+      note(330,t,0.55,'triangle',0.08,90/330);
+      break; }
   }
 }
 
@@ -485,6 +492,7 @@ const game = {
   splatDecals:[], coinFly:[],
   worldSplash:{t:0, label:'', emoji:''},
   hintAlpha:1, comboFlash:0, vignette:0, shakeT:0,
+  clutchT:0, clutchDur:0, clutchCool:0, clutchX:0, clutchY:0, pendingWin:0,
   lightning:0, rainSeed:Math.random()*1000,
   egg:{ konamiSeq:[], dinoMode:false, dinoPending:false, caught:0, reginaldSpawned:false,
         lastInputT:0, idleActive:false, idleChicken:null, gravityFlip:false,
@@ -665,10 +673,10 @@ function checkWorld(){
 const LEVELS=[
   {name:'First Drop',      world:0, lives:3, spawn:'easy', goal:{type:'catch',  target:12},   blurb:'Catch 12 chickens'},
   {name:'Egg Rush',        world:0, lives:3, spawn:'eggy', goal:{type:'eggs',   target:5},    blurb:'Catch 5 golden eggs'},
-  {name:'Storm Warning',   world:1, lives:3, spawn:'std',  goal:{type:'score',  target:700},  blurb:'Score 700 — dodge drums'},
-  {name:'Hold the Line',   world:2, lives:3, spawn:'std',  goal:{type:'survive',target:45},   blurb:'Survive 45 seconds'},
-  {name:'Rooster Roundup', world:2, lives:4, spawn:'boss', goal:{type:'rooster',target:3},    blurb:'Catch 3 rooster bosses'},
-  {name:'Toxic Bloom',     world:3, lives:3, spawn:'hard', goal:{type:'score',  target:2200}, blurb:'Score 2200 in the bloom'}
+  {name:'Storm Warning',   world:1, lives:3, spawn:'std',  goal:{type:'score',  target:700},  blurb:'Score 700 — dodge drums', clutch:true},
+  {name:'Hold the Line',   world:2, lives:3, spawn:'std',  goal:{type:'survive',target:45},   blurb:'Survive 45 seconds',      clutch:true},
+  {name:'Rooster Roundup', world:2, lives:4, spawn:'boss', goal:{type:'rooster',target:3},    blurb:'Catch 3 rooster bosses',  clutch:true},
+  {name:'Toxic Bloom',     world:3, lives:3, spawn:'hard', goal:{type:'score',  target:2200}, blurb:'Score 2200 in the bloom', clutch:true}
 ];
 function loadStars(){ try{ const o=JSON.parse(lsGet('levelStars','{}')); return o&&typeof o==='object'?o:{}; }catch(e){ return {}; } }
 function setStars(i,s){ const o=loadStars(); if((o[i]||0)<s){ o[i]=s; lsSet('levelStars',JSON.stringify(o)); } }
@@ -687,7 +695,17 @@ function levelGoalCur(){
 }
 function checkLevelGoal(){
   if(game.mode!=='level' || game.levelDone) return;
-  if(levelGoalCur() >= game.level.goal.target) levelWin();
+  if(levelGoalCur() >= game.level.goal.target){
+    game.levelDone=true;                                  // lock: no re-trigger, no death (see loseLife)
+    if(clutchEnabled()){
+      // victory bullet-time, then the win screen blooms after the dip
+      game.clutchT=CLUTCH_DUR*1.15; game.clutchDur=CLUTCH_DUR*1.15;
+      game.clutchX=net.x; game.clutchY=netY(); sfx('clutch');
+      game.pendingWin=VICTORY_DUR;
+    } else {
+      levelWin();
+    }
+  }
 }
 
 /* ============================================================
@@ -704,7 +722,29 @@ function spawnInterval(){
   if(game.activePU && game.activePU.kind==='slowmo') s*=0.45;
   return s;
 }
-function timeScale(){ return (game.activePU && game.activePU.kind==='slowmo') ? 0.45 : 1; }
+/* ---- Clutch Time: brief catch-triggered bullet-time on harder levels ---- */
+const CLUTCH_DUR=0.95, CLUTCH_MIN=0.26, CLUTCH_COOLDOWN=2.6, CLUTCH_BAND=0.66, VICTORY_DUR=0.85;
+function clutchEnabled(){
+  if(REDUCED) return false;                              // no slow-mo / vignette under reduced motion
+  if(game.mode==='level') return !!(game.level && game.level.clutch);
+  return game.world>=2;                                  // endless: from Meltdown onward
+}
+function clutchScale(){
+  if(game.clutchT<=0) return 1;
+  const p = 1 - game.clutchT/game.clutchDur;             // 0 at trigger -> 1 at end
+  const e = 1 - Math.pow(1-p,3);                          // easeOutCubic: snap slow, ease back
+  return CLUTCH_MIN + (1-CLUTCH_MIN)*e;
+}
+function triggerClutch(x,y){
+  if(!clutchEnabled() || game.clutchCool>0 || game.clutchT>0) return false;
+  game.clutchT=CLUTCH_DUR; game.clutchDur=CLUTCH_DUR; game.clutchCool=CLUTCH_COOLDOWN;
+  game.clutchX=x; game.clutchY=y; sfx('clutch');
+  return true;
+}
+function timeScale(){
+  const pu = (game.activePU && game.activePU.kind==='slowmo') ? 0.45 : 1;
+  return Math.min(pu, clutchScale());                    // deeper slow wins; they never stack past MIN
+}
 
 /* ---- spawn tables ---- */
 const ROSTER = {
@@ -828,6 +868,9 @@ function confettiBurst(x,y,color,n){
     P(x,y,Math.cos(a)*sp,Math.sin(a)*sp-120,rand(0.5,1.0),rand(3,7),color,'confetti');
   }
 }
+function floatText(x,y,text,color){
+  game.particles.push({x,y,vx:0,vy:-90,life:0.9,maxLife:0.9,r:30,color:color||'#39e6ff',kind:'text',text,rot:0,spin:0});
+}
 function catchSparks(x,y){
   if(REDUCED) return;
   for(let i=0;i<6;i++){ const a=rand(-1.0,-2.1),sp=rand(120,260);
@@ -849,7 +892,8 @@ function updateParticles(dt){
   for(let i=ps.length-1;i>=0;i--){ const p=ps[i];
     p.life-=dt; if(p.life<=0){ ps.splice(i,1); continue; }
     p.x+=p.vx*dt; p.y+=p.vy*dt;
-    if(p.kind!=='ring'){ p.vy+=900*dt; p.vx*=0.98; }
+    if(p.kind!=='ring' && p.kind!=='text'){ p.vy+=900*dt; p.vx*=0.98; }
+    if(p.kind==='text') p.vy*=0.92;       // gentle float-up, decelerating
     p.rot+=p.spin*dt;
     if(p.kind==='ring') p.r+=dt*240;
   }
@@ -902,6 +946,7 @@ function award(o, bonusMul){
   checkWorld();
 }
 function loseLife(){
+  if(game.levelDone) return;                              // level already won — victory slow-mo in progress
   if(game.shieldArmed){ game.shieldArmed=false; game.combo=0; sfx('shield');
     bigToast('SHIELD SAVED YOU!'); return; }
   game.lives--; game.lostLifeSinceMilestone=true; game.combo=0;
@@ -945,6 +990,15 @@ function handleCatch(o){
       if(o.type==='chicken'||o.type==='turbo') game.lvlChickens++;
       else if(o.type==='egg') game.lvlEggs++;
       else if(o.type==='rooster') game.lvlRooster++;
+    }
+    // Clutch Time: a deep last-instant save, or a boss catch, earns brief bullet-time
+    {
+      const ny=netY(), top=ny-NET_H/2, bot=ny+NET_H/2;
+      const howClose = clamp(game.egg.gravityFlip ? (bot-o.y)/(bot-top) : (o.y-top)/(bot-top), 0, 1);
+      const isBoss = (o.type==='rooster'||o.type==='reginald');
+      if(isBoss) triggerClutch(o.x,o.y);
+      else if((o.type==='chicken'||o.type==='turbo') && howClose>=CLUTCH_BAND && triggerClutch(o.x,o.y))
+        floatText(o.x,o.y-30,'CLUTCH!','#39e6ff');
     }
     catchSparks(o.x,o.y);
     // catch juice: a tiny kick on every catch, heavier for big birds
@@ -1010,6 +1064,10 @@ function update(dt){
   if(state!==STATE.PLAYING) return;
 
   game.t+=dt;
+  // clutch (bullet-time) timers run on REAL time, independent of the slow-mo they create
+  if(game.clutchT>0) game.clutchT=Math.max(0,game.clutchT-dt);
+  if(game.clutchCool>0) game.clutchCool=Math.max(0,game.clutchCool-dt);
+  if(game.pendingWin>0){ game.pendingWin-=dt; if(game.pendingWin<=0){ game.pendingWin=0; levelWin(); return; } }
   const ts=timeScale();
 
   // net motion
@@ -1157,6 +1215,23 @@ function render(){
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
   }
   ctx.restore();
+
+  // Clutch Time vignette (screen space) — strongest at the deepest slow, eases out
+  if(game.clutchT>0 && !REDUCED){
+    const slow=(1-clutchScale())/(1-CLUTCH_MIN);          // 1 at deepest -> 0 at end
+    if(slow>0.01){
+      const cx=screenW/2, cy=screenH/2, rin=Math.min(screenW,screenH)*0.22, rout=Math.max(screenW,screenH)*0.72;
+      ctx.save();
+      const g=ctx.createRadialGradient(cx,cy,rin,cx,cy,rout);
+      g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(3,9,2,'+(0.52*slow)+')');
+      ctx.fillStyle=g; ctx.fillRect(0,0,screenW,screenH);
+      ctx.globalCompositeOperation='screen';
+      const g2=ctx.createRadialGradient(cx,cy,rin*1.3,cx,cy,rout);
+      g2.addColorStop(0,'rgba(0,0,0,0)'); g2.addColorStop(1,'rgba(57,230,255,'+(0.12*slow)+')');
+      ctx.fillStyle=g2; ctx.fillRect(0,0,screenW,screenH);
+      ctx.restore();
+    }
+  }
 
   // CRT scanlines (screen space)
   if(!REDUCED) drawScanlines();
@@ -1416,6 +1491,10 @@ function drawParticles(){
       ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,6.28); ctx.stroke(); }
     else if(p.kind==='confetti'){ ctx.translate(p.x,p.y); ctx.rotate(p.rot);
       ctx.fillStyle=p.color; ctx.fillRect(-p.r/2,-p.r/2,p.r,p.r*0.6); }
+    else if(p.kind==='text'){ ctx.translate(p.x,p.y);
+      ctx.fillStyle=p.color; ctx.shadowColor=p.color; ctx.shadowBlur=14;
+      ctx.font='900 '+p.r+'px Orbitron, sans-serif'; ctx.textAlign='center';
+      ctx.fillText(p.text,0,0); }
     else { ctx.fillStyle=p.color; ctx.shadowColor=p.color; ctx.shadowBlur=8;
       ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,6.28); ctx.fill(); }
     ctx.restore();
@@ -1594,6 +1673,7 @@ function resetRunState(){
   game.shieldArmed=false; game.lostLifeSinceMilestone=false;
   game.reached3000=false; game.reached6000=false;
   game.comboFlash=0; game.vignette=0; game.shakeT=0;
+  game.clutchT=0; game.clutchDur=0; game.clutchCool=0; game.pendingWin=0;
   game.lvlChickens=0; game.lvlEggs=0; game.lvlRooster=0; game.levelDone=false;
   game.egg.caught=0; game.egg.reginaldSpawned=false;
   game.egg.dinoMode=game.egg.dinoPending; game.egg.dinoPending=false;
