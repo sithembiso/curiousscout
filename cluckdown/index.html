@@ -139,6 +139,94 @@
     .tag{font-size:clamp(11px,2.2vw,15px);}
     .skin{width:78px;} .skin canvas{width:52px;height:40px;}
   }
+
+  /* secondary text button */
+  .linkbtn{cursor:pointer;background:none;border:none;color:var(--cyan);
+    font-family:'Orbitron';font-weight:700;font-size:12px;letter-spacing:.12em;
+    text-transform:uppercase;opacity:.85;text-shadow:0 0 10px rgba(57,230,255,.4);
+    touch-action:manipulation;padding:6px;}
+  .linkbtn:hover{opacity:1;}
+
+  /* goal HUD (level mode) */
+  #goalCard{left:14px;top:84px;display:none;font-family:'Orbitron';
+    background:rgba(8,16,5,.62);border:1px solid rgba(163,255,60,.3);
+    border-radius:10px;padding:7px 11px;}
+  #goalLbl{font-size:9px;letter-spacing:.18em;opacity:.6;font-weight:700;}
+  #goalVal{font-size:17px;font-weight:900;color:var(--toxic);line-height:1.05;
+    text-shadow:0 0 12px rgba(163,255,60,.5);}
+  @media (max-width:380px){ #goalCard{top:80px;padding:5px 8px;} #goalVal{font-size:15px;} }
+
+  /* level select */
+  .levelgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:12px;width:100%;max-width:640px;margin-top:2px;}
+  .lvl{position:relative;cursor:pointer;text-align:left;color:var(--ink);
+    background:rgba(255,255,255,.04);border:1px solid rgba(163,255,60,.18);
+    border-radius:13px;padding:13px 14px 12px;font-family:'Rajdhani';
+    display:flex;flex-direction:column;gap:3px;touch-action:manipulation;
+    transition:transform .12s ease,border-color .2s,box-shadow .2s;}
+  .lvl:hover:not(.locked),.lvl:focus-visible:not(.locked){transform:translateY(-3px);
+    border-color:var(--toxic);box-shadow:0 0 22px -6px var(--toxic);outline:none;}
+  .lvl.locked{opacity:.5;cursor:not-allowed;filter:grayscale(.6);}
+  .lvl-n{font-family:'Orbitron';font-weight:700;font-size:10px;letter-spacing:.2em;
+    opacity:.6;text-transform:uppercase;}
+  .lvl-name{font-family:'Orbitron';font-weight:900;font-size:17px;color:#fff;text-transform:uppercase;}
+  .lvl-goal{font-size:13px;font-weight:600;opacity:.8;letter-spacing:.02em;}
+  .lvl-stars{font-size:14px;letter-spacing:2px;color:var(--gold);margin-top:2px;}
+  .lvl-stars .dim{color:rgba(255,255,255,.2);}
+  .lvl-lock{position:absolute;top:11px;right:12px;font-size:18px;}
+
+  /* win screen */
+  .stars{font-size:clamp(34px,9vw,60px);letter-spacing:8px;color:var(--gold);
+    text-shadow:0 0 22px rgba(255,207,58,.7);}
+  .stars .dim{color:rgba(255,255,255,.18);text-shadow:none;}
+
+  /* Star Wars opening crawl */
+  #crawlLayer{background:#000;overflow:hidden;justify-content:flex-start;
+    align-items:center;padding:0;gap:0;backdrop-filter:none;}
+  .crawl-stars{position:absolute;inset:0;pointer-events:none;
+    background:
+      radial-gradient(1px 1px at 20% 30%,#fff,transparent),
+      radial-gradient(1px 1px at 70% 22%,#fff,transparent),
+      radial-gradient(1px 1px at 40% 65%,#cfe,transparent),
+      radial-gradient(2px 2px at 85% 75%,#fff,transparent),
+      radial-gradient(1px 1px at 55% 48%,#fff,transparent),
+      radial-gradient(1px 1px at 12% 80%,#9cf,transparent),
+      radial-gradient(1px 1px at 92% 40%,#fff,transparent),
+      radial-gradient(1px 1px at 33% 12%,#fff,transparent),
+      radial-gradient(1px 1px at 62% 88%,#fff,transparent);
+    opacity:.55;}
+  .crawl-lead{position:absolute;top:42%;left:50%;transform:translate(-50%,-50%);
+    color:#4d9fff;font-family:'Orbitron';font-weight:700;
+    font-size:clamp(15px,3.6vw,26px);letter-spacing:.01em;max-width:80%;text-align:center;
+    text-shadow:0 0 16px rgba(77,159,255,.6);opacity:0;
+    animation:leadFade 6s ease forwards;}
+  @keyframes leadFade{0%{opacity:0;}18%{opacity:1;}80%{opacity:1;}100%{opacity:0;}}
+  .crawl-window{position:absolute;inset:0;overflow:hidden;
+    -webkit-mask-image:linear-gradient(to top,transparent 2%,#000 28%,#000 62%,transparent 96%);
+    mask-image:linear-gradient(to top,transparent 2%,#000 28%,#000 62%,transparent 96%);
+    perspective:320px;}
+  .crawl-text{position:absolute;left:50%;top:100%;width:min(680px,86%);
+    transform:translateX(-50%) rotateX(42deg);transform-origin:50% 0;
+    color:var(--toxic);font-family:'Orbitron';font-weight:700;text-align:center;
+    text-shadow:0 0 18px rgba(163,255,60,.4);
+    animation:crawlUp 44s linear 5.2s forwards;}
+  .crawl-text h2{font-size:clamp(22px,6vw,46px);font-weight:900;
+    background:linear-gradient(180deg,#fff,var(--toxic));-webkit-background-clip:text;
+    background-clip:text;color:transparent;margin-bottom:6px;line-height:1;}
+  .crawl-text .ep{display:block;font-size:clamp(13px,3vw,20px);letter-spacing:.18em;opacity:.9;
+    text-transform:uppercase;margin-bottom:34px;color:var(--acid);}
+  .crawl-text p{font-size:clamp(16px,3.4vw,27px);line-height:1.5;margin:0 0 26px;letter-spacing:.01em;}
+  @keyframes crawlUp{from{top:100%;}to{top:-260%;}}
+  .crawl-skip{position:absolute;bottom:max(18px,env(safe-area-inset-bottom));left:50%;
+    transform:translateX(-50%);z-index:2;}
+  @media (prefers-reduced-motion: reduce){
+    #crawlLayer{justify-content:flex-start;overflow-y:auto;padding:54px 8% 96px;}
+    .crawl-window{position:relative;inset:auto;width:100%;height:auto;perspective:none;
+      mask-image:none;-webkit-mask-image:none;}
+    .crawl-text{position:relative;left:auto;top:auto;width:100%;transform:none;animation:none;}
+    .crawl-lead{position:relative;top:auto;left:auto;transform:none;opacity:1;animation:none;margin-bottom:26px;}
+    .crawl-skip{position:fixed;}
+  }
 </style>
 </head>
 <body>
@@ -152,6 +240,7 @@
     <div class="card" id="comboCard"><div id="combo">×2</div></div>
     <div class="card" id="rightCard"><div id="coins">🪙 0</div><div id="lives">🐣🐣🐣</div></div>
     <div id="pauseBtn">⏸️</div>
+    <div class="card" id="goalCard"><div id="goalLbl">GOAL</div><div id="goalVal">—</div></div>
     <div id="puCard"><div id="puName">SLOW-MO</div></div>
   </div>
 
@@ -164,11 +253,53 @@
     <div class="title">CLUCKDOWN</div>
     <div class="tag">Batch #7 went toxic-green and leapt off the roof. Sweep your net — catch chickens, dodge lab drums.</div>
     <div class="hi" id="hiStart">HI 0</div>
-    <div class="btnrow"><button class="btn" id="playBtn">▶ PLAY</button></div>
+    <div class="btnrow">
+      <button class="btn" id="levelsBtn">▶ LEVELS</button>
+      <button class="btn ghost" id="endlessBtn">ENDLESS</button>
+    </div>
     <div class="skins" id="skinPicker"></div>
     <button class="shopbtn" id="shopBtn">Buy Gold Mesh — 200 🪙</button>
     <div class="hint" id="ctrlHint">Move pointer / drag to sweep the net</div>
+    <button class="linkbtn" id="storyBtn">↻ Replay intro</button>
     <div class="byline">By Lunga Khumalo</div>
+  </div>
+
+  <!-- LEVEL SELECT -->
+  <div class="layer hidden" id="levelLayer">
+    <div class="endbig" style="color:var(--toxic);font-size:clamp(26px,7vw,52px)">PICK A LEVEL</div>
+    <div class="tag">Beat a level to unlock the next. Earn up to ★★★ for clean runs.</div>
+    <div class="levelgrid" id="levelGrid"></div>
+    <div class="btnrow"><button class="btn ghost" id="levelsBackBtn">◂ BACK</button></div>
+  </div>
+
+  <!-- LEVEL WIN -->
+  <div class="layer hidden" id="winLayer">
+    <div class="endbig" style="color:var(--toxic)" id="winTitle">LEVEL COMPLETE!</div>
+    <div class="stars" id="winStars">★★★</div>
+    <div class="stat" id="winSub">Nice net work.</div>
+    <div class="btnrow">
+      <button class="btn" id="nextBtn">NEXT ▸</button>
+      <button class="btn ghost" id="replayBtn">REPLAY</button>
+      <button class="btn ghost" id="winMenuBtn">LEVELS</button>
+    </div>
+  </div>
+
+  <!-- STAR WARS OPENING CRAWL -->
+  <div class="layer hidden" id="crawlLayer">
+    <div class="crawl-stars"></div>
+    <div class="crawl-lead">A long time ago, in a poultry lab not so far away…</div>
+    <div class="crawl-window">
+      <div class="crawl-text" id="crawlText">
+        <h2>CLUCKDOWN</h2>
+        <span class="ep">Episode VII · The Green Descent</span>
+        <p>Deep inside CLUCKLING LABS, a snack-food empire chased its greatest dream: the world's first SELF-SEASONING CHICKEN.</p>
+        <p>Then came BATCH #7.</p>
+        <p>The chickens turned glow-in-the-dark GREEN, grew bold OPINIONS, and — flapping tiny defiant wings — leapt from the laboratory roof.</p>
+        <p>Now they rain upon the town below. Only YOU, armed with a humble NET, stand between the streets and total cluck-tastrophe.</p>
+        <p>Sweep fast. Dodge the toxic drums. And whatever you do… do not anger the ROOSTER.</p>
+      </div>
+    </div>
+    <button class="btn ghost crawl-skip" id="skipBtn">SKIP ▸</button>
   </div>
 
   <!-- PAUSE -->
@@ -183,7 +314,7 @@
 
   <!-- GAME OVER -->
   <div class="layer hidden" id="overLayer">
-    <div class="endbig" style="color:var(--hazard)">SPLAT!</div>
+    <div class="endbig" style="color:var(--hazard)" id="overTitle">SPLAT!</div>
     <div class="newhi hidden" id="newHi">★ NEW HIGH SCORE ★</div>
     <div class="stat">SCORE <b id="finalScore">0</b></div>
     <div class="stat">HI <b id="finalHi">0</b></div>
@@ -340,11 +471,13 @@ function sfx(kind,opt){
 /* ============================================================
    GAME STATE
    ============================================================ */
-const STATE = { START:'start', PLAYING:'playing', PAUSED:'paused', OVER:'over' };
+const STATE = { INTRO:'intro', START:'start', LEVELS:'levels', PLAYING:'playing', PAUSED:'paused', OVER:'over', WIN:'win' };
 let state = STATE.START;
 
 const game = {
-  score:0, combo:0, lives:3, coins:0, highscore:0,
+  score:0, combo:0, lives:3, maxLives:3, coins:0, highscore:0,
+  mode:'endless', level:null, levelIndex:-1, levelDone:false,
+  lvlChickens:0, lvlEggs:0, lvlRooster:0,
   t:0, spawnClock:0, world:0, worldFade:1, prevWorldColors:null,
   objects:[], particles:[], feathers:[], dust:[],
   net:null, activePU:null,
@@ -510,6 +643,7 @@ function worldForScore(s){
   let w=0; for(let i=0;i<WORLDS.length;i++) if(s>=WORLDS[i].score) w=i; return w;
 }
 function checkWorld(){
+  if(game.mode==='level') return;   // levels keep a fixed, hand-picked world
   const w=worldForScore(game.score);
   if(w>game.world){
     // comeback grace (capped at 3, shown so an 8yo learns the reward exists)
@@ -523,6 +657,37 @@ function checkWorld(){
     if(w===2 && state===STATE.PLAYING) game.reached3000=true;
     if(w===3 && state===STATE.PLAYING) game.reached6000=true;
   }
+}
+
+/* ============================================================
+   LEVELS  (selectable, goal-based; endless mode is unaffected)
+   ============================================================ */
+const LEVELS=[
+  {name:'First Drop',      world:0, lives:3, spawn:'easy', goal:{type:'catch',  target:12},   blurb:'Catch 12 chickens'},
+  {name:'Egg Rush',        world:0, lives:3, spawn:'eggy', goal:{type:'eggs',   target:5},    blurb:'Catch 5 golden eggs'},
+  {name:'Storm Warning',   world:1, lives:3, spawn:'std',  goal:{type:'score',  target:700},  blurb:'Score 700 — dodge drums'},
+  {name:'Hold the Line',   world:2, lives:3, spawn:'std',  goal:{type:'survive',target:45},   blurb:'Survive 45 seconds'},
+  {name:'Rooster Roundup', world:2, lives:4, spawn:'boss', goal:{type:'rooster',target:3},    blurb:'Catch 3 rooster bosses'},
+  {name:'Toxic Bloom',     world:3, lives:3, spawn:'hard', goal:{type:'score',  target:2200}, blurb:'Score 2200 in the bloom'}
+];
+function loadStars(){ try{ const o=JSON.parse(lsGet('levelStars','{}')); return o&&typeof o==='object'?o:{}; }catch(e){ return {}; } }
+function setStars(i,s){ const o=loadStars(); if((o[i]||0)<s){ o[i]=s; lsSet('levelStars',JSON.stringify(o)); } }
+function levelUnlocked(i,stars){ stars=stars||loadStars(); return i===0 || (stars[i-1]||0)>=1; }
+function starStr(n){ let o=''; for(let i=0;i<3;i++) o+= i<n?'★':'<span class="dim">★</span>'; return o; }
+function levelGoalCur(){
+  const g=game.level&&game.level.goal; if(!g) return 0;
+  switch(g.type){
+    case 'catch':   return game.lvlChickens;
+    case 'eggs':    return game.lvlEggs;
+    case 'rooster': return game.lvlRooster;
+    case 'score':   return game.score;
+    case 'survive': return Math.floor(game.t);
+  }
+  return 0;
+}
+function checkLevelGoal(){
+  if(game.mode!=='level' || game.levelDone) return;
+  if(levelGoalCur() >= game.level.goal.target) levelWin();
 }
 
 /* ============================================================
@@ -557,11 +722,26 @@ function weightTable(){
   if(t<30) return {chicken:60,turbo:10,egg:8,drum:7,feather:3,vial:6};
   return {chicken:46,egg:9,turbo:8,drum:14,feather:6,vial:8,rooster:3};
 }
+function levelWeightTable(){
+  switch(game.level.spawn){
+    case 'easy': return {chicken:78,turbo:12,egg:10};
+    case 'eggy': return {chicken:44,egg:36,turbo:10,vial:10};
+    case 'boss': return {chicken:40,egg:8,turbo:8,drum:14,vial:6,rooster:24};
+    case 'hard': return {chicken:40,egg:8,turbo:10,drum:18,feather:8,vial:8,rooster:8};
+    case 'std':
+    default:
+      return game.t<10
+        ? {chicken:62,turbo:10,egg:8,drum:8,vial:6,feather:6}
+        : {chicken:48,egg:9,turbo:9,drum:16,feather:7,vial:8,rooster:3};
+  }
+}
 function rollType(){
-  const tbl=weightTable();
+  const levelMode = game.mode==='level';
+  const tbl = levelMode ? levelWeightTable() : weightTable();
   // rooster gating
+  const roosterMinT = (levelMode && game.level.spawn==='boss') ? 2 : 25;
   const keys=Object.keys(tbl).filter(k=>{
-    if(k==='rooster'){ if(game.t<25) return false; if(game.objects.some(o=>o.type==='rooster')) return false; }
+    if(k==='rooster'){ if(game.t<roosterMinT) return false; if(game.objects.some(o=>o.type==='rooster')) return false; }
     return true;
   });
   let total=0; keys.forEach(k=>total+=tbl[k]);
@@ -761,6 +941,11 @@ function handleCatch(o){
     o.absorbTo={x:net.x,y:netY()};
     comboUp();
     onGoodCatch();
+    if(game.mode==='level'){
+      if(o.type==='chicken'||o.type==='turbo') game.lvlChickens++;
+      else if(o.type==='egg') game.lvlEggs++;
+      else if(o.type==='rooster') game.lvlRooster++;
+    }
     catchSparks(o.x,o.y);
     // catch juice: a tiny kick on every catch, heavier for big birds
     const kick=(o.type==='rooster'||o.type==='reginald')?0.14:0.06;
@@ -915,6 +1100,8 @@ function update(dt){
       // eggs/vials/drums/feathers missed = no penalty
     }
   }
+
+  if(game.mode==='level') checkLevelGoal();
 }
 
 /* ============================================================
@@ -1332,23 +1519,38 @@ const elCombo=document.getElementById('combo');
 const elComboCard=document.getElementById('comboCard');
 const elCoins=document.getElementById('coins');
 const elLives=document.getElementById('lives');
+const elGoalCard=document.getElementById('goalCard');
+const elGoalVal=document.getElementById('goalVal');
 function comboColor(){
   const c=game.combo;
   if(c>=40) return '#ff2d95'; if(c>=20) return '#ffcf3a';
   if(c>=10) return '#d8ff66'; return '#A3FF3C';
 }
+const GOAL_ICON={catch:'🐔',eggs:'🥚',rooster:'🐓',score:'',survive:'⏱'};
 function syncHud(){
   elScore.textContent=game.score;
-  // progress to next milestone
-  const w=game.world; const cur=WORLDS[w].score;
-  const next=w+1<WORLDS.length?WORLDS[w+1].score:cur+3000;
-  elFill.style.width=clamp((game.score-cur)/(next-cur)*100,0,100)+'%';
+  const inLevel = game.mode==='level';
+  const playing = state===STATE.PLAYING || state===STATE.PAUSED;
+  if(inLevel && playing){
+    const g=game.level.goal, cur=levelGoalCur(), tgt=g.target;
+    elFill.style.width=clamp(cur/tgt*100,0,100)+'%';
+    elGoalCard.style.display='block';
+    if(g.type==='survive') elGoalVal.textContent='⏱ '+Math.max(0,tgt-cur)+'s';
+    else if(g.type==='score') elGoalVal.textContent=cur+' / '+tgt;
+    else elGoalVal.textContent=GOAL_ICON[g.type]+' '+cur+' / '+tgt;
+  } else {
+    elGoalCard.style.display='none';
+    // endless: progress to next world milestone
+    const w=game.world, cur=WORLDS[w].score;
+    const next=w+1<WORLDS.length?WORLDS[w+1].score:cur+3000;
+    elFill.style.width=clamp((game.score-cur)/(next-cur)*100,0,100)+'%';
+  }
   if(game.combo>=2){ elComboCard.style.opacity=1;
     elCombo.textContent = game.combo>=40 ? ('★'+game.combo+'★') : ('×'+game.combo);
     elCombo.style.color=comboColor(); }
   else elComboCard.style.opacity=0;
   elCoins.textContent='🪙 '+game.coins;
-  let pips=''; for(let i=0;i<3;i++) pips+= i<game.lives?'🐣':'💀';
+  let pips=''; for(let i=0;i<game.maxLives;i++) pips+= i<game.lives?'🐣':'💀';
   elLives.textContent=pips;
 }
 
@@ -1367,15 +1569,16 @@ function bigToast(msg){
    STATE TRANSITIONS
    ============================================================ */
 const startLayer=document.getElementById('startLayer');
+const levelLayer=document.getElementById('levelLayer');
 const pauseLayer=document.getElementById('pauseLayer');
 const overLayer=document.getElementById('overLayer');
+const winLayer=document.getElementById('winLayer');
+const crawlLayer=document.getElementById('crawlLayer');
 const hud=document.getElementById('hud');
+const LAYERS={start:startLayer, levels:levelLayer, pause:pauseLayer, over:overLayer, win:winLayer, crawl:crawlLayer};
 
 function showLayer(which){
-  startLayer.classList.toggle('hidden', which!=='start');
-  pauseLayer.classList.toggle('hidden', which!=='pause');
-  overLayer.classList.toggle('hidden', which!=='over');
-  hud.style.display = (which==='none'||which==='pause')?'block':'block';
+  for(const k in LAYERS) LAYERS[k].classList.toggle('hidden', k!==which);
   const onStart = which==='start';
   document.getElementById('eggZone').style.display = onStart?'block':'none';
   const lz=document.getElementById('logoZone');
@@ -1383,26 +1586,43 @@ function showLayer(which){
   lz.style.pointerEvents = onStart?'auto':'none';
 }
 
-function startRound(){
-  game.score=0; game.combo=0; game.lives=3; game.coins=0;
+function resetRunState(){
+  game.score=0; game.combo=0; game.coins=0; game.lives=game.maxLives;
   game.t=0; game.objects=[]; game.particles=[]; game.feathers=[]; game.coinFly=[];
   game.dust=[]; game.splatDecals=[]; game.activePU=null; game.spawnClock=0; game.world=0;
   game.worldFade=1; game.prevWorldColors=null; game.worldSplash={t:0,label:'',emoji:''};
   game.shieldArmed=false; game.lostLifeSinceMilestone=false;
   game.reached3000=false; game.reached6000=false;
   game.comboFlash=0; game.vignette=0; game.shakeT=0;
+  game.lvlChickens=0; game.lvlEggs=0; game.lvlRooster=0; game.levelDone=false;
   game.egg.caught=0; game.egg.reginaldSpawned=false;
   game.egg.dinoMode=game.egg.dinoPending; game.egg.dinoPending=false;
   net.x=W/2; net.target=W/2; net.prevX=W/2; net.vx=0; net.squash=0;
   game.hintAlpha = (lsGet('played','0')==='1')?0:1;
   document.getElementById('puCard').style.display='none';
-  if(game.egg.dinoMode) bigToast("Batch #7 remembers what it was…");
+}
+function beginPlay(){
   if(game.egg.gravityFlip) bigToast('Whoops — wrong way up. Happy April 1!');
+  else if(game.egg.dinoMode) bigToast("Batch #7 remembers what it was…");
   audioInit(); audioResume();
-  state=STATE.PLAYING;
-  showLayer('none');
-  resetIdle();
-  lsSet('played','1');
+  state=STATE.PLAYING; showLayer('none'); resetIdle(); lsSet('played','1');
+}
+function startRound(){   // ENDLESS mode
+  game.mode='endless'; game.level=null; game.levelIndex=-1; game.maxLives=3;
+  resetRunState();
+  beginPlay();
+}
+function startLevel(i){  // LEVEL mode
+  game.mode='level'; game.levelIndex=i; game.level=LEVELS[i];
+  game.maxLives=game.level.lives;
+  resetRunState();
+  game.world=game.level.world;   // fixed, hand-picked world (no score progression)
+  beginPlay();
+  bigToast('LVL '+(i+1)+' · '+game.level.blurb);
+}
+function openLevels(){
+  state=STATE.LEVELS; showLayer('levels'); buildLevelMenu();
+  if(idleTimer) clearTimeout(idleTimer);
 }
 function pauseGame(){
   if(state!==STATE.PLAYING) return;
@@ -1417,16 +1637,18 @@ function quitToMenu(){
   state=STATE.START; showLayer('start');
   refreshStartUI(); resetIdle();
 }
+function retry(){ if(game.mode==='level') startLevel(game.levelIndex); else startRound(); }
 function gameOver(){
   state=STATE.OVER;
-  // skin unlocks from this run
+  // skin unlocks from this run (endless milestones)
   if(game.reached3000) saveUnlock('neonhoop');
   if(game.reached6000) saveUnlock('toxiccage');
   // persist
-  const isHi=game.score>game.highscore;
+  const isHi=game.mode==='endless' && game.score>game.highscore;
   if(isHi){ game.highscore=game.score; lsSet('highscore',game.score); }
   lsSet('coins', (parseInt(lsGet('coins','0'),10)||0)+game.coins);
   game.egg.dinoMode=false;
+  document.getElementById('overTitle').textContent = game.mode==='level' ? 'OUT OF EGGS!' : 'SPLAT!';
   document.getElementById('finalScore').textContent=game.score;
   document.getElementById('finalHi').textContent=game.highscore;
   document.getElementById('finalCoins').textContent=game.coins;
@@ -1434,6 +1656,57 @@ function gameOver(){
   if(isHi) confettiBurst(W/2,H*0.4,'#ffcf3a',40);
   showLayer('over');
   if(idleTimer) clearTimeout(idleTimer);
+}
+function levelWin(){
+  game.levelDone=true; state=STATE.WIN;
+  const i=game.levelIndex, L=game.level;
+  const lost=game.maxLives-game.lives;             // misses this run
+  let stars=1; if(lost<=1) stars=2; if(lost===0) stars=3;
+  setStars(i,stars);
+  lsSet('coins', (parseInt(lsGet('coins','0'),10)||0)+game.coins);  // bank coins for shop/unlocks
+  game.egg.dinoMode=false;
+  document.getElementById('winTitle').textContent='LEVEL '+(i+1)+' CLEAR!';
+  document.getElementById('winStars').innerHTML=starStr(stars);
+  document.getElementById('winSub').textContent=L.name+' — '+game.coins+' 🪙 earned';
+  const hasNext=i+1<LEVELS.length;
+  document.getElementById('nextBtn').style.display=hasNext?'inline-block':'none';
+  confettiBurst(W/2,H*0.4,'#A3FF3C',46);
+  sfx('reginald');
+  showLayer('win');
+  if(idleTimer) clearTimeout(idleTimer);
+}
+function buildLevelMenu(){
+  const grid=document.getElementById('levelGrid'); grid.innerHTML='';
+  const stars=loadStars();
+  LEVELS.forEach((L,i)=>{
+    const unlocked=levelUnlocked(i,stars), earned=stars[i]||0;
+    const b=document.createElement('button');
+    b.className='lvl'+(unlocked?'':' locked');
+    b.innerHTML='<span class="lvl-n">LVL '+(i+1)+'</span>'+
+      '<span class="lvl-name">'+L.name+'</span>'+
+      '<span class="lvl-goal">'+L.blurb+'</span>'+
+      '<span class="lvl-stars">'+starStr(earned)+'</span>'+
+      (unlocked?'':'<span class="lvl-lock">🔒</span>');
+    if(unlocked) b.addEventListener('click',()=>{ audioInit(); startLevel(i); });
+    grid.appendChild(b);
+  });
+}
+
+/* ---- Star Wars opening crawl ---- */
+function showCrawl(){
+  state=STATE.INTRO;
+  if(idleTimer) clearTimeout(idleTimer);
+  showLayer('crawl');
+  const t=document.getElementById('crawlText');
+  if(!REDUCED){
+    t.style.animation='none'; void t.offsetWidth; t.style.animation='';  // restart crawl
+    t.addEventListener('animationend', endCrawl, {once:true});
+  }
+}
+function endCrawl(){
+  if(state!==STATE.INTRO) return;
+  lsSet('sawintro','1');
+  state=STATE.START; showLayer('start'); refreshStartUI(); resetIdle();
 }
 
 /* total coins persisted; load */
@@ -1490,12 +1763,22 @@ function drawSkinPreview(c,id){
 }
 
 /* ---- buttons ---- */
-document.getElementById('playBtn').addEventListener('click',()=>{ audioInit(); startRound(); });
+const goMenu=()=>{ if(game.mode==='level') openLevels(); else quitToMenu(); };
+document.getElementById('levelsBtn').addEventListener('click',()=>{ audioInit(); openLevels(); });
+document.getElementById('endlessBtn').addEventListener('click',()=>{ audioInit(); startRound(); });
+document.getElementById('storyBtn').addEventListener('click',showCrawl);
+document.getElementById('levelsBackBtn').addEventListener('click',quitToMenu);
 document.getElementById('resumeBtn').addEventListener('click',resumeGame);
-document.getElementById('restartBtn').addEventListener('click',startRound);
-document.getElementById('quitBtn').addEventListener('click',quitToMenu);
-document.getElementById('retryBtn').addEventListener('click',startRound);
-document.getElementById('menuBtn').addEventListener('click',quitToMenu);
+document.getElementById('restartBtn').addEventListener('click',retry);
+document.getElementById('quitBtn').addEventListener('click',goMenu);
+document.getElementById('retryBtn').addEventListener('click',retry);
+document.getElementById('menuBtn').addEventListener('click',goMenu);
+document.getElementById('nextBtn').addEventListener('click',()=>{ if(game.levelIndex+1<LEVELS.length) startLevel(game.levelIndex+1); else openLevels(); });
+document.getElementById('replayBtn').addEventListener('click',retry);
+document.getElementById('winMenuBtn').addEventListener('click',openLevels);
+document.getElementById('skipBtn').addEventListener('click',endCrawl);
+crawlLayer.addEventListener('pointerdown',endCrawl);
+window.addEventListener('keydown',e=>{ if(state===STATE.INTRO && (e.code==='Escape'||e.code==='Enter'||e.code==='Space')) endCrawl(); });
 document.getElementById('pauseBtn').addEventListener('click',pauseGame);
 document.getElementById('shopBtn').addEventListener('click',()=>{
   let bank=parseInt(lsGet('coins','0'),10)||0;
@@ -1523,8 +1806,8 @@ function loop(now){
 /* ---- boot ---- */
 fit();
 refreshStartUI();
-showLayer('start');
-resetIdle();
+if(lsGet('sawintro','0')!=='1'){ showCrawl(); }   // opening crawl on first ever load
+else { showLayer('start'); resetIdle(); }
 requestAnimationFrame(loop);
 
 })();
