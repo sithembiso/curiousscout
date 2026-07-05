@@ -11,7 +11,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    html, body { height: 100%; }
+    html { height: 100%; }
 
     body {
       min-height: 100%;
@@ -200,6 +200,82 @@
 
     .card:hover .play { transform: translateX(4px); }
 
+    .support {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 620px;
+      margin-top: 52px;
+      padding: 30px 26px 26px;
+      text-align: center;
+      background: rgba(22, 18, 48, 0.66);
+      border: 2px solid color-mix(in srgb, #FFDD00 45%, transparent);
+      border-radius: 16px;
+      backdrop-filter: blur(7px);
+      -webkit-backdrop-filter: blur(7px);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04), 0 8px 26px rgba(0,0,0,0.55);
+      overflow: hidden;
+    }
+
+    .support::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: #FFDD00;
+      box-shadow: 0 0 14px #FFDD00;
+    }
+
+    .support h2 {
+      font-family: "Orbitron", sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: #ffdd00;
+      text-shadow: 0 0 12px rgba(255,221,0,0.55);
+      margin-bottom: 12px;
+    }
+
+    .support p {
+      font-size: 0.98rem;
+      color: #c8c6e6;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+
+    .support p strong { color: #fff; }
+
+    .bmc-wrap {
+      display: flex;
+      justify-content: center;
+    }
+
+    .bmc-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 13px 24px;
+      background: #FFDD00;
+      color: #000;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: 0.3px;
+      text-decoration: none;
+      border: 2px solid #000;
+      border-radius: 11px;
+      box-shadow: 0 0 18px rgba(255,221,0,0.45);
+      transition: transform 0.16s ease, box-shadow 0.25s ease;
+    }
+
+    .bmc-link:hover, .bmc-link:focus-visible {
+      transform: translateY(-2px);
+      box-shadow: 0 0 30px rgba(255,221,0,0.75);
+      outline: none;
+    }
+
+    .bmc-link .bmc-emoji { font-size: 1.25rem; line-height: 1; }
+
     footer {
       margin-top: auto;
       padding-top: 44px;
@@ -264,6 +340,17 @@
       <div class="play">PLAY &#9654;</div>
     </a>
   </main>
+
+  <section class="support">
+    <h2>Support Lunga&rsquo;s Games</h2>
+    <p><strong>Ask your parents</strong> to support my projects &mdash; and get your name in the credits! &#129302;</p>
+    <div class="bmc-wrap">
+      <a class="bmc-link" href="https://buymeacoffee.com/curiousscout" target="_blank" rel="noopener">
+        <span class="bmc-emoji">&#129302;</span>
+        <span>Donate AI tokens</span>
+      </a>
+    </div>
+  </section>
 
   <footer>Made with care &middot; CuriousScout &middot; By Lunga Khumalo</footer>
 </body>
