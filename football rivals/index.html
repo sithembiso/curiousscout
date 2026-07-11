@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Football Rivals</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; background:#0a0f1a; font-family:'Trebuchet MS','Segoe UI',system-ui,sans-serif; overflow:hidden; color:#fff; }
+  #game { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  canvas { background:#1b7a3a; touch-action:none; display:block; box-shadow:0 0 60px rgba(0,0,0,.6); }
+
+  .screen { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:radial-gradient(circle at 50% 30%, #16324f, #070c16); padding:24px; text-align:center; z-index:10; overflow-y:auto; }
+  .hidden { display:none !important; }
+
+  h1 { font-size:clamp(34px,9vw,72px); letter-spacing:2px; text-transform:uppercase;
+    background:linear-gradient(#ffe259,#ffa751); -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:0 4px 0 rgba(0,0,0,.25); }
+  .sub { color:#9fc2e0; margin:6px 0 26px; font-size:clamp(13px,3.5vw,18px); letter-spacing:1px; }
+
+  .modes { display:flex; flex-direction:column; gap:12px; width:min(420px,92vw); }
+  .mode { display:flex; align-items:center; gap:14px; padding:14px 18px; border-radius:16px; cursor:pointer;
+    border:2px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05); transition:.15s; text-align:left; }
+  .mode:hover { transform:translateY(-2px); border-color:#ffe259; background:rgba(255,226,89,.1); }
+  .mode .ic { font-size:30px; width:42px; text-align:center; }
+  .mode .txt { flex:1; }
+  .mode .name { font-size:19px; font-weight:bold; }
+  .mode .desc { font-size:13px; color:#9fc2e0; }
+  .mode .goal { font-size:12px; padding:4px 9px; border-radius:20px; background:rgba(0,0,0,.35); white-space:nowrap; }
+  .mode.done { border-color:#43d17a; }
+  .mode.done .name::after { content:' ✓'; color:#43d17a; }
+  .mode.endless { border-color:#c86bff; background:rgba(200,107,255,.08); }
+
+  .btn { margin-top:18px; padding:14px 34px; font-size:18px; font-weight:bold; border:none; border-radius:40px; cursor:pointer;
+    background:linear-gradient(#ffe259,#ffa751); color:#3a2200; box-shadow:0 6px 0 #b56d1e; transition:.1s; }
+  .btn:active { transform:translateY(4px); box-shadow:0 2px 0 #b56d1e; }
+  .btn.alt { background:linear-gradient(#7ec8ff,#4a90d9); color:#062033; box-shadow:0 6px 0 #2a5f8f; }
+
+  #hud { position:fixed; top:0; left:0; right:0; z-index:5; display:flex; align-items:center; justify-content:space-between;
+    padding:10px 16px; pointer-events:none; }
+  .team { display:flex; flex-direction:column; align-items:center; min-width:90px; }
+  .team .tn { font-size:13px; opacity:.85; letter-spacing:1px; }
+  .team .ts { font-size:40px; font-weight:bold; line-height:1; }
+  #hud .mid { text-align:center; }
+  #hud .mid .to { font-size:12px; color:#ffe259; letter-spacing:1px; }
+  #hud .mid .md { font-size:15px; font-weight:bold; }
+  .p1 .ts { color:#6cc6ff; } .p2 .ts { color:#ff7b7b; }
+
+  #pauseBtn { position:fixed; top:10px; right:50%; transform:translateX(50%); margin-top:44px; z-index:6;
+    pointer-events:auto; background:rgba(0,0,0,.4); border:1px solid rgba(255,255,255,.2); color:#fff;
+    border-radius:20px; padding:5px 14px; font-size:12px; cursor:pointer; }
+
+  #toast { position:fixed; top:38%; left:50%; transform:translate(-50%,-50%) scale(0); z-index:8;
+    font-size:clamp(40px,12vw,90px); font-weight:bold; text-transform:uppercase; pointer-events:none;
+    background:linear-gradient(#ffe259,#ff6b6b); -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:0 6px 20px rgba(0,0,0,.4); transition:transform .3s cubic-bezier(.2,1.5,.4,1); }
+  #toast.show { transform:translate(-50%,-50%) scale(1); }
+
+  /* touch controls */
+  #controls { position:fixed; inset:0; z-index:4; pointer-events:none; }
+  #stickZone { position:absolute; left:0; bottom:0; width:45%; height:55%; pointer-events:auto; }
+  #stickBase { position:absolute; width:120px; height:120px; border-radius:50%; border:3px solid rgba(255,255,255,.25);
+    background:rgba(255,255,255,.06); transform:translate(-50%,-50%); display:none; }
+  #stickNub { position:absolute; width:56px; height:56px; border-radius:50%; background:rgba(255,255,255,.35);
+    transform:translate(-50%,-50%); display:none; }
+  #kickBtn { position:absolute; right:26px; bottom:34px; width:104px; height:104px; border-radius:50%; pointer-events:auto;
+    background:radial-gradient(circle at 40% 35%,#fff,#ffd24a 60%,#e8992a); color:#5a3400; font-weight:bold; font-size:19px;
+    border:none; box-shadow:0 6px 0 #b56d1e; cursor:pointer; }
+  #kickBtn:active { transform:translateY(4px); box-shadow:0 2px 0 #b56d1e; }
+  .hint { font-size:12px; color:#7fa5c9; margin-top:18px; max-width:340px; line-height:1.5; }
+  .win h1 { background:linear-gradient(#ffe259,#43d17a); -webkit-background-clip:text; background-clip:text; }
+  .trophy { font-size:120px; animation:bob 1.6s ease-in-out infinite; }
+  @keyframes bob { 0%,100%{transform:translateY(0) rotate(-4deg);} 50%{transform:translateY(-16px) rotate(4deg);} }
+  .fireworks { font-size:34px; letter-spacing:8px; }
+</style>
+</head>
+<body>
+<div id="game"><canvas id="cv"></canvas></div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div class="team p1"><div class="tn">YOU</div><div class="ts" id="s1">0</div></div>
+  <div class="mid"><div class="to" id="target">FIRST TO 3</div><div class="md" id="vs">vs AI</div></div>
+  <div class="team p2"><div class="tn" id="oppName">AI</div><div class="ts" id="s2">0</div></div>
+</div>
+<button id="pauseBtn" class="hidden">❚❚ Menu</button>
+
+<!-- touch controls -->
+<div id="controls" class="hidden">
+  <div id="stickZone"></div>
+  <div id="stickBase"></div><div id="stickNub"></div>
+  <button id="kickBtn">KICK</button>
+</div>
+
+<div id="toast"></div>
+
+<!-- Title / mode select -->
+<div id="menu" class="screen">
+  <h1>Football Rivals</h1>
+  <div class="sub">⚽ Beat all 5 rivals to lift the World Cup 🏆</div>
+  <div class="modes" id="modeList"></div>
+  <div class="hint">Move with the joystick (or WASD / arrow keys). Press KICK (or Space) to shoot when you're on the ball.</div>
+</div>
+
+<!-- Result -->
+<div id="result" class="screen hidden">
+  <div id="resIcon" style="font-size:80px"></div>
+  <h1 id="resTitle">Goal!</h1>
+  <div class="sub" id="resSub"></div>
+  <button class="btn" id="againBtn">Play Again</button>
+  <button class="btn alt" id="menuBtn">Main Menu</button>
+</div>
+
+<!-- World Cup -->
+<div id="cup" class="screen win hidden">
+  <div class="fireworks">🎆 🎇 ✨ 🎆 🎇</div>
+  <div class="trophy">🏆</div>
+  <h1>World Cup Champion!</h1>
+  <div class="sub">You defeated every rival — AI, The Coach, Messi, Ronaldo, and the Mbappé + Yamal duo!</div>
+  <button class="btn" id="cupBtn">Back to Menu</button>
+</div>
+
+<script>
+"use strict";
+(function(){
+  const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  const $ = id => document.getElementById(id);
+
+  // ---- Modes ----
+  const MODES = [
+    { key:'sez',  name:'Super EZ',   opp:'AI',            icon:'🤖', target:3,  oppSpeed:1.5, oppSkill:0.15, defenders:1 },
+    { key:'ez',   name:'Easy',       opp:'The Coach',     icon:'🧑‍🏫', target:5,  oppSpeed:2.0, oppSkill:0.30, defenders:1 },
+    { key:'med',  name:'Medium',     opp:'Messi',         icon:'🐐', target:8,  oppSpeed:2.6, oppSkill:0.50, defenders:1 },
+    { key:'hard', name:'Hard',       opp:'Ronaldo',       icon:'🔥', target:10, oppSpeed:3.1, oppSkill:0.68, defenders:1 },
+    { key:'imp',  name:'Impossible', opp:'Mbappé & Yamal',icon:'💀', target:20, oppSpeed:3.6, oppSkill:0.85, defenders:2 },
+  ];
+  const CLEAR_ORDER = ['sez','ez','med','hard','imp'];
+
+  // ---- Progress (persist if possible) ----
+  let cleared = {};
+  try { cleared = JSON.parse(localStorage.getItem('fr_cleared')||'{}'); } catch(e){ cleared={}; }
+  function saveProgress(){ try { localStorage.setItem('fr_cleared', JSON.stringify(cleared)); } catch(e){} }
+  function allCleared(){ return CLEAR_ORDER.every(k=>cleared[k]); }
+
+  // ---- Field sizing ----
+  let W=0,H=0, scale=1;
+  const FW=360, FH=600; // logical field
+  function resize(){
+    const availW = Math.min(window.innerWidth, 480);
+    const availH = window.innerHeight;
+    scale = Math.min(availW/FW, availH/FH);
+    W = FW*scale; H = FH*scale;
+    cv.width = W; cv.height = H;
+  }
+  window.addEventListener('resize', resize); resize();
+
+  // ---- Game state ----
+  let state = 'menu'; // menu, play, over
+  let mode=null, endless=false, endlessIdx=0;
+  let score1=0, score2=0, target=3;
+  let player, opps, ball, keeper;
+  let inputVec={x:0,y:0}, kickHeld=false, kickQueued=false;
+  let celebrateTimer=0, kickoffTimer=0;
+
+  const GOAL_W = 200; // goal mouth width (logical)
+  const R_PLAYER=15, R_BALL=9;
+
+  function newEntity(x,y,color,me){ return {x,y,vx:0,vy:0,color,me,r:R_PLAYER,dir:me?-1:1}; }
+
+  function setupMatch(m){
+    mode=m; target=m.target;
+    score1=0; score2=0;
+    player = newEntity(FW/2, FH-90, '#3aa0ff', true);
+    opps = [];
+    for(let i=0;i<m.defenders;i++){
+      const ox = m.defenders===1 ? FW/2 : (i===0?FW/2-70:FW/2+70);
+      opps.push(newEntity(ox, 150, '#ff5a5a', false));
+    }
+    keeper = { x:FW/2, y:34, w:46, h:14, vx:0 };
+    resetBall(true);
+    updateHUD();
+  }
+
+  function resetBall(kickoff){
+    ball = { x:FW/2, y:FH/2, vx:0, vy:0, r:R_BALL, owner:null, cool:0 };
+    if(kickoff){ kickoffTimer=40; player.x=FW/2; player.y=FH-90;
+      opps.forEach((o,i)=>{ o.x = opps.length===1?FW/2:(i===0?FW/2-70:FW/2+70); o.y=150; }); }
+  }
+
+  function updateHUD(){
+    $('s1').textContent=score1; $('s2').textContent=score2;
+    $('target').textContent='FIRST TO '+target;
+    $('vs').textContent='vs '+mode.opp;
+    $('oppName').textContent=mode.opp;
+  }
+
+  // ---- Build menu ----
+  function buildMenu(){
+    const list=$('modeList'); list.innerHTML='';
+    MODES.forEach(m=>{
+      const d=document.createElement('div');
+      d.className='mode'+(cleared[m.key]?' done':'');
+      d.innerHTML=`<div class="ic">${m.icon}</div>
+        <div class="txt"><div class="name">${m.name}</div><div class="desc">vs ${m.opp}</div></div>
+        <div class="goal">1st to ${m.target}</div>`;
+      d.onclick=()=>startGame(m,false);
+      list.appendChild(d);
+    });
+    const e=document.createElement('div');
+    e.className='mode endless';
+    e.innerHTML=`<div class="ic">♾️</div>
+      <div class="txt"><div class="name">Endless</div><div class="desc">Face ALL 5 rivals in a row!</div></div>
+      <div class="goal">Survive</div>`;
+    e.onclick=()=>startGame(MODES[0],true);
+    list.appendChild(e);
+  }
+
+  // ---- Screens ----
+  function show(id){ ['menu','result','cup'].forEach(s=>$(s).classList.add('hidden')); if(id)$(id).classList.remove('hidden'); }
+  function startGame(m,isEndless){
+    endless=isEndless; endlessIdx=0;
+    if(endless) m=MODES[0];
+    setupMatch(m);
+    state='play'; celebrateTimer=0;
+    show(null);
+    $('hud').classList.remove('hidden');
+    $('controls').classList.remove('hidden');
+    $('pauseBtn').classList.remove('hidden');
+  }
+  function toMenu(){
+    state='menu'; buildMenu(); show('menu');
+    $('hud').classList.add('hidden'); $('controls').classList.add('hidden'); $('pauseBtn').classList.add('hidden');
+  }
+
+  function toast(txt){ const t=$('toast'); t.textContent=txt; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),900); }
+
+  // ---- Match end ----
+  function endMatch(playerWon){
+    state='over';
+    $('hud').classList.add('hidden'); $('controls').classList.add('hidden'); $('pauseBtn').classList.add('hidden');
+    if(endless){
+      if(playerWon){
+        endlessIdx++;
+        if(endlessIdx>=MODES.length){ // beat all in endless
+          CLEAR_ORDER.forEach(k=>cleared[k]=true); saveProgress();
+          show('cup'); return;
+        }
+        // next rival
+        $('resIcon').textContent=MODES[endlessIdx].icon;
+        $('resTitle').textContent='Rival Defeated!';
+        $('resSub').textContent=`Next up: ${MODES[endlessIdx].opp} — first to ${MODES[endlessIdx].target}`;
+        $('againBtn').textContent='Next Match ▶';
+        $('menuBtn').textContent='Quit to Menu';
+        show('result');
+        $('againBtn').onclick=()=>{ setupMatch(MODES[endlessIdx]); state='play'; show(null);
+          $('hud').classList.remove('hidden'); $('controls').classList.remove('hidden'); $('pauseBtn').classList.remove('hidden'); };
+        return;
+      } else {
+        $('resIcon').textContent='😵';
+        $('resTitle').textContent='Endless Over';
+        $('resSub').textContent=`You beat ${endlessIdx} of 5 rivals. ${mode.opp} stopped your run.`;
+      }
+    } else {
+      if(playerWon){
+        const wasNew=!cleared[mode.key];
+        cleared[mode.key]=true; saveProgress();
+        if(allCleared()){ show('cup'); return; }
+        $('resIcon').textContent='🎉';
+        $('resTitle').textContent='You Win!';
+        $('resSub').textContent=`You beat ${mode.opp} ${score1}–${score2}!`+(wasNew?' Level cleared ✓':'');
+      } else {
+        $('resIcon').textContent='😢';
+        $('resTitle').textContent='You Lost';
+        $('resSub').textContent=`${mode.opp} won ${score2}–${score1}. Try again!`;
+      }
+    }
+    $('againBtn').textContent='Play Again'; $('menuBtn').textContent='Main Menu';
+    $('againBtn').onclick=()=>startGame(endless?MODES[0]:mode,endless);
+    show('result');
+  }
+
+  function scored(byPlayer){
+    if(byPlayer) score1++; else score2++;
+    updateHUD();
+    toast(byPlayer?'GOAL!':mode.opp+' scores');
+    celebrateTimer=45;
+    if(score1>=target){ setTimeout(()=>endMatch(true),700); state='celebrate'; }
+    else if(score2>=target){ setTimeout(()=>endMatch(false),700); state='celebrate'; }
+    else { resetBall(true); }
+  }
+
+  // ---- Physics helpers ----
+  function dist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+  function clamp(v,a,b){ return v<a?a:v>b?b:v; }
+
+  // ---- Update loop ----
+  function update(){
+    if(state!=='play' && state!=='celebrate') return;
+    const speed=3.2;
+
+    if(kickoffTimer>0) kickoffTimer--;
+    if(ball.cool>0) ball.cool--;
+
+    // player movement
+    player.vx = inputVec.x*speed; player.vy = inputVec.y*speed;
+    player.x = clamp(player.x+player.vx, R_PLAYER, FW-R_PLAYER);
+    player.y = clamp(player.y+player.vy, R_PLAYER, FH-R_PLAYER);
+    if(inputVec.x||inputVec.y){ const a=Math.atan2(inputVec.y,inputVec.x); player.dir=a; }
+
+    // dribble: if player close to ball and no owner conflict, nudge ball
+    if(state==='play' && kickoffTimer<=0){
+      const dp=dist(player,ball);
+      if(dp < R_PLAYER+R_BALL+6 && ball.cool<=0){
+        ball.owner='p';
+        // ball sits slightly ahead of player in move dir
+        if(inputVec.x||inputVec.y){
+          const a=Math.atan2(inputVec.y,inputVec.x);
+          ball.x = player.x + Math.cos(a)*(R_PLAYER+R_BALL);
+          ball.y = player.y + Math.sin(a)*(R_PLAYER+R_BALL);
+          ball.vx=player.vx; ball.vy=player.vy;
+        }
+        // kick / shoot
+        if(kickQueued || kickHeld){
+          let a = (inputVec.x||inputVec.y) ? Math.atan2(inputVec.y,inputVec.x) : -Math.PI/2;
+          const power=11;
+          ball.vx=Math.cos(a)*power; ball.vy=Math.sin(a)*power; ball.owner=null; ball.cool=16;
+          kickQueued=false;
+        }
+      }
+    }
+
+    // opponents AI
+    opps.forEach(o=>{
+      const toBall=dist(o,ball);
+      let tx,ty;
+      const attacking = ball.y < FH*0.55 || dist(o,ball) < 60; // push up when ball is up top-ish or nearby
+      if(toBall < 220){
+        // go for ball
+        tx=ball.x; ty=ball.y;
+      } else {
+        // hold defensive line near their goal / player's attack lane
+        tx = ball.x; ty = clamp(120, 60, 220);
+      }
+      const ang=Math.atan2(ty-o.y, tx-o.x);
+      const sp=mode.oppSpeed*(0.75+Math.random()*0.25);
+      o.x=clamp(o.x+Math.cos(ang)*sp, R_PLAYER, FW-R_PLAYER);
+      o.y=clamp(o.y+Math.sin(ang)*sp, R_PLAYER, FH-R_PLAYER);
+      // opponent controls ball
+      if(toBall < R_PLAYER+R_BALL+6 && kickoffTimer<=0 && ball.cool<=0){
+        ball.owner='o';
+        // dribble toward player goal (bottom)
+        const gx=FW/2, gy=FH-6;
+        const shootDist = dist(o,{x:gx,y:gy});
+        const aim=Math.atan2(gy-o.y, gx-o.x);
+        // add skill-based inaccuracy
+        const err=(1-mode.oppSkill)*0.6*(Math.random()-0.5)*2;
+        if(shootDist < 260 && Math.random()<mode.oppSkill*0.14){
+          const power=10;
+          ball.vx=Math.cos(aim+err)*power; ball.vy=Math.sin(aim+err)*power; ball.owner=null; ball.cool=16;
+        } else {
+          ball.x = o.x + Math.cos(aim)*(R_PLAYER+R_BALL);
+          ball.y = o.y + Math.sin(aim)*(R_PLAYER+R_BALL);
+          ball.vx=Math.cos(aim)*mode.oppSpeed; ball.vy=Math.sin(aim)*mode.oppSpeed;
+        }
+      }
+    });
+
+    // keeper (defends top goal) - capped reaction speed scaling with difficulty
+    const goalLeft=(FW-GOAL_W)/2, goalRight=(FW+GOAL_W)/2;
+    const kmax = 0.35 + mode.oppSkill*2.7;             // px/frame; slow on Super EZ, fast on Impossible
+    let kTarget = FW/2;
+    if(ball.y < FH*0.42) kTarget = clamp(ball.x, goalLeft+keeper.w/2, goalRight-keeper.w/2);
+    keeper.x += clamp(kTarget-keeper.x, -kmax, kmax);
+    keeper.x = clamp(keeper.x, keeper.w/2, FW-keeper.w/2);
+
+    // ball motion + friction
+    if(ball.owner!=='p' && ball.owner!=='o'){
+      ball.x+=ball.vx; ball.y+=ball.vy; ball.vx*=0.97; ball.vy*=0.97;
+      if(Math.abs(ball.vx)<0.05)ball.vx=0; if(Math.abs(ball.vy)<0.05)ball.vy=0;
+    } else { ball.owner=null; } // release each frame; re-grabbed if still close
+
+    // wall bounce (sides)
+    if(ball.x<R_BALL){ball.x=R_BALL; ball.vx*=-0.6;}
+    if(ball.x>FW-R_BALL){ball.x=FW-R_BALL; ball.vx*=-0.6;}
+
+    // keeper block (top goal)
+    if(ball.vy<0 && ball.y<46 && ball.y>26 &&
+       ball.x>keeper.x-keeper.w/2-R_BALL && ball.x<keeper.x+keeper.w/2+R_BALL){
+      ball.y=48; ball.vy=Math.abs(ball.vy)*0.7; ball.vx*=0.5; toast('SAVE!');
+    }
+
+    // GOALS
+    // top goal (opponent's) -> player scores
+    if(ball.y<6){
+      if(ball.x>goalLeft && ball.x<goalRight){ scored(true); }
+      else { ball.y=R_BALL; ball.vy*=-0.6; }
+    }
+    // bottom goal (yours) -> opponent scores
+    if(ball.y>FH-6){
+      if(ball.x>goalLeft && ball.x<goalRight){ scored(false); }
+      else { ball.y=FH-R_BALL; ball.vy*=-0.6; }
+    }
+
+    if(celebrateTimer>0)celebrateTimer--;
+  }
+  // ---- Render ----
+  function draw(){
+    ctx.save();
+    ctx.scale(scale,scale);
+    // pitch
+    ctx.fillStyle='#1f8a43'; ctx.fillRect(0,0,FW,FH);
+    // stripes
+    ctx.fillStyle='rgba(255,255,255,0.04)';
+    for(let i=0;i<FH;i+=48){ if((i/48)%2===0) ctx.fillRect(0,i,FW,48); }
+    // markings
+    ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=2;
+    ctx.strokeRect(6,6,FW-12,FH-12);
+    ctx.beginPath(); ctx.moveTo(6,FH/2); ctx.lineTo(FW-6,FH/2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(FW/2,FH/2,52,0,7); ctx.stroke();
+    ctx.beginPath(); ctx.arc(FW/2,FH/2,3,0,7); ctx.fillStyle='rgba(255,255,255,.55)'; ctx.fill();
+    const gl=(FW-GOAL_W)/2, gr=(FW+GOAL_W)/2;
+    // penalty boxes
+    ctx.strokeRect(gl-24, 6, GOAL_W+48, 72);
+    ctx.strokeRect(gl-24, FH-6-72, GOAL_W+48, 72);
+    // goals
+    ctx.lineWidth=5; ctx.strokeStyle='#fff';
+    ctx.beginPath(); ctx.moveTo(gl,6); ctx.lineTo(gr,6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gl,FH-6); ctx.lineTo(gr,FH-6); ctx.stroke();
+
+    // keeper (top)
+    ctx.fillStyle='#ffd24a';
+    ctx.fillRect(keeper.x-keeper.w/2, 30, keeper.w, keeper.h);
+
+    // players
+    drawPlayer(player);
+    opps.forEach(drawPlayer);
+
+    // ball
+    ctx.beginPath(); ctx.arc(ball.x,ball.y,R_BALL,0,7);
+    ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle='#333'; ctx.stroke();
+    ctx.fillStyle='#333'; ctx.beginPath(); ctx.arc(ball.x,ball.y,3,0,7); ctx.fill();
+
+    // kickoff countdown ring
+    if(kickoffTimer>0){
+      ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.fillRect(0,0,FW,FH);
+      ctx.fillStyle='#fff'; ctx.font='bold 40px sans-serif'; ctx.textAlign='center';
+      ctx.fillText('⚽', FW/2, FH/2-60);
+      ctx.font='bold 22px sans-serif'; ctx.fillText('KICK OFF', FW/2, FH/2-20);
+    }
+    ctx.restore();
+  }
+  function drawPlayer(p){
+    // shadow
+    ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(p.x,p.y+12,13,6,0,0,7); ctx.fill();
+    // body
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7);
+    ctx.fillStyle=p.color; ctx.fill();
+    ctx.lineWidth=3; ctx.strokeStyle=p.me?'#0a5aa8':'#a01515'; ctx.stroke();
+    // dir marker
+    if(typeof p.dir==='number'){
+      ctx.beginPath(); ctx.moveTo(p.x,p.y);
+      ctx.lineTo(p.x+Math.cos(p.dir)*p.r, p.y+Math.sin(p.dir)*p.r);
+      ctx.lineWidth=3; ctx.strokeStyle='#fff'; ctx.stroke();
+    }
+  }
+
+  function loop(){ update(); if(opps) draw(); requestAnimationFrame(loop); }
+
+  // ---- Input: keyboard ----
+  const keys={};
+  window.addEventListener('keydown',e=>{
+    keys[e.key.toLowerCase()]=true;
+    if(e.key===' '){ kickQueued=true; kickHeld=true; e.preventDefault(); }
+    updateKeyVec();
+  });
+  window.addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=false; if(e.key===' ')kickHeld=false; updateKeyVec(); });
+  function updateKeyVec(){
+    if(usingTouch) return;
+    let x=0,y=0;
+    if(keys['a']||keys['arrowleft'])x-=1; if(keys['d']||keys['arrowright'])x+=1;
+    if(keys['w']||keys['arrowup'])y-=1; if(keys['s']||keys['arrowdown'])y+=1;
+    const m=Math.hypot(x,y)||1; inputVec.x=x/m*(x||y?1:0); inputVec.y=y/m*(x||y?1:0);
+    if(!x&&!y){inputVec.x=0;inputVec.y=0;}
+  }
+
+  // ---- Input: touch joystick ----
+  let usingTouch=false, stickId=null, baseX=0,baseY=0;
+  const zone=$('stickZone'), base=$('stickBase'), nub=$('stickNub');
+  function startStick(x,y){ usingTouch=true; baseX=x; baseY=y;
+    base.style.left=x+'px'; base.style.top=y+'px'; nub.style.left=x+'px'; nub.style.top=y+'px';
+    base.style.display='block'; nub.style.display='block'; }
+  function moveStick(x,y){ const dx=x-baseX, dy=y-baseY; const d=Math.hypot(dx,dy); const max=52;
+    const cd=Math.min(d,max); const a=Math.atan2(dy,dx);
+    const nx=baseX+Math.cos(a)*cd, ny=baseY+Math.sin(a)*cd;
+    nub.style.left=nx+'px'; nub.style.top=ny+'px';
+    if(d>6){ inputVec.x=Math.cos(a); inputVec.y=Math.sin(a); } else { inputVec.x=0; inputVec.y=0; } }
+  function endStick(){ base.style.display='none'; nub.style.display='none'; inputVec.x=0; inputVec.y=0; stickId=null; }
+
+  zone.addEventListener('touchstart',e=>{ e.preventDefault(); const t=e.changedTouches[0]; stickId=t.identifier; startStick(t.clientX,t.clientY); },{passive:false});
+  zone.addEventListener('touchmove',e=>{ e.preventDefault(); for(const t of e.changedTouches){ if(t.identifier===stickId) moveStick(t.clientX,t.clientY); } },{passive:false});
+  zone.addEventListener('touchend',e=>{ for(const t of e.changedTouches){ if(t.identifier===stickId) endStick(); } });
+  zone.addEventListener('touchcancel',endStick);
+  // mouse drag on stick zone (desktop fallback)
+  zone.addEventListener('mousedown',e=>{ usingTouch=true; startStick(e.clientX,e.clientY);
+    const mm=ev=>moveStick(ev.clientX,ev.clientY);
+    const mu=()=>{ endStick(); window.removeEventListener('mousemove',mm); window.removeEventListener('mouseup',mu); usingTouch=false; };
+    window.addEventListener('mousemove',mm); window.addEventListener('mouseup',mu); });
+
+  const kb=$('kickBtn');
+  const doKick=e=>{ if(e)e.preventDefault(); kickQueued=true; kickHeld=true; };
+  const relKick=()=>{ kickHeld=false; };
+  kb.addEventListener('touchstart',doKick,{passive:false});
+  kb.addEventListener('touchend',e=>{e.preventDefault();relKick();},{passive:false});
+  kb.addEventListener('mousedown',doKick); kb.addEventListener('mouseup',relKick);
+
+  // ---- Buttons ----
+  $('menuBtn').onclick=toMenu;
+  $('cupBtn').onclick=toMenu;
+  $('pauseBtn').onclick=()=>{ if(confirm('Quit this match and return to menu?')) toMenu(); };
+
+  // init
+  buildMenu();
+  loop();
+})();
+</script>
+</body>
+</html>
