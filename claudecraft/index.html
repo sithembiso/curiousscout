@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>ClaudeCraft 5.0 - Swords & Pets</title>
+<title>ClaudeCraft 0.6 - Demons & Angels</title>
 <style>
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #87CEEB; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; user-select: none; touch-action: none; }
   #cc-root { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
@@ -17,23 +17,22 @@
   <div id="cc-release" style="position: absolute; inset: 0; background: rgba(40, 25, 5, 0.92); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 30; padding: 20px;">
     <div style="background: linear-gradient(135deg, #ffd866, #ffaa44); color: #2a1a00; max-width: 540px; width: 100%; border-radius: 16px; padding: 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.5); max-height: 90%; overflow-y: auto;">
       <div style="text-align: center; margin-bottom: 14px;">
-        <div style="font-size: 38px; margin-bottom: 4px;">⚔️🐺</div>
-        <div style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">Versions 4.0 & 5.0 are here!</div>
-        <div style="font-size: 14px; font-weight: 600; color: #8a4a00;">Swords & Pets ⚔️🐺🐱</div>
+        <div style="font-size: 38px; margin-bottom: 4px;">😈👼</div>
+        <div style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">Version 0.6 is here!</div>
+        <div style="font-size: 14px; font-weight: 600; color: #8a4a00;">Demons & Angels 😈👼</div>
       </div>
       <div style="background: rgba(255,255,255,0.45); border-radius: 12px; padding: 14px; margin-bottom: 14px;">
-        <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #4a2400;">✨ WHAT'S NEW</div>
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #4a2400;">✨ WHAT'S NEW IN 0.6</div>
         <ul style="margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6;">
-          <li><b>⚔️ SWORDS!</b> Craft a sword from any ore: wood, stone, iron, gold, diamond</li>
-          <li><b>💥 More boss damage:</b> Diamond sword deals 6 damage — defeat bosses way faster!</li>
-          <li><b>🐺 PETS:</b> Find wolves and cats in the Land of Milk and Honey</li>
-          <li><b>🐱 Tame them:</b> Left-click any wolf or cat to make it your forever pet</li>
-          <li><b>🦮 Pets follow you</b> across ALL worlds — they even teleport so they never get lost!</li>
-          <li><b>🏆 3 new achievements:</b> Craft sword, Diamond sword, Tame a pet</li>
+          <li><b>😈 MINI DEMONS</b> in the Underworld — they shoot fireballs at you from far away! Watch out!</li>
+          <li><b>⚔️ Kill demons with a sword</b> — a stone sword takes them out in one hit</li>
+          <li><b>👼 ANGELS</b> in the Aether — they float and drift around peacefully</li>
+          <li><b>💚 Angels heal you</b> — stand near one and you'll get a heart back every 2 seconds!</li>
+          <li><b>🏆 2 new achievements:</b> Slay a demon, get healed by an angel</li>
         </ul>
       </div>
       <div style="font-size: 11px; opacity: 0.75; text-align: center; margin-bottom: 14px;">
-        Previous: 3.0 (Milk & Honey) · 2.0 (Underworld) · 1.0 (Aether)
+        Previous: 0.5 (Pets) · 0.4 (Swords) · 0.3 (Milk & Honey) · 0.2 (Underworld) · 0.1 (Aether)
       </div>
       <button id="cc-release-close" style="display: block; width: 100%; background: #4a1a00; color: #ffd866; border: none; padding: 12px; font-size: 15px; font-weight: 600; border-radius: 10px; cursor: pointer;">Let's play! ⚔️🥛🍯</button>
     </div>
@@ -41,7 +40,7 @@
 
   <div id="cc-start" style="position: absolute; inset: 0; background: rgba(0,0,0,0.78); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 20; padding: 20px; text-align: center; overflow-y: auto;">
     <div style="font-size: 30px; font-weight: 500; letter-spacing: 2px; margin-bottom: 4px;">CLAUDECRAFT</div>
-    <div style="font-size: 17px; color: #ffd866; font-weight: 500; margin-bottom: 6px;">⚔️🐺 5.0 — Swords & Pets! 🐱⚔️</div>
+    <div style="font-size: 17px; color: #ffd866; font-weight: 500; margin-bottom: 6px;">😈👼 0.6 — Demons & Angels! 👼😈</div>
     <div style="font-size: 12px; color: #ffaa44; margin-bottom: 12px;">⏰ 30 minute challenge — FOUR worlds!</div>
     <div style="font-size: 12px; opacity: 0.85; margin-bottom: 12px; max-width: 540px; line-height: 1.6; text-align: left;">
       <b>The ultimate quest:</b><br>
@@ -54,8 +53,29 @@
       <b>Keyboard:</b> WASD · C jump · click break/place · 1-9 · E craft · P pause<br>
       <b>Mobile:</b> joystick · tap-drag to look · ⛏️🧱⬆️🛠️ buttons
     </div>
+    <div id="cc-ver-badge" style="font-size:11px;color:#4ade80;background:rgba(74,222,128,0.15);border:1px solid #4ade80;padding:4px 10px;border-radius:6px;margin-bottom:10px;font-weight:600;">🎮 Playing version 0.6 — Demons & Angels</div>
     <button id="cc-play" style="background: linear-gradient(135deg, #4ade80, #16a34a); color: #042c1f; border: none; padding: 14px 36px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer; margin-bottom: 12px;">Begin the ultimate quest!</button>
-    <button id="cc-show-release" style="background: transparent; color: #4ade80; border: 1px solid #4ade80; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">📋 What's New in 5.0</button>
+    <div style="display: flex; gap: 8px;">
+      <button id="cc-show-release" style="background: transparent; color: #4ade80; border: 1px solid #4ade80; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">📋 What's New in 0.6</button>
+      <button id="cc-settings-btn" style="background: transparent; color: #4ade80; border: 1px solid #4ade80; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">⚙️ Settings</button>
+    </div>
+  </div>
+
+  <!-- ===== SETTINGS PANEL (version switcher) ===== -->
+  <div id="cc-settings" style="position: absolute; inset: 0; background: rgba(10, 30, 15, 0.92); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 25; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #1a3a1a, #0f2a0f); color: white; max-width: 520px; width: 100%; border-radius: 16px; padding: 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.5); max-height: 90%; overflow-y: auto; border: 2px solid #4ade80;">
+      <div style="text-align: center; margin-bottom: 18px;">
+        <div style="font-size: 36px; margin-bottom: 4px;">⚙️</div>
+        <div style="font-size: 22px; font-weight: 700; color: #4ade80;">Settings</div>
+      </div>
+
+      <div style="font-size: 14px; font-weight: 700; margin-bottom: 10px; color: #4ade80;">🕹️ Pick a version to play:</div>
+      <div style="font-size: 11px; opacity: 0.8; margin-bottom: 14px;">Older versions disable newer features so you can replay history!</div>
+
+      <div id="cc-version-list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px;"></div>
+
+      <button id="cc-settings-close" style="display: block; width: 100%; background: #4ade80; color: #042c1f; border: none; padding: 12px; font-size: 15px; font-weight: 600; border-radius: 10px; cursor: pointer;">Back to menu</button>
+    </div>
   </div>
 
   <div id="cc-hud" style="position: absolute; inset: 0; pointer-events: none; z-index: 5; display: none; color: white; text-shadow: 1px 1px 2px rgba(0,0,0,0.8);">
@@ -71,7 +91,7 @@
     </div>
 
     <div style="position: absolute; top: 8px; right: 8px; font-size: 12px; text-align: right; line-height: 1.5;">
-      <div style="font-weight: 500; margin-bottom: 2px;">Achievements <span id="cc-ach-count">0/22</span></div>
+      <div style="font-weight: 500; margin-bottom: 2px;">Achievements <span id="cc-ach-count">0/24</span></div>
       <div id="cc-ach-list" style="font-size: 10px; opacity: 0.85; max-height: 200px; overflow: hidden;"></div>
     </div>
 
@@ -151,8 +171,8 @@
   </div>
 
   <div id="cc-win" style="position: absolute; inset: 0; background: radial-gradient(circle, rgba(255,216,102,0.95), rgba(60,40,5,0.98)); display: none; flex-direction: column; align-items: center; justify-content: center; color: #2a1a00; z-index: 9; text-align: center; padding: 20px;">
-    <div style="font-size: 64px; margin-bottom: 4px;">👑✨👑</div>
-    <div style="font-size: 30px; font-weight: 600; margin-bottom: 8px; color: #4a1a00;">GOD OF CLAUDECRAFT!</div>
+    <div id="cc-win-emoji" style="font-size: 64px; margin-bottom: 4px;">👑✨👑</div>
+    <div id="cc-win-title" style="font-size: 30px; font-weight: 600; margin-bottom: 8px; color: #4a1a00;">GOD OF CLAUDECRAFT!</div>
     <div id="cc-win-msg" style="font-size: 15px; opacity: 0.92; max-width: 440px; margin-bottom: 8px;"></div>
     <div id="cc-win-rank" style="font-size: 20px; font-weight: 600; color: #884400; margin-bottom: 18px;"></div>
     <button id="cc-win-close" style="background: #4a1a00; color: #ffd866; border: none; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 500;">Keep ruling</button>
@@ -169,7 +189,33 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function(){
-  const CURRENT_VERSION = '5.0';
+  const CURRENT_VERSION = '0.6';
+
+  // ===== VERSION SWITCHER =====
+  // Player can pick which version of the game to play. Older versions disable newer features.
+  const VERSIONS = [
+    {v:'0.1', name:'Aether', desc:'Just the Overworld + Aether portal + Guardian'},
+    {v:'0.2', name:'Underworld', desc:'+ Fire portal, Underworld, Lava Demon, Flame Sword'},
+    {v:'0.3', name:'Milk & Honey', desc:'+ Land of Milk & Honey, 3 Puzzles, GOD title'},
+    {v:'0.4', name:'Swords', desc:'+ Craft swords from any ore'},
+    {v:'0.5', name:'Pets', desc:'+ Wolves & cats you can tame'},
+    {v:'0.6', name:'Demons & Angels', desc:'+ Fireball-shooting demons in Underworld, healing angels in Aether'}
+  ];
+  let selectedVersion = '0.6';
+  try {
+    const saved = localStorage.getItem('cc_play_version');
+    if (saved && VERSIONS.some(x => x.v === saved)) selectedVersion = saved;
+  } catch (e) {}
+  // Feature flags based on selected version
+  function vAtLeast(v) { return parseFloat(selectedVersion) >= parseFloat(v); }
+  const FEAT = {
+    underworld: vAtLeast('0.2'),
+    milkhoney: vAtLeast('0.3'),
+    swords: vAtLeast('0.4'),
+    pets: vAtLeast('0.5'),
+    entities: vAtLeast('0.6')
+  };
+
   const releaseEl = document.getElementById('cc-release');
   const startEl = document.getElementById('cc-start');
 
@@ -188,6 +234,59 @@
   document.getElementById('cc-show-release').addEventListener('click', () => { showReleaseNotes(); });
 
   if (seenVersion !== CURRENT_VERSION) showReleaseNotes();
+
+  // ===== SETTINGS PANEL =====
+  const settingsEl = document.getElementById('cc-settings');
+  function renderVersionList() {
+    const list = document.getElementById('cc-version-list');
+    list.innerHTML = '';
+    VERSIONS.forEach(v => {
+      const isSelected = v.v === selectedVersion;
+      const isCurrent = v.v === CURRENT_VERSION;
+      const row = document.createElement('button');
+      row.style.cssText = `
+        display: flex; align-items: center; gap: 12px;
+        background: ${isSelected ? 'rgba(74, 222, 128, 0.25)' : 'rgba(255,255,255,0.06)'};
+        border: 2px solid ${isSelected ? '#4ade80' : 'rgba(255,255,255,0.15)'};
+        color: white; padding: 10px 14px; border-radius: 10px; cursor: pointer;
+        text-align: left; font-family: inherit; width: 100%;
+      `;
+      row.innerHTML = `
+        <div style="font-size: 22px;">${isSelected ? '✅' : '⚪'}</div>
+        <div style="flex:1;">
+          <div style="font-weight: 700; font-size: 15px;">
+            Version ${v.v} — ${v.name}
+            ${isCurrent ? '<span style="font-size:10px;background:#4ade80;color:#042c1f;padding:1px 6px;border-radius:8px;margin-left:6px;">LATEST</span>' : ''}
+          </div>
+          <div style="font-size: 11px; opacity: 0.8; margin-top: 2px;">${v.desc}</div>
+        </div>
+      `;
+      row.onclick = () => {
+        if (v.v === selectedVersion) return;
+        selectedVersion = v.v;
+        try { localStorage.setItem('cc_play_version', v.v); } catch(e) {}
+        // Reload the page so the version takes effect cleanly
+        location.reload();
+      };
+      list.appendChild(row);
+    });
+  }
+  document.getElementById('cc-settings-btn').addEventListener('click', () => {
+    renderVersionList();
+    settingsEl.style.display = 'flex';
+    startEl.style.display = 'none';
+  });
+  document.getElementById('cc-settings-close').addEventListener('click', () => {
+    settingsEl.style.display = 'none';
+    startEl.style.display = 'flex';
+  });
+  // Update the version badge text (badge is in HTML directly)
+  const verBadge = document.getElementById('cc-ver-badge');
+  if (verBadge) {
+    const v0 = VERSIONS.find(x => x.v === selectedVersion);
+    if (v0) verBadge.textContent = `🎮 Playing version ${v0.v} — ${v0.name}`;
+  }
+
 
   const canvas = document.getElementById('cc-canvas');
   const root = document.getElementById('cc-root');
@@ -278,6 +377,9 @@
 
   let dungeonHeartPos=null, aetherBoss=null, demonBoss=null, guardianPos=null;
   let mhSpawn={x:0,y:12,z:0};
+  const pets=[];  // {type, x, y, z, tamed, vx, vz} — declared early so world gen can populate
+  const entities=[];  // {kind:'demon'|'angel', x,y,z, hp, cooldown, vx,vz, mesh}
+  const fireballs=[];  // {x,y,z, vx,vy,vz, life}
 
   function generateOverworld(){
     const half=WORLD_SIZE/2;
@@ -385,6 +487,14 @@
         setBlockIn(aether,bx,baseY+1,bz+2,B.CHEST);
       }
     });
+    // Spawn friendly angels around the Aether (0.7+)
+    if (FEAT.entities) {
+      const angelSpots = [[0,-8],[-15,10],[15,5],[-8,20],[12,-15],[20,25]];
+      for (const [ax, az] of angelSpots) {
+        // Angels float in the air
+        entities.push({kind:'angel', realm:'aether', x:ax+0.5, y:14, z:az+0.5, hp:99, cooldown:0, vx:0, vz:0, wanderT:0, floatT:Math.random()*Math.PI*2});
+      }
+    }
   }
 
   function generateUnderworld(){
@@ -429,6 +539,21 @@
     setBlockIn(underworld,dx0,arenaY,dz0,B.DEMON);
     demonBoss={x:dx0,y:arenaY,z:dz0,hp:15};
     setBlockIn(underworld,dx0+2,arenaY,dz0,B.FIRECHEST);
+    // Spawn mini demons (0.7+)
+    if (FEAT.entities) {
+      for (let i = 0; i < 5; i++) {
+        const dx = Math.floor((Math.random()-0.5)*WORLD_SIZE*0.6);
+        const dz = Math.floor((Math.random()-0.5)*WORLD_SIZE*0.6);
+        if (Math.abs(dx) < 8 && Math.abs(dz) < 8) continue;
+        let dy = floorY + 1;
+        for (let y = ceilY - 2; y > floorY; y--) {
+          if (getBlockIn(underworld, dx, y, dz) === B.AIR && getBlockIn(underworld, dx, y-1, dz) !== B.AIR) {
+            dy = y; break;
+          }
+        }
+        entities.push({kind:'demon', realm:'underworld', x:dx+0.5, y:dy, z:dz+0.5, hp:2, cooldown:1+Math.random()*2, vx:0, vz:0, wanderT:0});
+      }
+    }
   }
 
   function generateMilkAndHoney(){
@@ -506,19 +631,21 @@
     let sy=1;
     for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,0,y,0)===B.HONEYCOMB){sy=y+1;break;}}
     mhSpawn={x:0,y:sy+1,z:0};
-    // Spawn pets! 3 wolves + 3 cats scattered around milk & honey
-    for(let i=0;i<6;i++){
-      const px=Math.floor((Math.random()-0.5)*40);
-      const pz=Math.floor((Math.random()-0.5)*40);
-      let py=1;
-      for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,px,y,pz)===B.HONEYCOMB){py=y+1;break;}}
-      const type=i<3?B.WOLF:B.CAT;
-      pets.push({type, x:px+0.5, y:py, z:pz+0.5, tamed:false, vx:0, vz:0, lastMove:0});
+    // Spawn pets! 3 wolves + 3 cats scattered around milk & honey (only in 0.5+)
+    if (FEAT.pets) {
+      for(let i=0;i<6;i++){
+        const px=Math.floor((Math.random()-0.5)*40);
+        const pz=Math.floor((Math.random()-0.5)*40);
+        let py=1;
+        for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,px,y,pz)===B.HONEYCOMB){py=y+1;break;}}
+        const type=i<3?B.WOLF:B.CAT;
+        pets.push({type, x:px+0.5, y:py, z:pz+0.5, tamed:false, vx:0, vz:0, lastMove:0});
+      }
     }
   }
 
-  const pets=[];  // {type, x, y, z, tamed, vx, vz}
   generateOverworld(); generateAether(); generateUnderworld(); generateMilkAndHoney();
+  // pet meshes are built when player first teleports to milkhoney (in teleportTo)
 
   const meshGroup = new THREE.Group();
   scene.add(meshGroup);
@@ -630,7 +757,87 @@
       petMeshes.push(m);
     });
   }
-  rebuildPetMeshes();
+
+  // Entity meshes (demons + angels)
+  const entityMeshGroup = new THREE.Group();
+  scene.add(entityMeshGroup);
+
+  function createDemonMesh() {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshLambertMaterial({color: 0x991111});
+    const eyeMat = new THREE.MeshBasicMaterial({color: 0xffdd00});
+    // body
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.4), mat);
+    body.position.y = 0.3;
+    g.add(body);
+    // head
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.45), mat);
+    head.position.set(0, 0.85, 0);
+    g.add(head);
+    // horns
+    const hornGeom = new THREE.BoxGeometry(0.1, 0.2, 0.1);
+    const hL = new THREE.Mesh(hornGeom, mat); hL.position.set(-0.18, 1.2, 0); g.add(hL);
+    const hR = new THREE.Mesh(hornGeom, mat); hR.position.set(0.18, 1.2, 0); g.add(hR);
+    // glowing eyes
+    const eyeGeom = new THREE.BoxGeometry(0.09, 0.09, 0.05);
+    const eL = new THREE.Mesh(eyeGeom, eyeMat); eL.position.set(-0.12, 0.9, 0.23); g.add(eL);
+    const eR = new THREE.Mesh(eyeGeom, eyeMat); eR.position.set(0.12, 0.9, 0.23); g.add(eR);
+    // arms
+    const armGeom = new THREE.BoxGeometry(0.15, 0.5, 0.15);
+    const aL = new THREE.Mesh(armGeom, mat); aL.position.set(-0.35, 0.35, 0); g.add(aL);
+    const aR = new THREE.Mesh(armGeom, mat); aR.position.set(0.35, 0.35, 0); g.add(aR);
+    // legs
+    const legGeom = new THREE.BoxGeometry(0.18, 0.3, 0.18);
+    const lL = new THREE.Mesh(legGeom, mat); lL.position.set(-0.13, -0.05, 0); g.add(lL);
+    const lR = new THREE.Mesh(legGeom, mat); lR.position.set(0.13, -0.05, 0); g.add(lR);
+    return g;
+  }
+
+  function createAngelMesh() {
+    const g = new THREE.Group();
+    const white = new THREE.MeshLambertMaterial({color: 0xffffff});
+    const gold = new THREE.MeshBasicMaterial({color: 0xffee88});
+    // body (glowing white robe)
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.4), white);
+    body.position.y = 0.35;
+    g.add(body);
+    // head
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), white);
+    head.position.set(0, 0.95, 0);
+    g.add(head);
+    // halo (gold ring using a thin cylinder)
+    const halo = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 16, 1, true), gold);
+    halo.position.set(0, 1.3, 0);
+    g.add(halo);
+    // wings (two flat rectangles on the sides)
+    const wingMat = new THREE.MeshBasicMaterial({color: 0xf0f8ff, side: 2});
+    const wingGeom = new THREE.BoxGeometry(0.05, 0.7, 0.5);
+    const wL = new THREE.Mesh(wingGeom, wingMat); wL.position.set(-0.32, 0.4, -0.1); wL.rotation.z = 0.3; g.add(wL);
+    const wR = new THREE.Mesh(wingGeom, wingMat); wR.position.set(0.32, 0.4, -0.1); wR.rotation.z = -0.3; g.add(wR);
+    return g;
+  }
+
+  function rebuildEntityMeshes() {
+    while (entityMeshGroup.children.length) entityMeshGroup.remove(entityMeshGroup.children[0]);
+    entities.forEach(e => {
+      if (e.realm !== currentRealm) { e.mesh = null; return; }
+      const m = (e.kind === 'demon') ? createDemonMesh() : createAngelMesh();
+      m.position.set(e.x, e.y, e.z);
+      entityMeshGroup.add(m);
+      e.mesh = m;
+    });
+  }
+
+  // Fireball meshes — small red glowing cubes
+  const fireballGroup = new THREE.Group();
+  scene.add(fireballGroup);
+  function spawnFireballMesh(fb) {
+    const mat = new THREE.MeshBasicMaterial({color: 0xff5500});
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), mat);
+    m.position.set(fb.x, fb.y, fb.z);
+    fireballGroup.add(m);
+    fb.mesh = m;
+  }
 
   const player={
     pos:new THREE.Vector3(0,14,0), vel:new THREE.Vector3(0,0,0),
@@ -666,7 +873,9 @@
     {id:'god',label:'👑 GOD OF CLAUDECRAFT!',check:()=>achievements.god},
     {id:'sword',label:'⚔️ Craft your first sword',check:()=>tools.swordTier>=1},
     {id:'dsword',label:'💎 Diamond sword',check:()=>tools.swordTier>=5},
-    {id:'pet',label:'🐺 Tame a pet',check:()=>pets.some(p=>p.tamed)}
+    {id:'pet',label:'🐺 Tame a pet',check:()=>pets.some(p=>p.tamed)},
+    {id:'demonKill',label:'😈 Slay a mini demon',check:()=>achievements.demonKill},
+    {id:'angelHeal',label:'👼 Get healed by an angel',check:()=>achievements.angelHeal}
   ];
 
   function checkAchievements(){
@@ -739,13 +948,17 @@
     {id:'iarmor',name:'Iron armor',cost:{[B.IRON]:8},requiresTable:true,action:()=>{armor.iron=true;toast('Crafted iron armor');}},
     {id:'garmor',name:'Gold armor',cost:{[B.GOLD]:8},requiresTable:true,action:()=>{armor.gold=true;toast('Crafted gold armor');}},
     {id:'rarmor',name:'Redstone armor',cost:{[B.REDSTONE]:8},requiresTable:true,action:()=>{armor.redstone=true;toast('Crafted redstone armor');}},
-    {id:'darmor',name:'Diamond armor (LAVA PROOF!)',cost:{[B.DIAMOND]:8},requiresTable:true,action:()=>{armor.diamond=true;toast('🛡️ Diamond armor — lava-proof!');}},
-    {id:'wsword',name:'⚔️ Wood sword',cost:{[B.WOOD]:3},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,1);toast('⚔️ Crafted wood sword!');}},
-    {id:'ssword',name:'⚔️ Stone sword',cost:{[B.STONE]:3,[B.WOOD]:1},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,2);toast('⚔️ Crafted stone sword!');}},
-    {id:'isword',name:'⚔️ Iron sword',cost:{[B.IRON]:3,[B.WOOD]:1},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,3);toast('⚔️ Crafted iron sword!');}},
-    {id:'gsword',name:'⚔️ Gold sword (shiny but weak)',cost:{[B.GOLD]:3,[B.WOOD]:1},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,4);toast('⚔️ Crafted gold sword!');}},
-    {id:'dsword',name:'💎 Diamond sword',cost:{[B.DIAMOND]:3,[B.WOOD]:1},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,5);toast('💎 Crafted DIAMOND sword!');}}
+    {id:'darmor',name:'Diamond armor (LAVA PROOF!)',cost:{[B.DIAMOND]:8},requiresTable:true,action:()=>{armor.diamond=true;toast('🛡️ Diamond armor — lava-proof!');}}
   ];
+  if (FEAT.swords) {
+    recipes.push(
+      {id:'wsword',name:'⚔️ Wood sword',cost:{[B.WOOD]:3},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,1);toast('⚔️ Crafted wood sword!');}},
+      {id:'ssword',name:'⚔️ Stone sword',cost:{[B.STONE]:3,[B.WOOD]:1},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,2);toast('⚔️ Crafted stone sword!');}},
+      {id:'isword',name:'⚔️ Iron sword',cost:{[B.IRON]:3,[B.WOOD]:1},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,3);toast('⚔️ Crafted iron sword!');}},
+      {id:'gsword',name:'⚔️ Gold sword (shiny but weak)',cost:{[B.GOLD]:3,[B.WOOD]:1},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,4);toast('⚔️ Crafted gold sword!');}},
+      {id:'dsword',name:'💎 Diamond sword',cost:{[B.DIAMOND]:3,[B.WOOD]:1},requiresTable:true,action:()=>{tools.swordTier=Math.max(tools.swordTier,5);toast('💎 Crafted DIAMOND sword!');}}
+    );
+  }
 
   function nearCraftingTable(){
     const px=Math.floor(player.pos.x),py=Math.floor(player.pos.y),pz=Math.floor(player.pos.z);
@@ -953,6 +1166,10 @@
     toast('✨ AETHER PORTAL OPENED!',4500);
   }
   function activateFirePortal(frame){
+    if (!FEAT.underworld) {
+      toast('🔒 Fire portal is in version 0.2+. Switch versions in Settings!', 4500);
+      return;
+    }
     for(let dx=0;dx<frame.w;dx++)for(let dz=0;dz<frame.l;dz++){const above=getBlock(frame.x0+dx,frame.activateY,frame.z0+dz);if(above===B.AIR||above===B.COAL)setBlock(frame.x0+dx,frame.activateY,frame.z0+dz,B.FIRE_PORTAL);}
     rebuildMesh(); achievements.fireportal=true; checkAchievements();
     toast('🔥 FIRE PORTAL OPENED! Get diamond armor first!',5500);
@@ -1002,8 +1219,12 @@
       document.getElementById('cc-realm').style.color='#042c1f';
       toast('🌍 Back in the Overworld');
     }
+    // Clear any in-flight fireballs when changing realms
+    while (fireballGroup.children.length) fireballGroup.remove(fireballGroup.children[0]);
+    fireballs.length = 0;
     rebuildMesh();
     rebuildPetMeshes();
+    rebuildEntityMeshes();
   }
 
   const PUZZLES=[
@@ -1090,6 +1311,33 @@
         return;
       }
     }
+    // Check if player clicked a demon (kill it if holding sword)
+    for (let i = 0; i < entities.length; i++) {
+      const e = entities[i];
+      if (e.kind !== 'demon' || e.realm !== currentRealm) continue;
+      const dx = e.x - origin.x, dy = (e.y + 0.6) - origin.y, dz = e.z - origin.z;
+      const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      if (dist > 5) continue;
+      const dot = (dx*dir.x + dy*dir.y + dz*dir.z) / dist;
+      if (dot > 0.9) {
+        const swordDmg = SWORD_DAMAGE[tools.swordTier] || 0;
+        if (swordDmg === 0) {
+          toast('⚔️ You need a sword to kill a mini demon!');
+          return;
+        }
+        e.hp -= swordDmg;
+        if (e.hp <= 0) {
+          if (e.mesh) entityMeshGroup.remove(e.mesh);
+          entities.splice(i, 1);
+          toast('😈 Demon slain!');
+          achievements.demonKill = true;
+          checkAchievements();
+        } else {
+          toast('⚔️ Hit demon! HP: ' + e.hp);
+        }
+        return;
+      }
+    }
     const r=raycast(6);
     if(!r.hit)return;
     const info=BLOCK_INFO[r.blockId];
@@ -1100,7 +1348,20 @@
       if(dmg===0){toast('Need an iron pickaxe or any sword to hurt the Guardian!');return;}
       aetherBoss.hp=Math.max(0,aetherBoss.hp-dmg);
       showBoss('⚔️ AETHER GUARDIAN',aetherBoss.hp,10);
-      if(aetherBoss.hp<=0){setBlock(r.x,r.y,r.z,B.AIR);achievements.crown=true;document.getElementById('cc-boss').style.display='none';toast('👑 GUARDIAN DEFEATED!',5500);rebuildMesh();checkAchievements();return;}
+      if(aetherBoss.hp<=0){
+        setBlock(r.x,r.y,r.z,B.AIR);
+        achievements.crown=true;
+        document.getElementById('cc-boss').style.display='none';
+        rebuildMesh(); checkAchievements();
+        // In 0.1, the Aether Guardian is the final boss → win!
+        if (!FEAT.underworld) {
+          toast('👑 GUARDIAN DEFEATED! You are crowned!',3000);
+          setTimeout(()=>winGame('guardian'), 1500);
+        } else {
+          toast('👑 GUARDIAN DEFEATED! Now make a fire portal in the Overworld!',5500);
+        }
+        return;
+      }
       toast('⚔️ Hit! HP: '+aetherBoss.hp); return;
     }
     if(r.blockId===B.DEMON){
@@ -1111,7 +1372,20 @@
       if(dmg===0){toast('🔥 Need diamond pickaxe, sword, or flame sword!');return;}
       demonBoss.hp=Math.max(0,demonBoss.hp-dmg);
       showBoss('🔥 LAVA DEMON',demonBoss.hp,15);
-      if(demonBoss.hp<=0){setBlock(r.x,r.y,r.z,B.AIR);achievements.demon=true;document.getElementById('cc-boss').style.display='none';toast('⚔️🔥 LAVA DEMON DEFEATED!',6000);rebuildMesh();checkAchievements();return;}
+      if(demonBoss.hp<=0){
+        setBlock(r.x,r.y,r.z,B.AIR);
+        achievements.demon=true;
+        document.getElementById('cc-boss').style.display='none';
+        rebuildMesh(); checkAchievements();
+        // In 0.2, the Lava Demon is the final boss → win!
+        if (!FEAT.milkhoney) {
+          toast('⚔️🔥 LAVA DEMON DEFEATED! You are the Emperor!',3000);
+          setTimeout(()=>winGame('emperor'), 1500);
+        } else {
+          toast('⚔️🔥 LAVA DEMON DEFEATED! Get a diamond pickaxe and break the dungeon heart!',6000);
+        }
+        return;
+      }
       toast('⚔️ Hit Demon! HP: '+demonBoss.hp); return;
     }
     if(r.blockId===B.GUARDIAN){
@@ -1137,11 +1411,16 @@
     }
     if(dungeonHeartPos&&currentRealm==='overworld'&&r.x===dungeonHeartPos.x&&r.y===dungeonHeartPos.y&&r.z===dungeonHeartPos.z){
       achievements.dungeon=true;
-      if(tools.pickTier>=4){
+      if(tools.pickTier>=4 && FEAT.milkhoney){
         toast('💫 The diamond heart cracks! A glowing cave opens!',5500);
         setBlock(r.x,r.y,r.z,B.AIR);
         rebuildMesh(); checkAchievements();
         setTimeout(()=>teleportTo('milkhoney'),1200);
+        return;
+      } else if (tools.pickTier>=4) {
+        toast('🏆 Diamond heart shattered! (Land of Milk & Honey is in version 0.3+)',5500);
+        setBlock(r.x,r.y,r.z,B.AIR);
+        rebuildMesh(); checkAchievements();
         return;
       } else toast('🏆 Pillar cleared! Need DIAMOND pickaxe to break the heart!',5500);
     }
@@ -1202,16 +1481,25 @@
     tryMove('y');tryMove('x');tryMove('z');
     pos.copy(newPos);
   }
-  function winGame(){
+  function winGame(type){
     gameOver=true; timerRunning=false;
+    type = type || 'god';
     const timeUsed=TIME_LIMIT-timeLeft;
     const mins=Math.floor(timeUsed/60), secs=Math.floor(timeUsed%60);
+    const TITLES = {
+      guardian: {emoji:'👑⚔️', title:'GUARDIAN OF CLAUDECRAFT!', msg:`You beat the Aether Guardian in ${mins}m ${secs}s!`, ranks:{best:'🏆 LEGENDARY GUARDIAN!',mid:'⭐ MIGHTY GUARDIAN!',ok:'👑 NOBLE GUARDIAN!'}},
+      emperor:  {emoji:'⚔️🔥👑', title:'EMPEROR OF CLAUDECRAFT!', msg:`You beat the Lava Demon in ${mins}m ${secs}s!`, ranks:{best:'🏆 LEGENDARY EMPEROR!',mid:'⭐ MIGHTY EMPEROR!',ok:'👑 NOBLE EMPEROR!'}},
+      god:      {emoji:'👑✨👑', title:'GOD OF CLAUDECRAFT!', msg:`Solved all 3 puzzles in ${mins}m ${secs}s!`, ranks:{best:'🏆 LEGENDARY GOD!',mid:'⭐ MIGHTY GOD!',ok:'👑 NOBLE GOD!'}}
+    };
+    const t = TITLES[type] || TITLES.god;
+    document.getElementById('cc-win-emoji').textContent = t.emoji;
+    document.getElementById('cc-win-title').textContent = t.title;
     let rank, msg;
-    if(timeUsed<12*60){rank='🏆 LEGENDARY GOD!';msg='INCREDIBLE!';}
-    else if(timeUsed<18*60){rank='⭐ MIGHTY GOD!';msg='Four worlds, one ruler!';}
-    else if(timeUsed<24*60){rank='👑 NOBLE GOD!';msg='You rule them all!';}
+    if(timeUsed<12*60){rank=t.ranks.best;msg='INCREDIBLE!';}
+    else if(timeUsed<18*60){rank=t.ranks.mid;msg='Well done!';}
+    else if(timeUsed<24*60){rank=t.ranks.ok;msg='You did it!';}
     else{rank='😅 BARELY!';msg='Just made it!';}
-    document.getElementById('cc-win-msg').textContent=`Solved all 3 puzzles in ${mins}m ${secs}s!`;
+    document.getElementById('cc-win-msg').textContent = t.msg;
     document.getElementById('cc-win-rank').textContent=rank+' '+msg;
     winEl.style.display='flex';
   }
@@ -1350,6 +1638,108 @@
         m.rotation.y = Math.atan2(p.vx, p.vz);
       }
       m.position.set(p.x, p.y, p.z);
+    }
+
+    // ===== ENTITIES (demons + angels) =====
+    for (let i = 0; i < entities.length; i++) {
+      const e = entities[i];
+      if (e.realm !== currentRealm || !e.mesh) continue;
+      const dx = player.pos.x - e.x, dz = player.pos.z - e.z;
+      const distXZ = Math.sqrt(dx*dx + dz*dz);
+      if (e.kind === 'demon') {
+        // Slow wander + shoot fireballs when player is in range
+        e.wanderT -= dt;
+        if (e.wanderT <= 0) {
+          e.vx = (Math.random()-0.5)*0.8;
+          e.vz = (Math.random()-0.5)*0.8;
+          e.wanderT = 1.5 + Math.random()*2;
+        }
+        // Only move if next tile has ground below
+        const nx = e.x + e.vx*dt, nz = e.z + e.vz*dt;
+        if (getBlock(Math.floor(nx), Math.floor(e.y)-1, Math.floor(nz)) !== B.AIR &&
+            getBlock(Math.floor(nx), Math.floor(e.y), Math.floor(nz)) === B.AIR) {
+          e.x = nx; e.z = nz;
+        } else {
+          e.vx = -e.vx; e.vz = -e.vz;
+        }
+        // Face player
+        e.mesh.rotation.y = Math.atan2(dx, dz);
+        // Cooldown + shoot
+        e.cooldown -= dt;
+        if (distXZ < 18 && distXZ > 3 && e.cooldown <= 0) {
+          const px = player.pos.x, py = player.pos.y + 1, pz = player.pos.z;
+          const fx = e.x, fy = e.y + 0.9, fz = e.z;
+          let ddx = px-fx, ddy = py-fy, ddz = pz-fz;
+          const len = Math.sqrt(ddx*ddx+ddy*ddy+ddz*ddz);
+          if (len > 0.01) { ddx/=len; ddy/=len; ddz/=len; }
+          const speed = 9;
+          const fb = {x:fx, y:fy, z:fz, vx:ddx*speed, vy:ddy*speed, vz:ddz*speed, life:2.5};
+          spawnFireballMesh(fb);
+          fireballs.push(fb);
+          e.cooldown = 2 + Math.random()*1.5;
+        }
+      } else if (e.kind === 'angel') {
+        // Gentle floating bob
+        e.floatT = (e.floatT||0) + dt;
+        e.mesh.position.y = e.y + Math.sin(e.floatT*1.5)*0.35;
+        // Slow drift
+        e.wanderT -= dt;
+        if (e.wanderT <= 0) {
+          e.vx = (Math.random()-0.5)*0.5;
+          e.vz = (Math.random()-0.5)*0.5;
+          e.wanderT = 2 + Math.random()*2;
+        }
+        e.x += e.vx*dt; e.z += e.vz*dt;
+        // Face player gently
+        if (distXZ > 0.1) e.mesh.rotation.y = Math.atan2(dx, dz);
+        // Heal player if close
+        if (distXZ < 2.5 && playerHearts < 3) {
+          e.healT = (e.healT||0) + dt;
+          if (e.healT >= 2) {
+            playerHearts = Math.min(3, playerHearts + 1);
+            renderHearts();
+            toast('👼 An angel healed you!');
+            achievements.angelHeal = true;
+            checkAchievements();
+            e.healT = 0;
+          }
+        } else {
+          e.healT = 0;
+        }
+      }
+      e.mesh.position.x = e.x;
+      e.mesh.position.z = e.z;
+      if (e.kind === 'demon') e.mesh.position.y = e.y;
+    }
+
+    // ===== FIREBALLS =====
+    for (let i = fireballs.length - 1; i >= 0; i--) {
+      const fb = fireballs[i];
+      fb.x += fb.vx*dt; fb.y += fb.vy*dt; fb.z += fb.vz*dt;
+      fb.life -= dt;
+      // gravity
+      fb.vy -= 4*dt;
+      let hit = false;
+      // Hit block?
+      if (getBlock(Math.floor(fb.x), Math.floor(fb.y), Math.floor(fb.z)) !== B.AIR) hit = true;
+      // Hit player? (player is at pos.x, pos.y..pos.y+height)
+      const pdx = fb.x - player.pos.x;
+      const pdz = fb.z - player.pos.z;
+      const pdy = fb.y - (player.pos.y + 0.9);
+      if (pdx*pdx + pdz*pdz < 0.35 && Math.abs(pdy) < 0.9) {
+        hit = true;
+        if (lavaTouchCooldown <= 0) {
+          damagePlayer();
+          lavaTouchCooldown = 0.8;
+          toast('🔥 Hit by a demon fireball!');
+        }
+      }
+      if (fb.life <= 0) hit = true;
+      if (fb.mesh) fb.mesh.position.set(fb.x, fb.y, fb.z);
+      if (hit) {
+        if (fb.mesh) fireballGroup.remove(fb.mesh);
+        fireballs.splice(i, 1);
+      }
     }
 
     renderer.render(scene,camera);
