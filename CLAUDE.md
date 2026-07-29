@@ -11,9 +11,9 @@ There is **no package.json, bundler, test runner, linter, or CI**. Everything is
 ## Layout
 
 - `index.html` — the landing page. Contains a `<main>` of game cards.
-- `<game name>/index.html` — each game is **one fully self-contained file** (all CSS and JS inline) in its own directory: `balloon pop/`, `claudecraft/`, `cluckdown/`, `football rivals/`, `geo-jump/`, `math mine/`. Directory names may contain spaces.
+- `<game name>/index.html` — each game is **one fully self-contained file** (all CSS and JS inline) in its own directory: `astronomia/`, `balloon pop/`, `claudecraft/`, `cluckdown/`, `football rivals/`, `geo-jump/`, `math mine/`. Directory names may contain spaces.
 
-The only external runtime dependencies in the entire repo are CDN `<script>`/`<link>` tags: the landing page loads Google Fonts (Orbitron, Press Start 2P), and `claudecraft/` loads three.js r128 from cdnjs. Games are otherwise dependency-free — there is no local `node_modules` to install, and any that appears is stray and should not be committed (see `.gitignore`).
+The only external runtime dependencies in the entire repo are CDN `<script>`/`<link>` tags: the landing page loads Google Fonts (Orbitron, Press Start 2P), and `claudecraft/` plus `astronomia/` load three.js from cdnjs. Note the cdnjs path uses `r128`, **not** `0.128.0` — the latter 404s. Games are otherwise dependency-free — there is no local `node_modules` to install, and any that appears is stray and should not be committed (see `.gitignore`).
 
 ## Running / verifying
 
