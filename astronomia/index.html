@@ -1621,6 +1621,7 @@ function step(dt) {
 
 /** Advance the simulation by one rendered frame's worth of time. */
 function advance(frameSeconds) {
+  refreshSources();
   if (!sim.running || sim.rate === 0) return;
   const target = sim.rate * Math.min(frameSeconds, 0.05);
   if (target <= 0) return;
@@ -1630,9 +1631,22 @@ function advance(frameSeconds) {
   const steps = clamp(Math.ceil(target / safe), 1, budget);
   const dt = target / steps;
   for (let s = 0; s < steps; s++) step(dt);
+
+  // Debris gets its own, capped substepping. It does not need the planets'
+  // accuracy, and at extreme time compression 64 passes over a full pool would
+  // cost tens of milliseconds and stall the frame.
+  if (parts.live > 0) {
+    const pSteps = Math.min(steps, P_MAX_STEPS);
+    const pdt = target / pSteps;
+    for (let s = 0; s < pSteps; s++) stepParticles(pdt);
+  }
 }
 
 /* =============================================================== collisions */
+
+/** Mutual escape velocity of a colliding pair — the yardstick for how hard a hit is. */
+const vEscape = (a, b) =>
+  Math.sqrt(2 * G * (a.m + b.m) / Math.max(1e-9, visRadius(a) + visRadius(b)));
 
 function resolveCollisions() {
   if (settings.collisions === 'off' || !collisionPairs.length) return;
@@ -1674,7 +1688,7 @@ function impact(a, b) {
 
   const rel = b.v.clone().sub(a.v);
   const vImp = rel.length();
-  const vEsc = Math.sqrt(2 * G * (a.m + b.m) / Math.max(1e-9, visRadius(a) + visRadius(b)));
+  const vEsc = vEscape(a, b);
   const ratio = b.m / a.m;
 
   // A gentle touch accretes; a fast, well-matched hit shatters both. Rubble is
@@ -1688,11 +1702,20 @@ function impact(a, b) {
 function absorb(hole, prey) {
   const mTot = hole.m + prey.m;
   hole.v.multiplyScalar(hole.m / mTot).addScaledVector(prey.v, prey.m / mTot);
-  hole.m = mTot;
-  hole.r = schwarzschild(mTot);
+
+  // Some of the meal is flung clear instead of swallowed whole. Most of it is
+  // still bound and will spiral back in over the next few orbits.
+  const rp = visRadius(prey);
+  const vEsc = Math.sqrt(2 * G * hole.m / Math.max(rp, 1e-9));
+  const spare = prey.m * 0.06;
+  // Clear of the horizon as well as the prey, or it is swallowed immediately.
+  const thrown = ejecta(prey.p, prey.v, 210, spare, vEsc * 0.5,
+    [200, 160, 255], [90, 80, 120], Math.max(rp, visRadius(hole)), { speed: 1 });
+
+  hole.m = mTot - thrown;
+  hole.r = schwarzschild(hole.m);
   refreshVisual(hole);
-  fx.flash(prey.p, visRadius(prey) * 6, [200, 170, 255], 0.5);
-  fx.burst(prey.p, prey.v, visRadius(prey), 16, [190, 150, 255]);
+  fx.flash(prey.p, rp * 6, [200, 170, 255], 0.5);
   toast(hole.name + ' devoured ' + prey.name);
   removeBody(prey);
 }
@@ -1715,6 +1738,15 @@ function bounce(a, b) {
   a.v.addScaledVector(nrm, -jImp / a.m);
   b.v.addScaledVector(nrm, jImp / b.m);
   fx.flash(b.p, visRadius(b) * 3, [255, 220, 170], 0.25);
+  // Scale the scuff with how hard they actually hit. A graze knocks a little
+  // dust off the smaller body; it is real mass, so take it out of b.
+  const vEsc = vEscape(a, b);
+  const bump = clamp(-sep / Math.max(vEsc, 1e-9), 0, 2);
+  if (bump > 0.15) {
+    const n = Math.round(50 + 110 * bump);
+    b.m -= ejecta(b.p, b.v, n, b.m * 0.004 * bump, vEsc,
+      [255, 225, 175], [110, 100, 92], visRadius(b), { speed: 0.8 });
+  }
 }
 
 function merge(a, b, vImp, vEsc) {
@@ -1722,20 +1754,25 @@ function merge(a, b, vImp, vEsc) {
   const com = a.p.clone().multiplyScalar(a.m).addScaledVector(b.p, b.m).divideScalar(mTot);
   const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mTot);
 
-  // Splash a little of the smaller body back out as debris. Rubble and very
-  // small impactors never spray: otherwise every merge seeds fragments that
-  // merge and spray again, running away to the body cap in seconds.
-  const spray = clamp((vImp / Math.max(vEsc, 1e-9) - 0.5) * 0.12, 0, 0.1);
-  const maySpray = spray > 0 && b.m / a.m > 0.004 && b.m > 0.0015 && !b.rubble && !a.rubble;
-  // Clamped to the free slots, and `lost` is derived from the count that is
-  // actually spawned, so mass is conserved exactly rather than leaking away.
-  const frags = maySpray ? Math.min(clamp(Math.round(spray * 60), 0, 7), freeSlots()) : 0;
-  const lost = frags > 0 ? b.m * spray : 0;
+  // Splash some of the impactor back out as real debris. Harder accretions throw
+  // out proportionally more, and a pebble landing on a planet should not look
+  // like two worlds colliding, so scale by the impactor's share of the mass.
+  const sev = clamp(vImp / Math.max(vEsc, 1e-9), 0, 2);
+  const heft = clamp(Math.sqrt(b.m / mTot * 4), 0.1, 1);
+  const spray = clamp((sev - 0.5) * 0.1, 0, 0.09);
+  const ejectMass = b.m * spray;
+  const count = Math.round((150 + 150 * sev) * heft);
 
-  a.m = mTot - lost;
+  // Move and grow the survivor FIRST, so the ejecta is placed clear of the
+  // merged body's surface rather than inside it.
   a.p.copy(com);
   a.v.copy(vel);
   a.r = Math.cbrt(a.r * a.r * a.r + b.r * b.r * b.r);
+
+  const thrown = ejectMass > 0
+    ? ejecta(com, vel, count, ejectMass, vEsc, [255, 190, 110], [96, 84, 76], visRadius(a), { speed: 1 })
+    : 0;
+  a.m = mTot - thrown;
 
   // Enough mass in one place and the physics changes character.
   let note = a.name + ' absorbed ' + b.name;
@@ -1750,9 +1787,7 @@ function merge(a, b, vImp, vEsc) {
     refreshVisual(a);
   }
 
-  if (frags) spawnDebris(com, vel, lost / frags, frags, Math.max(vImp * 0.5, vEsc * 0.7), visRadius(a));
   fx.flash(com, visRadius(a) * 4, [255, 210, 150], 0.7);
-  fx.burst(com, vel, visRadius(a), 26, [255, 190, 120]);
   toast(note);
   removeBody(b);
 }
@@ -1762,12 +1797,21 @@ function shatter(a, b, vImp) {
   const com = a.p.clone().multiplyScalar(a.m).addScaledVector(b.p, b.m).divideScalar(mTot);
   const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mTot);
 
-  // The larger body keeps a battered remnant; the rest becomes rubble. If there
-  // is no room for fragments the remnant keeps everything, so mass still adds up.
+  const vEsc = vEscape(a, b);
+  const ra0 = visRadius(a);
+
+  // Two tiers of real wreckage. A handful of large fragments become full N-body
+  // objects that pull on everything; the fine ejecta becomes thousands of test
+  // particles. Every gram is accounted for out of mTot.
+  const fine = mTot * 0.09;
+  const thrown = ejecta(com, vel, 520, fine, vEsc,
+    [255, 235, 195], [104, 90, 80], ra0, { speed: 1.35, sizeMin: 1.2, sizeMax: 7.5 });
+
   const keep = clamp(0.35 + 0.3 * (1 - b.m / a.m), 0.2, 0.72);
-  const frags = Math.min(clamp(Math.round(6 + (1 - keep) * 16), 4, 18), freeSlots());
-  const remnantM = frags > 0 ? a.m * keep : mTot;
-  const rubbleM = mTot - remnantM;
+  const bigFrags = Math.min(clamp(Math.round(6 + (1 - keep) * 16), 4, 18), freeSlots());
+  const avail = mTot - thrown;
+  const remnantM = bigFrags > 0 ? Math.min(a.m * keep, avail) : avail;
+  const rubbleM = avail - remnantM;
 
   a.m = remnantM;
   a.p.copy(com);
@@ -1776,9 +1820,10 @@ function shatter(a, b, vImp) {
   updateLuminosity(a);
   refreshVisual(a);
 
-  if (frags > 0) spawnDebris(com, vel, rubbleM / frags, frags, vImp * 0.45, visRadius(a) * 1.2);
-  fx.flash(com, visRadius(a) * 7, [255, 240, 200], 1);
-  fx.burst(com, vel, visRadius(a) * 1.5, 48, [255, 200, 130]);
+  if (bigFrags > 0 && rubbleM > 0) {
+    spawnDebris(com, vel, rubbleM / bigFrags, bigFrags, vImp * 0.45, visRadius(a) * 1.2);
+  }
+  fx.flash(com, ra0 * 7, [255, 240, 200], 1);
   toast(a.name + ' and ' + b.name + ' shattered on impact!');
   removeBody(b);
 }
@@ -1842,10 +1887,16 @@ function shatterBody(b) {
   if (!b.alive || b.kind === 'bh' || b.kind === 'wh') return;
   const frags = Math.min(clamp(Math.round(8 + Math.random() * 8), 6, 16), freeSlots());
   if (frags < 3) { toast('Universe is full — clear some bodies first'); return; }
-  const vEsc = Math.sqrt(2 * G * b.m / Math.max(visRadius(b), 1e-9));
-  spawnDebris(b.p, b.v, b.m / frags, frags, vEsc * 0.9, visRadius(b));
-  fx.flash(b.p, visRadius(b) * 7, [255, 235, 190], 1);
-  fx.burst(b.p, b.v, visRadius(b) * 1.4, 46, [255, 205, 140]);
+  const rb = visRadius(b);
+  const vEsc = Math.sqrt(2 * G * b.m / Math.max(rb, 1e-9));
+
+  // Fine ejecta first, then split what's left between the large fragments.
+  const thrown = ejecta(b.p, b.v, 520, b.m * 0.16, vEsc,
+    [255, 235, 195], [104, 90, 80], rb, { speed: 1.25, sizeMin: 1.2, sizeMax: 7.5 });
+  const rubble = b.m - thrown;
+  if (rubble > 0) spawnDebris(b.p, b.v, rubble / frags, frags, vEsc * 0.9, rb);
+
+  fx.flash(b.p, rb * 7, [255, 235, 190], 1);
   toast(b.name + ' was torn apart');
   if (sim.selected === b) select(null);
   removeBody(b);
@@ -1898,7 +1949,10 @@ function checkTides() {
 function tidalDisrupt(s, P, d) {
   const frags = Math.min(clamp(Math.round(7 + Math.random() * 7), 6, 14), freeSlots());
   if (frags < 3) return;                       // no room: leave the moon intact
-  const each = s.m / frags;
+
+  // Most of a shredded moon becomes ring material, laid onto its own orbit.
+  const dust = ringEjecta(s.p, s.v, P, 560, s.m * 0.55, 0.4, [232, 240, 255], [126, 122, 116]);
+  const each = (s.m - dust) / frags;
   const orbitDir = s.v.clone().sub(P.v);
   const speed = orbitDir.length();
   const made = [];
@@ -1999,7 +2053,7 @@ function initScene() {
   scene.add(new THREE.AmbientLight(0xffffff, 0.055));
 
   buildSky();
-  initFx();
+  initParticles();
   initPost();
   resize();
 }
@@ -2382,29 +2436,82 @@ function updateLights() {
 
 /* ================================================================== effects */
 
-const FX_MAX = 1600;
-const fxState = { pos: null, vel: null, life: null, max: null, col: null, head: 0, pts: null, geo: null };
+/* ========================================================== debris particles */
+/*
+ * These are real physical objects, not decoration. Each particle carries a mass
+ * in M⊕ and a velocity in Gm/day, and is integrated by the same leapfrog step as
+ * the planets. So debris genuinely orbits, settles into rings, rains back onto
+ * the world that threw it, and spirals into black holes — and when a body
+ * swallows a particle it actually gains that mass.
+ *
+ * The one simplification: particles do not attract EACH OTHER. They are test
+ * particles, feeling gravity only from the heaviest bodies. That turns the cost
+ * from O(P²) into O(P × M), which is what makes thousands of them affordable.
+ */
+
+const P_MAX = 2400;
+const P_SOURCES = 6;          // only the heaviest bodies pull on debris
+const P_MAX_STEPS = 20;       // substep ceiling per frame, for the cost bound
+const P_CULL = 1.4e5;         // Gm — debris past this has left the system
+
+const parts = {
+  pos: null, vel: null, m: null, size: null, bsize: null, hot: null,
+  col: null, warm: null, cool: null, on: null,
+  free: [], live: 0, geo: null, pts: null, dirty: false
+};
+
 const flashes = [];
 
-function initFx() {
-  fxState.pos = new Float32Array(FX_MAX * 3);
-  fxState.vel = new Float32Array(FX_MAX * 3);
-  fxState.col = new Float32Array(FX_MAX * 3);
-  fxState.base = new Float32Array(FX_MAX * 3);
-  fxState.life = new Float32Array(FX_MAX);
-  fxState.max = new Float32Array(FX_MAX);
+/* A per-particle size attribute: one uniform dot size reads as a flat cloud,
+   whereas mixing fine grit with fat glowing chunks reads as debris. */
+const FX_VERT = `
+  attribute vec3 aCol;
+  attribute float aSize;
+  uniform float uDpr;
+  varying vec3 vCol;
+  void main() {
+    vCol = aCol;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = aSize * uDpr;
+  }`;
+
+const FX_FRAG = `
+  uniform sampler2D uMap;
+  varying vec3 vCol;
+  void main() {
+    // Additive blending multiplies by alpha, so the soft falloff comes from the
+    // texture while vCol carries the glow as the fragment cools.
+    gl_FragColor = vec4(vCol, texture2D(uMap, gl_PointCoord).a);
+  }`;
+
+function initParticles() {
+  parts.pos = new Float32Array(P_MAX * 3);
+  parts.vel = new Float32Array(P_MAX * 3);      // Gm per day — real physics
+  parts.col = new Float32Array(P_MAX * 3);
+  parts.warm = new Float32Array(P_MAX * 3);     // freshly ejected, glowing
+  parts.cool = new Float32Array(P_MAX * 3);     // cold rock
+  parts.m = new Float32Array(P_MAX);
+  parts.size = new Float32Array(P_MAX);
+  parts.bsize = new Float32Array(P_MAX);
+  parts.hot = new Float32Array(P_MAX);
+  parts.on = new Uint8Array(P_MAX);
+  parts.free.length = 0;
+  for (let i = P_MAX - 1; i >= 0; i--) parts.free.push(i);
+  parts.live = 0;
 
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(fxState.pos, 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(fxState.col, 3));
-  fxState.geo = geo;
-  fxState.pts = new THREE.Points(geo, new THREE.PointsMaterial({
-    size: 3.4, sizeAttenuation: false, vertexColors: true, map: TEX_GLOW,
+  geo.setAttribute('position', new THREE.BufferAttribute(parts.pos, 3));
+  geo.setAttribute('aCol', new THREE.BufferAttribute(parts.col, 3));
+  geo.setAttribute('aSize', new THREE.BufferAttribute(parts.size, 1));
+  parts.geo = geo;
+  parts.pts = new THREE.Points(geo, new THREE.ShaderMaterial({
+    uniforms: { uMap: { value: TEX_GLOW }, uDpr: { value: VIEW.dpr } },
+    vertexShader: FX_VERT, fragmentShader: FX_FRAG,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
   }));
-  fxState.pts.frustumCulled = false;
-  fxState.pts.renderOrder = 5;
-  scene.add(fxState.pts);
+  parts.pts.frustumCulled = false;
+  parts.pts.renderOrder = 5;
+  scene.add(parts.pts);
 
   for (let i = 0; i < 14; i++) {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -2417,28 +2524,247 @@ function initFx() {
   }
 }
 
-const fx = {
-  burst(pos, baseVel, radius, count, color) {
-    for (let i = 0; i < count; i++) {
-      const k = fxState.head;
-      fxState.head = (fxState.head + 1) % FX_MAX;
-      const dir = new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1));
-      if (dir.lengthSq() < 1e-9) dir.set(1, 0, 0);
-      dir.normalize();
-      const spread = radius * rnd(6, 30);
-      fxState.pos[k * 3] = pos.x + dir.x * radius * rnd(0.2, 1.4);
-      fxState.pos[k * 3 + 1] = pos.y + dir.y * radius * rnd(0.2, 1.4);
-      fxState.pos[k * 3 + 2] = pos.z + dir.z * radius * rnd(0.2, 1.4);
-      fxState.vel[k * 3] = baseVel.x + dir.x * spread;
-      fxState.vel[k * 3 + 1] = baseVel.y + dir.y * spread;
-      fxState.vel[k * 3 + 2] = baseVel.z + dir.z * spread;
-      const c = mix(color, [255, 255, 255], Math.random() * 0.5);
-      fxState.base[k * 3] = c[0] / 255; fxState.base[k * 3 + 1] = c[1] / 255; fxState.base[k * 3 + 2] = c[2] / 255;
-      fxState.max[k] = rnd(0.5, 1.5);
-      fxState.life[k] = fxState.max[k];
-    }
-  },
+/**
+ * Throw a cloud of real debris out of a point.
+ *
+ * `totalMass` is genuinely removed from the parent body and handed to the
+ * particles, so the caller must subtract whatever this returns. Speeds are
+ * spread around the parent's escape velocity, which is what makes the result
+ * interesting: the slow half rains back down, the middle settles into a ring,
+ * and the fastest escapes altogether.
+ *
+ * Returns the mass actually used — less than requested if the pool is full.
+ */
+function ejecta(center, baseVel, count, totalMass, vEsc, hotCol, coolCol, radius, opts) {
+  const o = opts || {};
+  const n = Math.min(count, parts.free.length);
+  if (n <= 0 || totalMass <= 0) return 0;
+  const each = totalMass / n;
+  const sMin = o.sizeMin != null ? o.sizeMin : 1.5;
+  const sMax = o.sizeMax != null ? o.sizeMax : 6.5;
+  const push = o.speed != null ? o.speed : 1;
 
+  for (let i = 0; i < n; i++) {
+    const k = parts.free.pop();
+    const k3 = k * 3;
+
+    // uniform direction on the sphere
+    const u = rnd(-1, 1), th = rnd(0, TAU), sr = Math.sqrt(Math.max(0, 1 - u * u));
+    const dx = sr * Math.cos(th), dy = u, dz = sr * Math.sin(th);
+
+    // Power law, so most fragments are slow and a few really fly.
+    const frac = Math.pow(Math.random(), 1.9);
+    const sp = vEsc * push * (0.55 + frac * 1.9);
+
+    // Start clear of the surface. Spawned inside the collision radius, a grain
+    // is absorbed on the very next step and the whole burst vanishes at once.
+    const off = radius * rnd(1.15, 2.3);
+    parts.pos[k3] = center.x + dx * off;
+    parts.pos[k3 + 1] = center.y + dy * off;
+    parts.pos[k3 + 2] = center.z + dz * off;
+
+    parts.vel[k3] = baseVel.x + dx * sp;
+    parts.vel[k3 + 1] = baseVel.y + dy * sp;
+    parts.vel[k3 + 2] = baseVel.z + dz * sp;
+
+    // Fast fragments are the fine grit; slow ones are the big glowing chunks.
+    const bs = lerp(sMax, sMin, frac) * rnd(0.75, 1.25);
+    parts.bsize[k] = bs;
+    parts.size[k] = bs;
+    parts.m[k] = each;
+    parts.hot[k] = 1;
+
+    const w = mix(hotCol, [255, 255, 255], frac * rnd(0, 0.6));
+    parts.warm[k3] = w[0] / 255; parts.warm[k3 + 1] = w[1] / 255; parts.warm[k3 + 2] = w[2] / 255;
+    parts.cool[k3] = coolCol[0] / 255; parts.cool[k3 + 1] = coolCol[1] / 255; parts.cool[k3 + 2] = coolCol[2] / 255;
+    parts.col[k3] = parts.warm[k3]; parts.col[k3 + 1] = parts.warm[k3 + 1]; parts.col[k3 + 2] = parts.warm[k3 + 2];
+
+    parts.on[k] = 1;
+    parts.live++;
+  }
+  parts.dirty = true;
+  return each * n;
+}
+
+/**
+ * Release fine debris into a ring around `P`, the way tides actually shear a
+ * moon apart. Each grain is placed on the moon's orbit and given the local
+ * circular velocity, so it settles into a genuine ring rather than a puff — and
+ * because grains at slightly different radii have different periods, the arc
+ * shears itself into a complete ring over the following orbits.
+ */
+function ringEjecta(center, srcVel, P, count, totalMass, arc, hotCol, coolCol) {
+  const n = Math.min(count, parts.free.length);
+  if (n <= 0 || totalMass <= 0) return 0;
+  const each = totalMass / n;
+
+  const rel = center.clone().sub(P.p);
+  const d0 = rel.length();
+  if (d0 < 1e-9) return 0;
+  const radial = rel.clone().divideScalar(d0);
+
+  // tangential direction from the moon's own motion about the primary
+  const vrel = srcVel.clone().sub(P.v);
+  const tang = vrel.clone().addScaledVector(radial, -vrel.dot(radial));
+  if (tang.lengthSq() < 1e-18) tang.crossVectors(new THREE.Vector3(0, 1, 0), radial);
+  tang.normalize();
+  const normal = new THREE.Vector3().crossVectors(radial, tang).normalize();
+
+  const mu = G * settings.gravity * P.m;
+
+  for (let i = 0; i < n; i++) {
+    const k = parts.free.pop();
+    const k3 = k * 3;
+
+    const th = (Math.random() - 0.5) * 2 * arc;
+    const r = d0 * (1 + rnd(-0.06, 0.06));
+    const ct = Math.cos(th), st = Math.sin(th);
+
+    const outX = radial.x * ct + tang.x * st;
+    const outY = radial.y * ct + tang.y * st;
+    const outZ = radial.z * ct + tang.z * st;
+    const dirX = -radial.x * st + tang.x * ct;
+    const dirY = -radial.y * st + tang.y * ct;
+    const dirZ = -radial.z * st + tang.z * ct;
+
+    const tilt = rnd(-0.012, 0.012) * d0;
+    parts.pos[k3] = P.p.x + outX * r + normal.x * tilt;
+    parts.pos[k3 + 1] = P.p.y + outY * r + normal.y * tilt;
+    parts.pos[k3 + 2] = P.p.z + outZ * r + normal.z * tilt;
+
+    const vc = Math.sqrt(mu / r) * rnd(0.985, 1.015);
+    parts.vel[k3] = P.v.x + dirX * vc;
+    parts.vel[k3 + 1] = P.v.y + dirY * vc;
+    parts.vel[k3 + 2] = P.v.z + dirZ * vc;
+
+    const bs = rnd(1.4, 5.5);
+    parts.bsize[k] = bs;
+    parts.size[k] = bs;
+    parts.m[k] = each;
+    parts.hot[k] = 0.5;
+
+    const w = mix(hotCol, [255, 255, 255], Math.random() * 0.4);
+    parts.warm[k3] = w[0] / 255; parts.warm[k3 + 1] = w[1] / 255; parts.warm[k3 + 2] = w[2] / 255;
+    parts.cool[k3] = coolCol[0] / 255; parts.cool[k3 + 1] = coolCol[1] / 255; parts.cool[k3 + 2] = coolCol[2] / 255;
+    parts.col[k3] = parts.warm[k3]; parts.col[k3 + 1] = parts.warm[k3 + 1]; parts.col[k3 + 2] = parts.warm[k3 + 2];
+
+    parts.on[k] = 1;
+    parts.live++;
+  }
+  parts.dirty = true;
+  return each * n;
+}
+
+function killParticle(k) {
+  const k3 = k * 3;
+  parts.on[k] = 0;
+  parts.m[k] = 0;
+  parts.size[k] = 0;
+  parts.col[k3] = parts.col[k3 + 1] = parts.col[k3 + 2] = 0;
+  parts.free.push(k);
+  parts.live--;
+  parts.dirty = true;
+}
+
+function clearParticles() {
+  for (let k = 0; k < P_MAX; k++) if (parts.on[k]) killParticle(k);
+}
+
+/* The heaviest bodies are the only meaningful gravity sources for debris;
+   refreshed once per frame rather than per substep. */
+let pSources = [];
+const grewBodies = new Set();
+
+function refreshSources() {
+  pSources = sim.bodies.length <= P_SOURCES
+    ? sim.bodies.slice()
+    : sim.bodies.slice().sort((a, b) => b.m - a.m).slice(0, P_SOURCES);
+}
+
+/**
+ * Integrate the debris with the same timestep as the planets. Symplectic Euler
+ * (kick then drift) — one force evaluation per step, and stable for orbits.
+ */
+function stepParticles(dt) {
+  if (parts.live === 0) return;
+  const src = pSources, ns = src.length;
+  const gm = G * settings.gravity;
+  const pos = parts.pos, vel = parts.vel;
+
+  for (let k = 0; k < P_MAX; k++) {
+    if (!parts.on[k]) continue;
+    const k3 = k * 3;
+    const px = pos[k3], py = pos[k3 + 1], pz = pos[k3 + 2];
+    let ax = 0, ay = 0, az = 0, hit = null;
+
+    for (let s = 0; s < ns; s++) {
+      const b = src[s];
+      if (!b.alive) continue;
+      const dx = b.p.x - px, dy = b.p.y - py, dz = b.p.z - pz;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      const rv = visRadius(b);
+      if (d2 < rv * rv) { hit = b; break; }          // landed / swallowed
+      const soft = 0.35 * b.r;
+      const dd = d2 + soft * soft;
+      const f = gm * b.m / (dd * Math.sqrt(dd)) * (b.kind === 'wh' ? -1 : 1);
+      ax += dx * f; ay += dy * f; az += dz * f;
+    }
+
+    if (hit) {
+      hit.m += parts.m[k];                            // the mass really transfers
+      grewBodies.add(hit);
+      killParticle(k);
+      continue;
+    }
+
+    vel[k3] += ax * dt; vel[k3 + 1] += ay * dt; vel[k3 + 2] += az * dt;
+    pos[k3] += vel[k3] * dt; pos[k3 + 1] += vel[k3 + 1] * dt; pos[k3 + 2] += vel[k3 + 2] * dt;
+  }
+  parts.dirty = true;
+}
+
+/** Cool the glow, refresh colours, and drop anything that has left the system. */
+function updateParticles(simDt) {
+  if (parts.live === 0 && !parts.dirty) return;
+  const anchor = pSources.length ? pSources[0].p : null;
+  const cooling = simDt / 1.6;                        // ejecta cools within a couple of days
+
+  for (let k = 0; k < P_MAX; k++) {
+    if (!parts.on[k]) continue;
+    const k3 = k * 3;
+    if (anchor) {
+      const dx = parts.pos[k3] - anchor.x, dy = parts.pos[k3 + 1] - anchor.y, dz = parts.pos[k3 + 2] - anchor.z;
+      if (dx * dx + dy * dy + dz * dz > P_CULL * P_CULL) { killParticle(k); continue; }
+    }
+    const h = parts.hot[k] > 0 ? Math.max(0, parts.hot[k] - cooling) : 0;
+    parts.hot[k] = h;
+    const g = Math.pow(h, 0.55);
+    parts.col[k3] = lerp(parts.cool[k3], parts.warm[k3], g);
+    parts.col[k3 + 1] = lerp(parts.cool[k3 + 1], parts.warm[k3 + 1], g);
+    parts.col[k3 + 2] = lerp(parts.cool[k3 + 2], parts.warm[k3 + 2], g);
+    parts.size[k] = parts.bsize[k] * (0.7 + 0.3 * g);
+  }
+
+  parts.geo.attributes.position.needsUpdate = true;
+  parts.geo.attributes.aCol.needsUpdate = true;
+  parts.geo.attributes.aSize.needsUpdate = true;
+  parts.pts.material.uniforms.uDpr.value = VIEW.dpr;
+  parts.dirty = parts.live > 0;
+
+  // Bodies that ate debris need their radius (and mesh) brought up to date.
+  if (grewBodies.size) {
+    for (const b of grewBodies) {
+      if (!b.alive) continue;
+      if (b.kind === 'bh') b.r = schwarzschild(b.m);
+      else b.r = trueRadius(b.type, b.m);
+      updateLuminosity(b);
+      scaleVisual(b);
+    }
+    grewBodies.clear();
+  }
+}
+
+const fx = {
   flash(pos, size, color, strength) {
     let f = null;
     for (let i = 0; i < flashes.length; i++) if (flashes[i].life <= 0) { f = flashes[i]; break; }
@@ -2453,23 +2779,6 @@ const fx = {
 };
 
 function updateFx(realDt, simDt) {
-  const move = Math.min(simDt, 4);
-  const pos = fxState.pos, vel = fxState.vel, col = fxState.col, base = fxState.base;
-  for (let i = 0; i < FX_MAX; i++) {
-    if (fxState.life[i] <= 0) { col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = 0; continue; }
-    fxState.life[i] -= realDt;
-    const t = Math.max(fxState.life[i], 0) / fxState.max[i];
-    pos[i * 3] += vel[i * 3] * move;
-    pos[i * 3 + 1] += vel[i * 3 + 1] * move;
-    pos[i * 3 + 2] += vel[i * 3 + 2] * move;
-    const f = t * t;
-    col[i * 3] = base[i * 3] * f;
-    col[i * 3 + 1] = base[i * 3 + 1] * f;
-    col[i * 3 + 2] = base[i * 3 + 2] * f;
-  }
-  fxState.geo.attributes.position.needsUpdate = true;
-  fxState.geo.attributes.color.needsUpdate = true;
-
   for (let i = 0; i < flashes.length; i++) {
     const f = flashes[i];
     if (f.life <= 0) { if (f.sprite.visible) f.sprite.visible = false; continue; }
@@ -2915,6 +3224,7 @@ function updateVisuals(realDt, simDt) {
 
   updateReticle();
   updateTrails();
+  updateParticles(simDt);
   updateFx(realDt, simDt);
   updateLabels();
 }
@@ -3643,6 +3953,9 @@ function openSystems() {
 function clearAll() {
   for (const b of sim.bodies) { disposeVisual(b); }
   sim.bodies.length = 0;
+  clearParticles();
+  grewBodies.clear();
+  pSources = [];
   usedNames.clear();
   sim.time = 0;
   sim.selected = null;
@@ -3746,6 +4059,7 @@ function openHelp() {
     '<li>Every body pulls on every other one with real Newtonian gravity, stepped with a leapfrog integrator that keeps orbits stable for thousands of years.</li>' +
     '<li>Masses, radii and distances are in real units — Earth masses, Earth radii and millions of kilometres. Drop Earth 149.6 million km from a Sun-like star and its year comes out at 365 days.</li>' +
     '<li><b>Slow collisions merge</b> and conserve momentum. <b>Fast ones shatter</b> both bodies into rubble — the test is impact speed against the pair\'s escape velocity.</li>' +
+    '<li>The debris thrown out by an impact is <b>real matter, not sparks</b>. Every grain carries mass and is pulled along by the same gravity as the planets, so it orbits, rains back down, settles into rings, or is swallowed by a black hole — and whatever eats it genuinely gets heavier. The counter at the bottom left shows bodies plus live debris.</li>' +
     '<li>Pile up more than 8% of the Sun\'s mass and the body <b>ignites into a star</b>. Push a star past 25 solar masses and it <b>collapses into a black hole</b>.</li>' +
     '<li>Stray inside a planet\'s <b>Roche limit</b> and tides tear the moon into a ring, exactly as they did at Saturn.</li>' +
     '<li>Surface temperatures come from the real starlight falling on each world, so worlds glow when they roast and frost over when they don\'t.</li>' +
@@ -3754,6 +4068,7 @@ function openHelp() {
     '<ul>' +
     '<li>Planets are drawn <b>larger than life</b> (see Settings) because at true scale they would be invisible specks. They collide at the size you see.</li>' +
     '<li>Black holes are drawn far bigger than their real event horizons — a ten-solar-mass hole is only about 30 km across — and starlight does not dim with distance, or half your worlds would be pitch black.</li>' +
+    '<li>Debris grains feel gravity from the heaviest bodies but not from <i>each other</i>. That is what makes thousands of them possible at once; it means a debris ring will not clump into moons on its own.</li>' +
     '</ul>' +
     '</div>';
   openModal();
@@ -3769,7 +4084,9 @@ function updateHud(realDt) {
     fpsShown = Math.round(fpsCount / fpsAcc);
     fpsAcc = 0; fpsCount = 0;
     $('an-hud-fps').textContent = fpsShown;
-    $('an-hud-bodies').textContent = sim.bodies.length;
+    $('an-hud-bodies').textContent = parts.live
+      ? sim.bodies.length + ' + ' + parts.live
+      : sim.bodies.length;
   }
   const yr = Math.floor(sim.time / 365.25);
   const dy = Math.floor(sim.time - yr * 365.25);
