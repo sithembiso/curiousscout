@@ -173,6 +173,22 @@
   .an-empty { padding: 18px 14px; font-size: 12px; line-height: 1.6; color: var(--ink-dim); text-align: center; }
 
   .an-name { font-family: "Orbitron", sans-serif; font-size: 15px; font-weight: 700; color: #fff; }
+
+  /* The name doubles as a rename field, so it has to look clickable */
+  .an-name-in {
+    display: block; width: 100%;
+    font-family: "Orbitron", sans-serif; font-size: 15px; font-weight: 700;
+    color: #fff; background: transparent;
+    border: 1px solid rgba(150,130,255,0.18); border-radius: 7px;
+    padding: 4px 7px; margin: -4px 0 0 -7px;
+    outline: none; cursor: text;
+    transition: background .15s, border-color .15s;
+  }
+  .an-name-in:hover { background: rgba(150,130,255,0.12); border-color: rgba(150,130,255,0.4); }
+  .an-name-in:focus {
+    background: rgba(150,130,255,0.18); border-color: var(--accent);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
   .an-type { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--accent); margin-top: 3px; }
 
   .an-stats { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; margin: 12px 0 4px; font-size: 11.5px; }
@@ -1425,6 +1441,20 @@ const NAME_POOL = {
 
 const usedNames = new Set();
 
+/** Escape for use inside an HTML attribute — body names are user-editable. */
+const escAttr = (s) => String(s)
+  .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+  .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** Rename a body, keeping the used-name registry honest. Returns the final name. */
+function renameBody(b, raw) {
+  const want = String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim().slice(0, 24);
+  if (!want || want === b.name) return b.name;
+  usedNames.delete(b.name);
+  b.name = unique(want);
+  return b.name;
+}
+
 function makeName(type) {
   const def = TYPES[type];
   const pool = NAME_POOL[def.group] || NAME_POOL.PLANETS;
@@ -1489,6 +1519,9 @@ function makeBody(type, pos, vel, overrides) {
   const def = TYPES[type];
   const o = overrides || {};
   const mass = o.mass != null ? o.mass : def.mass;
+  // Register explicit names too, so auto-naming and renaming both know that
+  // "Earth" or "Jupiter" is already taken.
+  if (o.name) usedNames.add(o.name);
   const b = {
     id: sim.nextId++,
     type: type,
@@ -1776,16 +1809,9 @@ function merge(a, b, vImp, vEsc) {
 
   // Enough mass in one place and the physics changes character.
   let note = a.name + ' absorbed ' + b.name;
-  if (!TYPES[a.type].star && a.m >= 0.075 * M_SUN) {
-    becomeStar(a);
-    note = a.name + ' collapsed and ignited into a star!';
-  } else if (TYPES[a.type].star && a.m >= 25 * M_SUN) {
-    becomeBlackHole(a);
-    note = a.name + ' collapsed into a black hole!';
-  } else {
-    updateLuminosity(a);
-    refreshVisual(a);
-  }
+  const ev = checkEvolution(a);
+  if (ev) note = a.name + EVOLVE_NOTE[ev];
+  else { updateLuminosity(a); refreshVisual(a); }
 
   fx.flash(com, visRadius(a) * 4, [255, 210, 150], 0.7);
   toast(note);
@@ -1861,6 +1887,63 @@ function spawnDebris(center, baseVel, massEach, count, spread, minDist) {
   for (const f of made) tot += f.m;
   conserveMomentum(made, baseVel.clone().multiplyScalar(tot));
   return made;
+}
+
+/* ------------------------------------------------------- growing up ------- */
+
+const GAS_THRESHOLD = 60.1;      // M⊕ — a rocky world this heavy holds an envelope
+const IGNITE_MASS = 0.075 * M_SUN;
+const COLLAPSE_MASS = 25 * M_SUN;
+
+/* Worlds that already have a thick hydrogen envelope: the gas-giant rule below
+   does not apply to them, they just keep growing towards ignition. */
+const GASSY_SURF = new Set(['gas', 'icegiant', 'puff', 'hycean']);
+
+const isRocky = (b) =>
+  b.kind === 'body' && !TYPES[b.type].star && !GASSY_SURF.has(TYPES[b.type].surf);
+
+/**
+ * Apply the mass ladder. Checked in descending order so a body that leaps
+ * straight past several thresholds lands on the right one.
+ *
+ *   rock --60.1 M⊕--> gas giant --8% M☉--> star --25 M☉--> black hole
+ *
+ * Returns a tag for the caller's notification, or null if nothing changed.
+ */
+function checkEvolution(b) {
+  if (!b.alive || b.kind !== 'body') return null;
+  const def = TYPES[b.type];
+  if (def.star) {
+    if (b.m >= COLLAPSE_MASS) { becomeBlackHole(b); return 'bh'; }
+    return null;
+  }
+  if (b.m >= IGNITE_MASS) { becomeStar(b); return 'star'; }
+  if (isRocky(b) && b.m >= GAS_THRESHOLD) { becomeGasGiant(b); return 'gas'; }
+  return null;
+}
+
+const EVOLVE_NOTE = {
+  gas: ' swelled into a gas giant!',
+  star: ' ignited into a star!',
+  bh: ' collapsed into a black hole!'
+};
+
+/**
+ * Past ~60 Earth masses a rocky planet's gravity can hold onto hydrogen, so it
+ * puffs up into a gas giant — a real jump in radius, since gas is far less dense
+ * than rock.
+ */
+function becomeGasGiant(b) {
+  const oldR = visRadius(b);
+  b.type = 'gas_giant';
+  b.kind = 'body';
+  b.spin = TYPES.gas_giant.spin;
+  b.tilt = rnd(-0.42, 0.42);
+  b.r = trueRadius('gas_giant', b.m);
+  b.glowPulse = 1;                       // a few seconds of heat from collapsing in
+  updateLuminosity(b);
+  refreshVisual(b);
+  fx.flash(b.p, Math.max(visRadius(b), oldR) * 5, [255, 214, 150], 0.95);
 }
 
 function becomeStar(b) {
@@ -2309,11 +2392,15 @@ function scaleVisual(b) {
   if (p.photon) p.photon.scale.setScalar(r * 5.6);
 }
 
+/* Held while dragging a slider, so a mid-drag transformation cannot rebuild the
+   panel out from under the pointer. */
+let inspectorLock = 0;
+
 /** Rebuild a body's meshes after its type changed (ignition, collapse, …). */
 function refreshVisual(b) {
   disposeVisual(b, true);
   buildVisual(b);
-  if (sim.selected === b) renderInspector();
+  if (sim.selected === b && !inspectorLock) renderInspector();
 }
 
 function disposeVisual(b, keepTrail) {
@@ -2757,8 +2844,10 @@ function updateParticles(simDt) {
       if (!b.alive) continue;
       if (b.kind === 'bh') b.r = schwarzschild(b.m);
       else b.r = trueRadius(b.type, b.m);
-      updateLuminosity(b);
-      scaleVisual(b);
+      // Enough swallowed debris can push a body over a threshold too.
+      const ev = checkEvolution(b);
+      if (ev) toast(b.name + EVOLVE_NOTE[ev]);
+      else { updateLuminosity(b); scaleVisual(b); }
     }
     grewBodies.clear();
   }
@@ -3177,11 +3266,14 @@ function updateVisuals(realDt, simDt) {
     if (p.photon) p.photon.scale.setScalar(Math.max(r * 5.6, 16 * wpp));
 
     // ---- a world's appearance responds to how hot it is
+    if (b.glowPulse) b.glowPulse = Math.max(0, b.glowPulse - realDt * 0.4);
     if (p.surf && b.baseColor && p.surf.material.isMeshStandardMaterial) {
       const mat = p.surf.material;
       const hot = clamp((b.temp - 900) / 1300, 0, 1);
       const base = def.glowHot ? def.glowHot * 0.55 : 0;
-      const e = Math.max(base, hot * 0.85);
+      // A freshly transformed world glows from the heat of its own collapse.
+      const pulse = b.glowPulse ? Math.pow(b.glowPulse, 0.7) : 0;
+      const e = Math.max(base, hot * 0.85, pulse);
       mat.emissive.setRGB(e, e * 0.28, e * 0.05);
       const cold = clamp((110 - b.temp) / 70, 0, 1) * 0.5;
       mat.color.copy(b.baseColor).lerp(FROST, cold);
@@ -3544,12 +3636,19 @@ function renderInspector() {
   }
   const def = TYPES[b.type];
   $('an-insp-h').textContent = 'SELECTED';
-  const massMin = Math.log10(Math.max(def.mass * 0.02, 1e-11));
-  const massMax = Math.log10(def.mass * 60);
+  // A rocky world's range has to reach past the gas-giant threshold, or the
+  // slider could never trigger it. The range is also widened to contain the
+  // body's actual mass, otherwise setting `value` would silently clamp it and
+  // the readout would disagree with the physics.
+  const lm = Math.log10(Math.max(b.m, 1e-12));
+  const topMass = isRocky(b) ? Math.max(def.mass * 120, GAS_THRESHOLD * 2.5) : def.mass * 80;
+  const massMin = Math.min(Math.log10(Math.max(def.mass * 0.02, 1e-11)), lm);
+  const massMax = Math.max(Math.log10(topMass), lm);
 
   host.innerHTML =
-    '<div class="an-name">' + b.name + '</div>' +
-    '<div class="an-type">' + def.label + '</div>' +
+    '<input class="an-name-in" id="is-name" maxlength="24" spellcheck="false"' +
+    ' title="Click to rename" aria-label="Body name" value="' + escAttr(b.name) + '">' +
+    '<div class="an-type" id="is-typelbl">' + def.label + '</div>' +
     '<dl class="an-stats">' +
     '<dt>Mass</dt><dd id="is-mass"></dd>' +
     '<dt>Radius</dt><dd id="is-rad"></dd>' +
@@ -3569,16 +3668,33 @@ function renderInspector() {
     tmp: $('is-tmp'), orb: $('is-orb'), orbL: $('is-orb-l'), mval: $('is-mval')
   };
 
+  const nameIn = $('is-name');
+  nameIn.addEventListener('change', () => { nameIn.value = renameBody(b, nameIn.value); });
+  nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameIn.blur(); });
+
   const slider = $('is-mslider');
   slider.addEventListener('input', () => {
     const nb = sim.selected;
     if (!nb) return;
     nb.m = Math.pow(10, parseFloat(slider.value));
     nb.r = trueRadius(nb.type, nb.m);
-    updateLuminosity(nb);
-    scaleVisual(nb);
+    // Rebuilding the panel mid-drag would kill the drag, so on transformation
+    // just patch the type label in place; the full refresh waits for release.
+    inspectorLock++;
+    const ev = checkEvolution(nb);
+    inspectorLock--;
+    if (ev) {
+      const lbl = $('is-typelbl');
+      if (lbl) lbl.textContent = TYPES[nb.type].label;
+      toast(nb.name + EVOLVE_NOTE[ev]);
+    } else {
+      updateLuminosity(nb);
+      scaleVisual(nb);
+    }
     updateInspectorStats();
   });
+  // Released: now it is safe to rebuild, picking up the new type's slider range.
+  slider.addEventListener('change', () => { if (sim.selected) renderInspector(); });
   $('is-follow').addEventListener('click', () => {
     sim.follow = sim.follow === b ? null : b;
     renderInspector();
@@ -4041,6 +4157,7 @@ function openHelp() {
     '<li><b>Drag</b> while placing to aim it — the longer the drag, the faster it flies. About 120 pixels of drag equals one circular orbit speed at that spot.</li>' +
     '<li>Just click without dragging and <b>Auto-orbit</b> gives it a clean circular orbit around whatever dominates nearby.</li>' +
     '<li><b>Click a body</b> to select it. The panel on the right shows its real mass, density, speed and temperature, and lets you resize it.</li>' +
+    '<li><b>Click its name</b> in that panel to rename it — type anything and press Enter.</li>' +
     '</ul>' +
     '<h3>MOVING AROUND</h3>' +
     '<div class="an-keys">' +
@@ -4060,7 +4177,8 @@ function openHelp() {
     '<li>Masses, radii and distances are in real units — Earth masses, Earth radii and millions of kilometres. Drop Earth 149.6 million km from a Sun-like star and its year comes out at 365 days.</li>' +
     '<li><b>Slow collisions merge</b> and conserve momentum. <b>Fast ones shatter</b> both bodies into rubble — the test is impact speed against the pair\'s escape velocity.</li>' +
     '<li>The debris thrown out by an impact is <b>real matter, not sparks</b>. Every grain carries mass and is pulled along by the same gravity as the planets, so it orbits, rains back down, settles into rings, or is swallowed by a black hole — and whatever eats it genuinely gets heavier. The counter at the bottom left shows bodies plus live debris.</li>' +
-    '<li>Pile up more than 8% of the Sun\'s mass and the body <b>ignites into a star</b>. Push a star past 25 solar masses and it <b>collapses into a black hole</b>.</li>' +
+    '<li>Feed a <b>rocky</b> world past <b>60.1 Earth masses</b> and its gravity can finally hold onto hydrogen: it flares up and swells into a <b>gas giant</b>, roughly doubling in width as dense rock gives way to light gas. Worlds that are already gassy skip this and just keep growing.</li>' +
+    '<li>Pile up more than 8% of the Sun\'s mass and the body <b>ignites into a star</b>. Push a star past 25 solar masses and it <b>collapses into a black hole</b>. The full ladder is rock → gas giant → star → black hole.</li>' +
     '<li>Stray inside a planet\'s <b>Roche limit</b> and tides tear the moon into a ring, exactly as they did at Saturn.</li>' +
     '<li>Surface temperatures come from the real starlight falling on each world, so worlds glow when they roast and frost over when they don\'t.</li>' +
     '</ul>' +
