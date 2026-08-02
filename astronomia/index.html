@@ -229,6 +229,13 @@
     border-bottom: 1px solid rgba(140,120,255,0.1);
   }
   .an-toggle:last-child { border-bottom: none; }
+  .an-sec {
+    font-family: "Press Start 2P", monospace; font-size: 7.5px; letter-spacing: 1.3px;
+    color: var(--accent); margin: 18px 0 6px; padding-top: 12px;
+    border-top: 1px solid rgba(140,120,255,0.2);
+  }
+  .an-note { font-size: 11px; line-height: 1.55; color: var(--ink-dim); margin: 0 0 4px; }
+  .an-note b { color: #fff; }
   .an-toggle small { display: block; font-size: 10px; color: var(--ink-dim); margin-top: 2px; line-height: 1.4; }
   .an-sw {
     flex: none; width: 40px; height: 21px; border-radius: 11px; cursor: pointer;
@@ -420,7 +427,7 @@
   <div class="an-top">
     <div class="an-brand">
       <a class="an-back" href="../" title="Back to CuriousScout" aria-label="Back to CuriousScout">&#9664;</a>
-      <div class="an-title">AstroNomia <span>1.0</span></div>
+      <div class="an-title">AstroNomia <span>1.2</span></div>
     </div>
 
     <div class="an-time panel">
@@ -461,6 +468,7 @@
   <div class="an-hud">
     <span>BODIES <b id="an-hud-bodies">0</b></span>
     <span><b id="an-hud-fps">60</b> FPS</span>
+    <span id="an-hud-sn" style="display:none;color:#ffd166"></span>
     <span class="an-scalebar" id="an-scalebar"><b id="an-scale-lbl">1 Gm</b><i></i></span>
   </div>
 
@@ -480,14 +488,14 @@
 </div>
 
 <div class="an-boot" id="an-boot">
-  <div class="an-title">AstroNomia <span>1.0</span></div>
+  <div class="an-title">AstroNomia <span>1.2</span></div>
   <p id="an-boot-msg">FORMING THE UNIVERSE&hellip;</p>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ==========================================================================
-   AstroNomia 1.0 — a space sandbox
+   AstroNomia 1.2 — a space sandbox
    --------------------------------------------------------------------------
    Units used everywhere in the simulation:
      mass   = Earth masses      (M⊕ = 5.972e24 kg)
@@ -511,6 +519,12 @@ const KG_PER_ME = 5.972e24;
 
 // Schwarzschild radius (Gm) for a mass in M⊕
 const schwarzschild = (m) => 2 * G * m / (C_LIGHT * C_LIGHT);
+
+/* One unit of energy here is 1 M⊕·Gm²/day² = 8.000e32 J, so the "foe" that
+   supernova physics is measured in (1e51 erg = 1e44 J) works out at 1.250e11
+   of them. Everything the explosions do is budgeted in these two numbers.   */
+const FOE = 1.2500e11;
+const ERG_S_PER_LSUN = 3.828e33;
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1265,13 +1279,18 @@ const TYPES = {
   },
   red_supergiant: {
     label: 'Red Supergiant', group: 'STARS', mass: 16 * M_SUN, rad: 760 * R_SUN,
-    surf: 'star', temp: 3500, star: true, spin: 2000, spots: 14,
-    blurb: 'A dying titan. Drop it where the Sun is and it would swallow Jupiter whole.'
+    surf: 'star', temp: 3500, star: true, spin: 2000, spots: 14, aged: 0.985,
+    blurb: 'A dying titan. Drop it where the Sun is and it would swallow Jupiter whole. It is already almost out of fuel — switch on Stellar aging and watch.'
+  },
+  wolf_rayet: {
+    label: 'Wolf–Rayet Star', group: 'STARS', mass: 20 * M_SUN, rad: 3.1 * R_SUN,
+    surf: 'star', temp: 50000, star: true, stripped: true, spin: 3, spots: 4, aged: 0.995,
+    blurb: 'A giant that has blown its own hydrogen away, leaving the bare helium core burning in the open. It has maybe a hundred thousand years left, and it ends as a Type Ib/c supernova.'
   },
   white_dwarf: {
     label: 'White Dwarf', group: 'STARS', mass: 0.6 * M_SUN, rad: 0.9,
     surf: 'dwarfstar', temp: 12000, star: true, spin: 0.6,
-    blurb: 'A dead star\'s ember: the mass of the Sun packed into the size of Earth.'
+    blurb: 'A dead star\'s ember: the mass of the Sun packed into the size of Earth. Feed it past 1.44 solar masses and it detonates as a Type Ia supernova.'
   },
   neutron_star: {
     label: 'Neutron Star', group: 'STARS', mass: 1.4 * M_SUN, rad: 10 / 6371,
@@ -1421,7 +1440,7 @@ const GROUPS = ['STARS', 'PLANETS', 'MOONS & DEBRIS', 'EXOTIC', 'HYPOTHETICAL'];
 /* Representative swatch colour for each palette entry. */
 const SWATCH = {
   red_dwarf: '#ff7a52', sun_like: '#ffe9a8', blue_giant: '#b9d4ff', red_supergiant: '#ff8a5c',
-  white_dwarf: '#e8f2ff', neutron_star: '#cfe4ff',
+  wolf_rayet: '#dff0ff', white_dwarf: '#e8f2ff', neutron_star: '#cfe4ff',
   terrestrial: '#4d96ff', super_earth: '#5aa870', ocean_world: '#2bb4d6', desert_world: '#c98a52',
   ice_world: '#dbeaf7', lava_world: '#ff6a2a', gas_giant: '#d9b183', ice_giant: '#5aa8de',
   ringed_giant: '#e8d3a0',
@@ -1508,6 +1527,32 @@ const settings = {
   autoOrbit: true
 };
 
+/**
+ * The supernova model. Every one of these is a slider or a switch in
+ * Settings ▸ Supernovae, and the defaults are the real values — see SN_REAL
+ * below, which the RESET button restores.
+ */
+const snSet = {
+  on: true,             // supernovae happen at all
+  massTrigger: false,   // a star that GROWS past the core-collapse mass explodes
+  pisn: true,           // model pair-instability supernovae in the 130–250 M☉ window
+  aging: false,         // stars burn their fuel and die of old age
+  ageRate: 6,           // log10 of how much faster than real time they age
+  chandra: 1.44,        // M☉ — white dwarf detonation limit
+  ccMass: 8,            // M☉ — lightest star that can collapse an iron core
+  bhMass: 20,           // M☉ — progenitors above this leave a black hole
+  failMass: 40,         // M☉ — above this the core swallows its own explosion
+  energy: 1,            // × the canonical 1e51 erg of kinetic energy
+  nickel: 1,            // × the canonical Ni-56 yield, which sets the brightness
+  shellSize: 900,       // debris particles thrown per explosion
+  kick: 400,            // km/s — natal kick given to a newborn neutron star
+  blast: true,          // the shock front kicks and strips whatever it reaches
+  vaporize: true,       // …and destroys anything it hits harder than gravity binds
+  remnant: 'auto'       // auto | neutron | black | none
+};
+
+const SN_REAL = Object.assign({}, snSet);
+
 /* ------------------------------------------------------------ body creation */
 
 function trueRadius(type, mass) {
@@ -1546,6 +1591,10 @@ function makeBody(type, pos, vel, overrides) {
     disrupted: !!o.rubble,
     rubble: !!o.rubble,
     born: sim.time,
+    // Days of nuclear burning done so far. Only ticks when Stellar aging is on.
+    // A supergiant or a Wolf–Rayet is already near the end when you place it,
+    // which is the whole point of those two: they are about to explode.
+    age: o.age != null ? o.age : (def.aged ? msLifetime(mass / M_SUN) * def.aged : 0),
     obj: null
   };
   updateLuminosity(b);
@@ -1557,17 +1606,23 @@ function makeBody(type, pos, vel, overrides) {
 /** Displayed / colliding radius, exaggerated so bodies stay findable. */
 function visRadius(b) {
   if (b.kind === 'bh' || b.kind === 'wh') return b.r * 2.6 * settings.bodyScale * BH_VIS;
+  // A remnant cloud is light-days across already; exaggerating it would be absurd.
+  if (b.kind === 'snr') return b.r;
   return b.r * settings.bodyScale;
 }
 
-/** L/L☉ from radius and photosphere temperature. */
-function updateLuminosity(b) {
-  const def = TYPES[b.type];
-  if (!def.star) { b.lum = 0; return; }
-  const rSun = b.r / (R_SUN * R_EARTH);
-  let L = rSun * rSun * Math.pow(b.temp / 5778, 4);
+/** L/L☉ from radius and photosphere temperature — the Stefan–Boltzmann law. */
+function luminosityOf(type, radiusGm, tempK) {
+  const def = TYPES[type];
+  if (!def.star) return 0;
+  const rSun = radiusGm / (R_SUN * R_EARTH);
+  let L = rSun * rSun * Math.pow((tempK != null ? tempK : def.temp) / 5778, 4);
   if (def.lumCap != null) L = Math.min(L, def.lumCap);
-  b.lum = L;
+  return L;
+}
+
+function updateLuminosity(b) {
+  b.lum = luminosityOf(b.type, b.r, b.temp);
 }
 
 function removeBody(b) {
@@ -1665,6 +1720,11 @@ function advance(frameSeconds) {
   const steps = clamp(Math.ceil(target / safe), 1, budget);
   const dt = target / steps;
   for (let s = 0; s < steps; s++) step(dt);
+
+  // Stellar evolution runs once per frame rather than per substep: a star's
+  // life is measured in millions of years, so a fraction of a day either way
+  // makes no difference at all.
+  if (snSet.aging) ageStars(target);
 
   // Debris gets its own, capped substepping. It does not need the planets'
   // accuracy, and at extreme time compression 64 passes over a full pool would
@@ -1915,6 +1975,23 @@ function checkEvolution(b) {
   if (!b.alive || b.kind !== 'body') return null;
   const def = TYPES[b.type];
   if (def.star) {
+    // Nothing at all holds up a neutron star past the Tolman–Oppenheimer–Volkoff
+    // limit, so it just goes quietly.
+    if (def.surf === 'neutron') {
+      if (b.m >= TOV_LIMIT * M_SUN) { becomeBlackHole(b); return 'tov'; }
+      return null;
+    }
+    if (snSet.on) {
+      // A white dwarf crossing the Chandrasekhar limit is the one supernova that
+      // genuinely is triggered by mass rather than by running out of fuel — and
+      // it is exactly why every Type Ia comes out the same brightness.
+      if (def.surf === 'dwarfstar' && b.m >= snSet.chandra * M_SUN) {
+        return goSupernova(b) ? 'snIa' : null;
+      }
+      if (b.m >= snSet.failMass * M_SUN) return goSupernova(b) ? 'sn' : null;
+      if (snSet.massTrigger && b.m >= snSet.ccMass * M_SUN) return goSupernova(b) ? 'sn' : null;
+      return null;
+    }
     if (b.m >= COLLAPSE_MASS) { becomeBlackHole(b); return 'bh'; }
     return null;
   }
@@ -1926,7 +2003,10 @@ function checkEvolution(b) {
 const EVOLVE_NOTE = {
   gas: ' swelled into a gas giant!',
   star: ' ignited into a star!',
-  bh: ' collapsed into a black hole!'
+  bh: ' collapsed into a black hole!',
+  sn: ' went supernova!',
+  snIa: ' detonated as a Type Ia supernova!',
+  tov: ' passed the neutron-star limit and collapsed into a black hole!'
 };
 
 /**
@@ -1948,8 +2028,10 @@ function becomeGasGiant(b) {
 }
 
 function becomeStar(b) {
-  b.type = b.m > 0.5 * M_SUN ? 'sun_like' : 'red_dwarf';
+  const mSun = b.m / M_SUN;
+  b.type = mSun > 8 ? 'blue_giant' : mSun > 0.5 ? 'sun_like' : 'red_dwarf';
   b.kind = 'body';
+  b.age = 0;
   b.temp = TYPES[b.type].temp;
   b.r = trueRadius(b.type, b.m);
   b.spin = TYPES[b.type].spin;
@@ -1985,6 +2067,937 @@ function shatterBody(b) {
   if (sim.selected === b) select(null);
   removeBody(b);
   compact();
+}
+
+/* ============================================================== supernovae  */
+/*
+ * Two genuinely different explosions, both built from their real numbers.
+ *
+ *   Type Ia   A white dwarf accretes past the Chandrasekhar limit — 1.44 M☉,
+ *             the most mass that electron degeneracy pressure can hold up —
+ *             carbon ignites through the whole star at once, and it is torn
+ *             apart completely. Nothing is left behind. ~1.5e51 erg.
+ *
+ *   Type II   A star over about 8 M☉ runs out of fuel. Its iron core collapses
+ *   / Ib/c    in roughly a second and rebounds, blowing the envelope off at a
+ *             few thousand km/s. ~1e51 erg. What remains at the centre is a
+ *             neutron star, or a black hole if the star was heavy enough.
+ *
+ * The light does NOT come from the blast — that energy goes into motion, not
+ * photons. It comes from about a tenth of a solar mass of radioactive nickel-56
+ * forged in the shock, decaying to cobalt-56 and then to iron-56. That is the
+ * whole reason a supernova takes weeks to brighten and months to fade.
+ */
+
+const TOV_LIMIT = 2.16;        // M☉ — heaviest a neutron star can possibly be
+const PISN_LO = 130, PISN_HI = 250;   // M☉ — the pair-instability window
+const SN_MAX = 6;              // concurrent explosions we keep lit
+const KMS = 1000 * 86400 / 1e9;   // one km/s in Gm/day = 0.0864
+
+const supernovae = [];
+let snNextId = 1;
+
+/* Hydrogen fusion starts at about ten million kelvin. Everything a protostar
+   does — contracting, heating, glowing — is on the way to this one number. */
+const IGNITE_T = 1e7;
+
+/** A young remnant's photosphere: blue-white at first, reddening over weeks. */
+const snPhotoT = (age) => lerp(16000, 4200, clamp(age / 110, 0, 1));
+
+/* Where the expanding shell is brought to a halt, in Gm — about 400 AU.
+   A real remnant ploughs into the interstellar medium, sweeps it up and slows
+   down over tens of thousands of years, ending up tens of light years across.
+   There is no interstellar medium here and no room for a shell that size, so
+   the braking is real but the scale is compressed: the shell coasts out, slows,
+   and settles somewhere you can still see all of it at once. Without this a
+   remnant simply flies out of the simulation and is gone inside a year, which
+   leaves nothing to select. */
+const SN_STALL = 6e4;
+
+/** Main-sequence lifetime in days: fusion power goes as ~M³·⁵ but the fuel only
+ *  as M, so t ≈ 10 Gyr × (M/M☉)^−2.5. The Sun gets ten billion years; a twenty
+ *  solar-mass star gets about six million. */
+function msLifetime(mSun) {
+  return 1e10 * Math.pow(Math.max(mSun, 0.02), -2.5) * 365.25;
+}
+
+function fmtLum(l) {
+  if (!(l > 0)) return '0 L☉';
+  if (l < 1000) return l.toPrecision(3) + ' L☉';
+  const e = Math.floor(Math.log10(l));
+  return (l / Math.pow(10, e)).toFixed(1) + '×10' + sup(e) + ' L☉';
+}
+
+/**
+ * Work out what a given star would do if its core gave way right now, without
+ * changing anything. Always returns { ok, … }; when ok is false, `why` explains
+ * the refusal in plain language so the inspector can teach rather than just
+ * grey a button out.
+ */
+function snPlan(b) {
+  const no = (why) => ({ ok: false, why: why });
+  if (!b || !b.alive || b.kind !== 'body') return no('Only a star has a core that can collapse.');
+  const def = TYPES[b.type];
+  if (!def.star) return no(b.name + ' is not a star — there is no core here to collapse.');
+  if (def.surf === 'neutron') {
+    return no('A neutron star is already what a supernova leaves behind. Feed it past ' +
+      TOV_LIMIT + ' M☉ and it collapses into a black hole instead.');
+  }
+
+  const mSun = b.m / M_SUN;
+
+  /* ---- thermonuclear: a white dwarf pushed over the edge ------------------ */
+  if (def.surf === 'dwarfstar') {
+    if (mSun < snSet.chandra) {
+      return no(b.name + ' is ' + mSun.toPrecision(3) + ' M☉. A white dwarf only detonates once it ' +
+        'accretes past the Chandrasekhar limit of ' + snSet.chandra.toFixed(2) + ' M☉ — drag the mass ' +
+        'slider up and it will go by itself.');
+    }
+    return {
+      ok: true, flavour: 'Ia', label: 'Type Ia',
+      foe: 1.5, ni: 0.6, rise: 14, plateau: 0, tPlat: 0, breakout: 3e43,
+      remnant: 'none', remMass: 0, life: 1100,
+      hot: [255, 246, 235], cool: [255, 150, 90],
+      story: 'Carbon fusion ran away through the entire star in about two seconds. Because every ' +
+        'one of these goes off at the same mass, they all reach almost the same brightness — which ' +
+        'is how we measure distances across the universe.'
+    };
+  }
+
+  /* ---- core collapse ----------------------------------------------------- */
+  if (mSun < snSet.ccMass) {
+    return no(b.name + ' is ' + mSun.toPrecision(3) + ' M☉ — too light. Below about ' + snSet.ccMass +
+      ' M☉ a star can never build an iron core. It swells up, puffs its outer layers off as a ' +
+      'planetary nebula, and settles down as a white dwarf.');
+  }
+
+  if (snSet.pisn && mSun >= PISN_LO && mSun < PISN_HI) {
+    const t = clamp((mSun - PISN_LO) / (PISN_HI - PISN_LO), 0, 1);
+    return {
+      ok: true, flavour: 'PISN', label: 'Pair-instability',
+      foe: lerp(9, 100, t), ni: lerp(0.6, 40, t), rise: 45, plateau: 0, tPlat: 0, breakout: 2e44,
+      remnant: 'none', remMass: 0, life: 1400,
+      hot: [246, 232, 255], cool: [255, 96, 190],
+      story: 'So hot inside that its own gamma rays were turning into electron–positron pairs. ' +
+        'That robbed the core of the pressure holding it up, it contracted, and it burned all of ' +
+        'its oxygen at once. The star is not left behind in any form.'
+    };
+  }
+
+  if (mSun >= snSet.failMass) {
+    return {
+      ok: true, flavour: 'fail', label: 'Failed supernova',
+      foe: 0.02, ni: 0, rise: 1, plateau: 0, tPlat: 0, breakout: 1e41,
+      remnant: 'black', remMass: b.m * 0.9, life: 90,
+      hot: [130, 120, 160], cool: [46, 42, 66],
+      story: 'Too heavy to bounce. The core fell straight through into a black hole and swallowed ' +
+        'its own shock wave — the star simply winks out instead of exploding. We have watched this ' +
+        'happen to at least one real star.'
+    };
+  }
+
+  const bh = mSun >= snSet.bhMass;
+  const stripped = !!def.stripped;
+  return {
+    ok: true,
+    flavour: stripped ? 'Ibc' : 'II',
+    label: stripped ? 'Type Ib/c' : 'Type II',
+    foe: 1,
+    ni: 0.062 * (1 + (mSun - snSet.ccMass) * 0.03),
+    rise: stripped ? 13 : 8,
+    // A Type II sits on a plateau for ~100 days while its hydrogen envelope
+    // recombines from ionised gas and releases the heat stored in the shock.
+    // A stripped star has no hydrogen left, so there is no plateau at all.
+    plateau: stripped ? 0 : 2.0e42,
+    tPlat: stripped ? 0 : 100,
+    breakout: stripped ? 4e44 : 1e44,
+    remnant: bh ? 'black' : 'neutron',
+    remMass: bh
+      ? Math.max(3 * M_SUN, b.m * 0.3)
+      : M_SUN * clamp(1.2 + (mSun - snSet.ccMass) * 0.05, 1.17, TOV_LIMIT),
+    life: 1100,
+    hot: stripped ? [204, 236, 255] : [222, 238, 255],
+    cool: stripped ? [140, 255, 212] : [255, 105, 70],
+    story: bh
+      ? 'The core collapsed past everything that could have held it up. Some of the envelope fell ' +
+        'back in, and what sits at the centre now is a black hole.'
+      : 'The iron core collapsed in about a second and rebounded. At the centre is a neutron star: ' +
+        'a ball the size of a city with more mass than the Sun, spinning many times a second.'
+  };
+}
+
+/**
+ * Blow a star apart. Returns the plan it used, or null if this body could not
+ * explode — callers use the returned plan's label for their own message, so
+ * this function stays quiet.
+ */
+function goSupernova(b, plan) {
+  if (!b || !b.alive) return null;
+  plan = plan || snPlan(b);
+  if (!plan || !plan.ok) return null;
+
+  const pos = b.p.clone();
+  const vel = b.v.clone();
+  const mProg = b.m;
+  const r0 = Math.max(visRadius(b), b.r, 1e-6);
+
+  /* ---- what is left at the centre --------------------------------------- */
+  let kind = snSet.remnant === 'auto' ? plan.remnant : snSet.remnant;
+  let remM = 0;
+  if (kind === 'neutron') {
+    remM = Math.min(plan.remnant === 'neutron' ? plan.remMass : mProg * 0.4, TOV_LIMIT * M_SUN);
+  } else if (kind === 'black') {
+    remM = plan.remnant === 'black' ? plan.remMass : mProg * 0.3;
+  }
+  remM = clamp(remM, 0, mProg);
+  if (remM <= 0) kind = 'none';
+  let ejM = mProg - remM;
+
+  /* ---- clear room for the envelope --------------------------------------- */
+  // Whatever dust is already drifting nearby is about to be overrun by the
+  // blast, so it is swept up into the new shell rather than deleted: its mass
+  // and its momentum both come along, and nothing goes missing from the books.
+  const want = clamp(Math.round(snSet.shellSize), 1, P_MAX - 40);
+  let sweptM = 0, sweptPx = 0, sweptPy = 0, sweptPz = 0;
+  if (parts.free.length < want) {
+    for (let k = 0; k < P_MAX && parts.free.length < want; k++) {
+      if (!parts.on[k]) continue;
+      const k3 = k * 3, pm = parts.m[k];
+      sweptM += pm;
+      sweptPx += parts.vel[k3] * pm; sweptPy += parts.vel[k3 + 1] * pm; sweptPz += parts.vel[k3 + 2] * pm;
+      killParticle(k);
+    }
+  }
+  ejM += sweptM;
+
+  /* ---- energy, nickel, and the kick -------------------------------------- */
+  const foe = Math.max(plan.foe * snSet.energy, 0);
+  const eKin = foe * FOE;
+  const mNi = Math.max(plan.ni * snSet.nickel, 0);
+
+  // Newborn neutron stars are observed rocketing away at hundreds of km/s,
+  // because the explosion around them is never quite symmetric. A black hole
+  // gets far less of a shove for the same push, being so much heavier.
+  const kickDir = new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1));
+  if (kickDir.lengthSq() < 1e-9) kickDir.set(1, 0, 0);
+  kickDir.normalize();
+  const kickV = kind === 'none' ? 0
+    : Math.max(snSet.kick, 0) * KMS * (kind === 'black' ? 0.25 : 1) * rnd(0.4, 1.3);
+
+  /* ---- launch the envelope ----------------------------------------------- */
+  // The shell carries everything the remnant does not, minus the momentum the
+  // kick just handed the remnant, so the pair still adds up to what the star
+  // had before it exploded.
+  const netP = vel.clone().multiplyScalar(ejM - sweptM)
+    .add(new THREE.Vector3(sweptPx, sweptPy, sweptPz))
+    .addScaledVector(kickDir, -remM * kickV);
+
+  // The id is claimed before the shell is thrown, so every grain is stamped with
+  // the remnant it belongs to.
+  const eid = snNextId++;
+  const shell = ejM > 0 ? blastShell(pos, vel, want, ejM, {
+    eKin: eKin, r0: r0, netP: netP, src: eid,
+    coolDays: plan.flavour === 'fail' ? 15 : 110,
+    hot: plan.hot, cool: plan.cool, sizeMin: 1.8, sizeMax: 9.5
+  }) : null;
+
+  if (!shell && ejM > 0 && kind !== 'none') { remM = mProg; ejM = 0; }
+
+  /* ---- the progenitor ----------------------------------------------------- */
+  if (kind === 'none') {
+    removeBody(b);
+    if (sim.selected === b) sim.selected = null;
+    if (sim.follow === b) sim.follow = null;
+    compact();
+  } else {
+    b.m = remM;
+    b.age = 0;
+    b.rubble = false;
+    b.disrupted = false;
+    b.v.addScaledVector(kickDir, kickV);
+    if (kind === 'black') {
+      b.type = 'black_hole'; b.kind = 'bh';
+      b.temp = 0; b.lum = 0;
+      b.r = schwarzschild(remM);
+    } else {
+      b.type = 'neutron_star'; b.kind = 'body';
+      b.temp = TYPES.neutron_star.temp;
+      b.spin = TYPES.neutron_star.spin;
+      b.r = trueRadius('neutron_star', remM);
+      updateLuminosity(b);
+    }
+    refreshVisual(b);
+  }
+
+  /* ---- the event itself --------------------------------------------------- */
+  const e = {
+    // Duck-typed as a selectable object, so the reticle, the label pass, follow
+    // and frame-on all treat a remnant cloud like any other thing in the sky.
+    id: eid, kind: 'snr', alive: true,
+    p: pos, v: vel.clone(), t0: sim.time, age: 0, life: plan.life,
+    flavour: plan.flavour, label: plan.label, story: plan.story,
+    origin: b.name,
+    ni: mNi, rise: plan.rise, plateau: plan.plateau, tPlat: plan.tPlat,
+    breakout: plan.breakout * Math.max(foe, 0.02),
+    eKin: eKin, ejM: ejM,
+    vShock: shell ? shell.vMax : 1e-6,
+    vBulk: shell ? shell.vMean : 0,
+    // Braking timescale, set so a fast shell and a slow one both stall at about
+    // the same size rather than a Type Ia flying ten times further out.
+    brakeTau: SN_STALL / Math.max(shell ? shell.vMax : 1e-6, 1e-6),
+    radius: r0,
+    hit: new Set([b.id]),
+    lum: 0, peak: 0, name: plan.label,
+    // Core temperature, and whether the player has taken hold of it. Left alone
+    // it just tracks the cooling photosphere.
+    coreT: snPhotoT(0), held: false,
+    m: ejM, r: r0, cloud: null,
+    lightColor: new THREE.Color(1, 1, 1),
+    obj: null
+  };
+  buildSNVisual(e);
+  supernovae.push(e);
+  while (supernovae.length > SN_MAX) disposeSN(supernovae.shift());
+
+  fx.flash(pos, r0 * 8, [255, 244, 224], 1);
+  return plan;
+}
+
+/**
+ * The blast front sweeps outward at the speed of the fastest ejecta. A body it
+ * reaches intercepts the slice of the shell its own disc covers — a fraction
+ * r²/4d² of the whole thing — and takes that share of both the momentum and
+ * the energy.
+ *
+ * Whether it survives is a straight comparison against its gravitational
+ * binding energy, (3/5)GM²/R. At one AU a supernova delivers a couple of
+ * hundred times what it takes to unbind the Earth, and it still exceeds it out
+ * past ten AU, which is why nothing in the neighbourhood lives through this.
+ */
+function snSweep(e) {
+  // No early-out on e.hit.size: it keeps the ids of bodies the blast already
+  // destroyed, so comparing it against the live count bails out far too soon.
+  if (e.ejM <= 0) return;
+  let doomed = null;
+  const bodies = sim.bodies;
+
+  for (let i = 0; i < bodies.length; i++) {
+    const b = bodies[i];
+    if (!b.alive || e.hit.has(b.id) || b.born > e.t0) continue;
+    const dx = b.p.x - e.p.x, dy = b.p.y - e.p.y, dz = b.p.z - e.p.z;
+    const d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 > e.radius * e.radius) continue;
+    e.hit.add(b.id);
+
+    const d = Math.sqrt(d2);
+    const rb = Math.max(b.r, 1e-9);
+    const f = d <= rb ? 1 : clamp(rb * rb / (4 * d * d), 0, 1);
+    if (f <= 0) continue;
+
+    // ---- the shove
+    if (d > 1e-12 && b.m > 0) {
+      // An inelastic sweep can never push a body faster than the flow doing the
+      // pushing, so cap it there rather than letting a grain of dust go relativistic.
+      const dv = Math.min(f * e.ejM * e.vBulk / b.m, e.vBulk);
+      b.v.x += dx / d * dv; b.v.y += dy / d * dv; b.v.z += dz / d * dv;
+    }
+
+    // ---- the damage
+    if (b.kind !== 'body') continue;                    // holes have nothing to lose
+    const eDep = f * e.eKin;
+    const bind = 0.6 * G * b.m * b.m / rb;
+    if (TYPES[b.type].star) continue;                   // a star is shocked, but survives
+    if (snSet.vaporize && eDep > bind) {
+      (doomed || (doomed = [])).push([b, eDep]);
+    } else if (eDep > bind * 0.04) {
+      // Not destroyed, but the blast peels off whatever it could unbind.
+      const strip = Math.min(clamp(eDep / bind, 0, 0.6) * b.m, b.m * 0.6);
+      const n = Math.min(90, parts.free.length);
+      if (n > 3 && strip > 0) {
+        const v = Math.min(Math.sqrt(2 * eDep / Math.max(strip, 1e-12)), e.vBulk);
+        blastShell(b.p, b.v, n, strip, { vMean: v, r0: visRadius(b) * 1.3, hot: [255, 220, 170], cool: [120, 96, 84], coolDays: 6 });
+        b.m -= strip;
+        b.r = trueRadius(b.type, b.m);
+        b.glowPulse = 1;
+        scaleVisual(b);
+        toast(b.name + ' was stripped bare by the blast wave');
+      }
+    }
+  }
+
+  if (!doomed) return;
+  for (const [b, eDep] of doomed) vaporizeBody(b, e, eDep);
+  compact();
+}
+
+/** Nothing survives more energy than holds it together. Turn it into matter. */
+function vaporizeBody(b, e, eDep) {
+  const n = Math.min(160, parts.free.length);
+  if (n > 3) {
+    const v = Math.min(Math.sqrt(2 * eDep / Math.max(b.m, 1e-12)), Math.max(e.vBulk, 1e-6));
+    blastShell(b.p, b.v, n, b.m, {
+      vMean: v, r0: Math.max(visRadius(b), 1e-9),
+      hot: [255, 230, 190], cool: [150, 92, 70], coolDays: 12, sizeMin: 1.2, sizeMax: 6
+    });
+  }
+  fx.flash(b.p, visRadius(b) * 9, [255, 226, 180], 0.9);
+  toast(b.name + ' was vaporised by the shock wave');
+  if (sim.selected === b) sim.selected = null;
+  if (sim.follow === b) sim.follow = null;
+  removeBody(b);
+}
+
+/**
+ * Bolometric light curve, in erg/s.
+ *
+ * The core is Nadyozhin's (1994) rate for the nickel-56 → cobalt-56 → iron-56
+ * chain, which is where essentially all of a supernova's light comes from:
+ *
+ *   L(t) = M_Ni/M☉ · (6.45e43·e^(−t/8.8) + 1.45e43·e^(−t/111.3))   erg/s
+ *
+ * The factor in front of it is photon diffusion — the light has to random-walk
+ * out through an envelope that is still opaque, which is why a supernova takes
+ * two or three weeks to reach peak instead of flashing instantly.
+ */
+function snLuminosity(e) {
+  const t = Math.max(e.age, 0);
+  let L = 0;
+  if (e.ni > 0) {
+    const decay = e.ni * (6.45e43 * Math.exp(-t / 8.8) + 1.45e43 * Math.exp(-t / 111.3));
+    L += decay * (1 - Math.exp(-Math.pow(t / e.rise + 1e-9, 1.8)));
+  }
+  if (e.plateau > 0 && t < e.tPlat) {
+    L += e.plateau * (1 - Math.exp(-t / 1.5)) * (1 - 0.55 * Math.pow(t / e.tPlat, 6));
+  }
+  // Shock breakout: a few hours of X-rays as the blast finally reaches the
+  // surface. It is over almost before it starts, and it is by far the brightest
+  // moment the star will ever have.
+  L += e.breakout * Math.exp(-t / 0.14);
+  return L / ERG_S_PER_LSUN;
+}
+
+/* ---------------------------------------------------- the cloud as an object */
+/*
+ * A remnant is not just a light show: it is a few solar masses of enriched gas
+ * and dust, and it is where the NEXT generation of stars comes from. Real
+ * remnants sweep up the surrounding medium, and the compressed shell collapses
+ * into new stars — our own Solar System is thought to have formed in one, which
+ * is why there is short-lived supernova iron in the oldest meteorites.
+ *
+ * So a cloud can be selected and squeezed. Everything below works from the real
+ * grains: their mass, their centre of mass, their net angular momentum. Nothing
+ * is invented for the collapse — the star and its planets are made out of
+ * exactly the matter that was floating there.
+ */
+
+/**
+ * Measure every live cloud in two passes over the pool: the first for mass,
+ * centre of mass and bulk velocity, the second — which needs the centre — for
+ * extent and angular momentum.
+ */
+function refreshClouds() {
+  if (!supernovae.length) return;
+  const byId = new Map();
+  for (const e of supernovae) {
+    byId.set(e.id, { mass: 0, n: 0, cx: 0, cy: 0, cz: 0, vx: 0, vy: 0, vz: 0,
+                     radius: 0, lx: 0, ly: 0, lz: 0 });
+  }
+
+  for (let k = 0; k < P_MAX; k++) {
+    if (!parts.on[k]) continue;
+    const c = byId.get(parts.src[k]);
+    if (!c) continue;
+    const k3 = k * 3, m = parts.m[k];
+    c.mass += m; c.n++;
+    c.cx += parts.pos[k3] * m; c.cy += parts.pos[k3 + 1] * m; c.cz += parts.pos[k3 + 2] * m;
+    c.vx += parts.vel[k3] * m; c.vy += parts.vel[k3 + 1] * m; c.vz += parts.vel[k3 + 2] * m;
+  }
+  for (const c of byId.values()) {
+    if (c.mass <= 0) continue;
+    c.cx /= c.mass; c.cy /= c.mass; c.cz /= c.mass;
+    c.vx /= c.mass; c.vy /= c.mass; c.vz /= c.mass;
+  }
+
+  for (let k = 0; k < P_MAX; k++) {
+    if (!parts.on[k]) continue;
+    const c = byId.get(parts.src[k]);
+    if (!c || c.mass <= 0) continue;
+    const k3 = k * 3, m = parts.m[k];
+    const rx = parts.pos[k3] - c.cx, ry = parts.pos[k3 + 1] - c.cy, rz = parts.pos[k3 + 2] - c.cz;
+    const d = Math.sqrt(rx * rx + ry * ry + rz * rz);
+    if (d > c.radius) c.radius = d;
+    // L = Σ m (r × v), measured in the cloud's own frame
+    const wx = parts.vel[k3] - c.vx, wy = parts.vel[k3 + 1] - c.vy, wz = parts.vel[k3 + 2] - c.vz;
+    c.lx += m * (ry * wz - rz * wy);
+    c.ly += m * (rz * wx - rx * wz);
+    c.lz += m * (rx * wy - ry * wx);
+  }
+
+  for (const e of supernovae) {
+    const c = byId.get(e.id);
+    e.cloud = c;
+    e.m = c.mass;
+    e.r = Math.max(e.radius, c.radius);
+  }
+}
+
+/**
+ * Squeeze or release the cloud, homologously — every grain's distance from the
+ * centre and its speed relative to the centre scale by the same factor, which
+ * is how self-similar collapse actually behaves.
+ *
+ * The link to temperature is the virial theorem: a self-gravitating ball in
+ * equilibrium has kT ≈ GMμm_H/R, so its core temperature is inversely
+ * proportional to its radius. Halve the radius and you double the temperature.
+ * That is why squeezing a cloud heats its middle, and why a protostar goes on
+ * getting hotter all the way down until fusion finally starts.
+ */
+function contractCloud(e, factor) {
+  if (!(factor > 0) || !e.cloud || e.cloud.mass <= 0) return;
+  const c = e.cloud;
+  for (let k = 0; k < P_MAX; k++) {
+    if (!parts.on[k] || parts.src[k] !== e.id) continue;
+    const k3 = k * 3;
+    parts.pos[k3] = c.cx + (parts.pos[k3] - c.cx) * factor;
+    parts.pos[k3 + 1] = c.cy + (parts.pos[k3 + 1] - c.cy) * factor;
+    parts.pos[k3 + 2] = c.cz + (parts.pos[k3 + 2] - c.cz) * factor;
+    parts.vel[k3] = c.vx + (parts.vel[k3] - c.vx) * factor;
+    parts.vel[k3 + 1] = c.vy + (parts.vel[k3 + 1] - c.vy) * factor;
+    parts.vel[k3 + 2] = c.vz + (parts.vel[k3 + 2] - c.vz) * factor;
+  }
+  e.radius *= factor;
+  c.radius *= factor;
+  e.r = Math.max(e.radius, c.radius);
+  parts.dirty = true;
+}
+
+/** Set the core temperature, contracting to match. Ignites at ten million K. */
+function setCloudTemp(e, T) {
+  const want = clamp(T, 10, IGNITE_T);
+  const prev = Math.max(e.coreT, 1e-6);
+  e.held = true;
+  contractCloud(e, prev / want);
+  e.coreT = want;
+  return want >= IGNITE_T;
+}
+
+/**
+ * Slow the shells down. The damping is applied to each grain's velocity
+ * *relative to its own cloud's bulk motion*, which means it is purely internal:
+ * the remnant stops spreading but the total momentum of the simulation does not
+ * change by a gram. (A real shell really does hand its momentum to the gas it
+ * sweeps up — but there is no such gas here to hand it to, so taking it out of
+ * the books instead would just quietly break conservation.)
+ */
+function brakeClouds(simDt) {
+  if (simDt <= 0 || !supernovae.length) return;
+  const braking = new Map();
+  for (const e of supernovae) {
+    if (!e.cloud || e.cloud.n === 0) continue;
+    const k = Math.exp(-simDt / Math.max(e.brakeTau, 1e-6));
+    if (k > 0.99999) continue;
+    braking.set(e.id, { k: k, c: e.cloud });
+    e.vShock *= k;
+  }
+  if (!braking.size) return;
+
+  for (let i = 0; i < P_MAX; i++) {
+    if (!parts.on[i]) continue;
+    const b = braking.get(parts.src[i]);
+    if (!b) continue;
+    const c = b.c, k = b.k, i3 = i * 3;
+    parts.vel[i3] = c.vx + (parts.vel[i3] - c.vx) * k;
+    parts.vel[i3 + 1] = c.vy + (parts.vel[i3 + 1] - c.vy) * k;
+    parts.vel[i3 + 2] = c.vz + (parts.vel[i3 + 2] - c.vz) * k;
+  }
+  parts.dirty = true;
+}
+
+/** Kill every grain belonging to one cloud. Returns the mass removed. */
+function disperseCloud(e) {
+  let m = 0;
+  for (let k = 0; k < P_MAX; k++) {
+    if (parts.on[k] && parts.src[k] === e.id) { m += parts.m[k]; killParticle(k); }
+  }
+  return m;
+}
+
+/** What a given amount of collapsing gas would turn into. */
+const BROWN_DWARF_MIN = 13 * 317.8;      // 13 Jupiters, where deuterium burns
+
+function cloudForecast(mass) {
+  if (mass >= IGNITE_MASS) {
+    const mSun = mass / M_SUN;
+    const kind = mSun > 8 ? 'blue giant' : mSun > 0.5 ? 'Sun-like star' : 'red dwarf';
+    return fmtMass(mass) + ' is enough. Hydrogen ignites and it becomes a ' + kind +
+      ', with the leftover couple of percent flattening into a disc and accreting into planets.';
+  }
+  if (mass >= BROWN_DWARF_MIN) {
+    return 'Only ' + fmtMass(mass) + '. Below 0.075 M☉ — about eighty Jupiters — hydrogen never ' +
+      'catches, and you get a brown dwarf that shines on its own contraction and then slowly fades.';
+  }
+  return 'Only ' + fmtMass(mass) + ' left. Far too little to light anything; this would settle ' +
+    'into a family of worlds and rubble with nothing at the centre to warm them.';
+}
+
+function discPlanetType(mass, insideIce) {
+  if (mass >= 60) return Math.random() < 0.3 ? 'ringed_giant' : 'gas_giant';
+  if (mass >= 8) return 'ice_giant';
+  if (insideIce) {
+    if (mass >= 2.5) return 'super_earth';
+    if (mass >= 0.6) return pick(['terrestrial', 'desert_world', 'lava_world']);
+    if (mass >= 0.2) return pick(['desert_world', 'moon']);
+    return pick(['moon', 'dwarf_planet']);
+  }
+  if (mass >= 1.2) return pick(['ocean_world', 'ice_world']);
+  return pick(['ice_world', 'dwarf_planet']);
+}
+
+/**
+ * Collapse the cloud into a star and a family of planets.
+ *
+ * Mass and momentum both come straight out of the grains, so the system that
+ * appears weighs exactly what the cloud weighed and drifts exactly as it was
+ * drifting. The planets orbit in the plane the cloud was already rotating in —
+ * that is why every planet in a real system goes round the same way, in nearly
+ * the same plane: they inherit the collapsing cloud's angular momentum.
+ */
+function condenseCloud(e) {
+  const c = e.cloud;
+  if (!c || c.mass <= 0 || c.n < 3) { toast('There is nothing left of this cloud to collapse'); return false; }
+  if (freeSlots() < 2) { toast('Universe is full — clear some bodies first'); return false; }
+
+  const M = c.mass;
+  const centre = new THREE.Vector3(c.cx, c.cy, c.cz);
+  const drift = new THREE.Vector3(c.vx, c.vy, c.vz);
+  const totalP = drift.clone().multiplyScalar(M);
+
+  // A protoplanetary disc is only a percent or so of the star; ours ended up with
+  // 447 Earth masses of planets. Everything the disc does not use stays in the
+  // star, so this is a ceiling rather than an allowance to be spent.
+  const discCap = Math.min(Math.max(M * 0.02, 0), 800);
+  const guess = Math.max(M - discCap, 0);
+  const canIgnite = guess >= IGNITE_MASS;
+  const mSun = guess / M_SUN;
+  const coreType = canIgnite
+    ? (mSun > 8 ? 'blue_giant' : mSun > 0.5 ? 'sun_like' : 'red_dwarf')
+    : discPlanetType(guess, true);
+
+  // The disc's layout depends on how bright the star will be, so work that out
+  // before anything is created. The guess is within a couple of percent of the
+  // final mass, which moves the snow line by far less than the jitter does.
+  const L = Math.max(luminosityOf(coreType, trueRadius(coreType, guess)), 1e-4);
+  // Water ice only survives beyond the snow line — 2.7 AU in our own nebula,
+  // further out around a brighter star. Rock inside it, ice and giants outside.
+  const iceLine = 2.7 * AU * Math.sqrt(L);
+  let a = Math.max(0.35 * AU * Math.sqrt(Math.max(L, 0.02)),
+                   trueRadius(coreType, guess) * settings.bodyScale * 4);
+
+  const n = clamp(Math.round(3 + Math.random() * 4), 2, Math.min(8, freeSlots() - 1));
+  const rads = [], mass = [];
+  let used = 0;
+  for (let i = 0; i < n; i++) {
+    const rad = a * rnd(0.94, 1.06);
+    a *= rnd(1.5, 1.95);
+    // How much solid material sits at a radius is a LOCAL fact, so these are
+    // absolute masses, not shares of a budget. Inside the snow line only rock
+    // condenses and there is very little of it — our own four terrestrial
+    // planets together come to half a percent of the planetary mass. Just
+    // outside it, ice is abundant enough for a core to run away and swallow gas.
+    const x = rad / iceLine;
+    const m = x < 1
+      ? rnd(0.05, 3.2) * clamp(x * 2.2, 0.15, 1)
+      : rnd(12, 420) * Math.exp(-Math.pow(Math.log(x) / 1.1, 2));
+    rads.push(rad); mass.push(m); used += m;
+  }
+
+  // Trim if the disc came out heavier than the cloud can spare, and never let it
+  // starve the star below the ignition mass it was chosen for.
+  let allow = discCap;
+  if (canIgnite) allow = Math.min(allow, Math.max(0, M - IGNITE_MASS * 1.02));
+  if (used > allow && used > 0) {
+    const k = allow / used;
+    for (let i = 0; i < n; i++) mass[i] *= k;
+    used = allow;
+  }
+
+  const coreM = M - used;
+  const star = makeBody(coreType, centre, drift, { mass: coreM, name: 'New ' + e.origin });
+  const made = [star];
+
+  // Orbital plane from the cloud's own spin. Without it there is no preferred
+  // direction and the disc has to fall back on the horizontal.
+  let normal = new THREE.Vector3(c.lx, c.ly, c.lz);
+  if (normal.lengthSq() < 1e-24) normal.set(0, 1, 0); else normal.normalize();
+  let u = new THREE.Vector3(1, 0, 0);
+  if (Math.abs(normal.dot(u)) > 0.9) u.set(0, 0, 1);
+  u.crossVectors(normal, u).normalize();
+  const w = new THREE.Vector3().crossVectors(normal, u).normalize();
+
+  let outermost = 0;
+  for (let i = 0; i < n; i++) {
+    if (mass[i] <= 0) continue;
+    const rad = rads[i], ang = rnd(0, TAU);
+    if (rad > outermost) outermost = rad;
+    const pos = centre.clone()
+      .addScaledVector(u, Math.cos(ang) * rad)
+      .addScaledVector(w, Math.sin(ang) * rad);
+    const vc = Math.sqrt(G * settings.gravity * star.m / rad);
+    const vel = drift.clone()
+      .addScaledVector(u, -Math.sin(ang) * vc)
+      .addScaledVector(w, Math.cos(ang) * vc);
+    made.push(makeBody(discPlanetType(mass[i], rad < iceLine), pos, vel, { mass: mass[i] }));
+  }
+  const planets = made.length - 1;
+
+  // The grains are spent; the star and its planets are what they became.
+  disperseCloud(e);
+
+  // Orbits are very nearly momentum-neutral but not exactly, so let the star
+  // soak up the difference — which is what sitting at the barycentre means.
+  let px = 0, py = 0, pz = 0;
+  for (const b of made) { px += b.v.x * b.m; py += b.v.y * b.m; pz += b.v.z * b.m; }
+  star.v.x += (totalP.x - px) / star.m;
+  star.v.y += (totalP.y - py) / star.m;
+  star.v.z += (totalP.z - pz) / star.m;
+
+  fx.flash(centre, Math.max(visRadius(star) * 14, e.r * 0.5), [255, 246, 226], 1);
+  e.alive = false;
+  disposeSN(e);
+  const idx = supernovae.indexOf(e);
+  if (idx >= 0) supernovae.splice(idx, 1);
+
+  computeAccel();
+  refreshStarCache();
+  updateTemperatures();
+  // Pull back far enough to show what was just built. The camera was zoomed
+  // right in on a collapsing knot; the system it became is a thousand times wider.
+  view.target.copy(centre);
+  if (outermost > 0) view.dist = clamp(outermost * 2.6, MIN_DIST, MAX_DIST);
+  sim.follow = null;
+  select(star);
+  toast(canIgnite
+    ? star.name + ' ignited from the cloud, with ' + planets + (planets === 1 ? ' planet' : ' planets')
+    : star.name + ' collapsed but never lit — too little mass to start fusion');
+  return true;
+}
+
+function updateSupernovae(simDt) {
+  refreshClouds();
+  brakeClouds(simDt);
+  for (let i = supernovae.length - 1; i >= 0; i--) {
+    const e = supernovae[i];
+    e.age += simDt;
+    e.p.addScaledVector(e.v, simDt);
+    e.radius += e.vShock * simDt;
+    if (snSet.blast) snSweep(e);
+
+    e.lum = snLuminosity(e);
+    if (e.lum > e.peak) e.peak = e.lum;
+
+    // Left alone the core temperature just follows the cooling photosphere; once
+    // the player takes hold of the slider it is theirs.
+    if (!e.held) e.coreT = snPhotoT(e.age);
+    const c = kelvinToRGB(e.coreT);
+    e.lightColor.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+
+    // Past its bright weeks the interesting number is not how much it shines but
+    // how much matter is still there to build something out of.
+    e.name = e.lum > 100
+      ? e.label + ' · ' + fmtLum(e.lum)
+      : e.label + ' remnant · ' + fmtMass(e.m);
+
+    updateSNVisual(e);
+    // The light fades in months; the cloud itself lasts as long as it has grains,
+    // so it stays there to be selected and squeezed long after it goes dark.
+    if (e.age > e.life && (!e.cloud || e.cloud.n === 0)) {
+      e.alive = false;
+      disposeSN(e);
+      supernovae.splice(i, 1);
+    }
+  }
+}
+
+/* ---------------------------------------------------------- remnant visuals */
+
+const SN_VERT = `
+  varying vec3 vN;
+  varying vec3 vV;
+  void main() {
+    vN = normalize(normalMatrix * normal);
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vV = -mv.xyz;
+    gl_Position = projectionMatrix * mv;
+  }`;
+
+const SN_FRAG = `
+  uniform vec3 uInner;
+  uniform vec3 uOuter;
+  uniform float uOp;
+  varying vec3 vN;
+  varying vec3 vV;
+  void main() {
+    // Limb brightening. The ejecta is a thin skin, so a sightline near the edge
+    // passes through far more of it than one straight through the middle —
+    // which is why real remnants look like rings rather than filled discs.
+    float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
+    float rim = pow(clamp(f, 0.0, 1.0), 3.0);
+    gl_FragColor = vec4(mix(uInner, uOuter, clamp(f, 0.0, 1.0)) * (rim * 2.2 + 0.03) * uOp, 1.0);
+  }`;
+
+function buildSNVisual(e) {
+  const g = new THREE.Group();
+
+  const shell = new THREE.Mesh(SPHERE, new THREE.ShaderMaterial({
+    uniforms: {
+      uInner: { value: new THREE.Color(1, 0.45, 0.24) },
+      uOuter: { value: new THREE.Color(0.62, 0.8, 1) },
+      uOp: { value: 1 }
+    },
+    vertexShader: SN_VERT, fragmentShader: SN_FRAG,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending
+  }));
+  shell.renderOrder = 4;
+  g.add(shell);
+
+  const core = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: TEX_HALO, blending: THREE.AdditiveBlending, transparent: true,
+    depthWrite: false, depthTest: false
+  }));
+  core.renderOrder = 8;
+  g.add(core);
+
+  const boom = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: TEX_GLOW, blending: THREE.AdditiveBlending, transparent: true,
+    depthWrite: false, depthTest: false
+  }));
+  boom.renderOrder = 9;
+  g.add(boom);
+
+  scene.add(g);
+  e.obj = g; e.shell = shell; e.core = core; e.boom = boom;
+}
+
+function updateSNVisual(e) {
+  if (!e.obj) return;
+  e.obj.position.copy(e.p);
+  const wpp = worldPerPixel(Math.max(camera.position.distanceTo(e.p), 1e-9));
+
+  // The glow fades over months, but never quite to nothing while there is still
+  // gas here — the cloud has to stay findable to be worth selecting.
+  const alive = e.cloud && e.cloud.n > 0;
+  const fade = Math.max(clamp(Math.exp(-e.age / 90), 0, 1), alive ? 0.12 : 0);
+  e.shell.scale.setScalar(Math.max(e.radius, 1e-6));
+  e.shell.material.uniforms.uOp.value = fade * 0.85;
+  e.shell.material.uniforms.uInner.value.copy(e.lightColor);
+  e.shell.visible = fade > 0.012 && e.radius / wpp > 3;
+
+  // The glowing photosphere, as bright as the light curve says — with a pixel
+  // floor, because the brightest thing in the sky should never be invisible.
+  const lit = e.peak > 0 ? Math.pow(clamp(e.lum / e.peak, 0, 1), 0.4) : 0;
+  e.core.visible = lit > 0.012;
+  if (e.core.visible) {
+    e.core.scale.setScalar(Math.max(e.radius * 0.5, 26 * wpp) * (0.35 + lit * 0.95));
+    e.core.material.color.copy(e.lightColor);
+    e.core.material.opacity = lit * 0.95;
+  }
+
+  const bo = clamp(1 - e.age / 1.2, 0, 1);
+  e.boom.visible = bo > 0.012;
+  if (e.boom.visible) {
+    e.boom.material.opacity = bo * bo;
+    e.boom.scale.setScalar(Math.max(e.radius * 2.2, 90 * wpp) * (0.5 + (1 - bo) * 2.4));
+  }
+}
+
+function disposeSN(e) {
+  if (!e.obj) return;
+  scene.remove(e.obj);
+  e.obj.traverse(o => { if (o.material) o.material.dispose(); });
+  e.obj = null; e.shell = null; e.core = null; e.boom = null;
+}
+
+function clearSupernovae() {
+  for (const e of supernovae) { e.alive = false; disposeSN(e); }
+  supernovae.length = 0;
+}
+
+/* ------------------------------------------------------------ growing old  */
+
+/**
+ * Burn fuel. Real stars take millions of years to do this, so the whole thing
+ * is off unless you ask for it and runs at whatever multiple of real time you
+ * pick — that multiplier is the only unphysical number in here.
+ */
+function ageStars(dt) {
+  const boost = Math.pow(10, snSet.ageRate);
+  let dying = null;
+  for (const b of sim.bodies) {
+    if (b.kind !== 'body') continue;
+    const def = TYPES[b.type];
+    if (!def.star || def.surf === 'neutron' || def.surf === 'dwarfstar') continue;
+    b.age += dt * boost;
+    if (b.age >= msLifetime(b.m / M_SUN)) (dying || (dying = [])).push(b);
+  }
+  if (!dying) return;
+  for (const b of dying) {
+    if (!b.alive) continue;
+    const name = b.name;
+    if (b.m / M_SUN >= snSet.ccMass && snSet.on) {
+      const p = goSupernova(b);
+      toast(p ? name + ' ran out of fuel and went ' + p.label + '!' : name + ' burned out');
+    } else {
+      shedEnvelope(b);
+    }
+  }
+}
+
+/**
+ * A star too light to collapse a core ends far more gently, but just as
+ * finally: it swells up, coughs its outer layers off at about 20 km/s as a
+ * planetary nebula, and leaves its naked carbon–oxygen core behind as a white
+ * dwarf. How much core is left follows the observed initial-final mass
+ * relation (Kalirai et al. 2008), M_wd ≈ 0.109·M + 0.394 M☉ — so the Sun will
+ * end up as roughly half a solar mass of slowly cooling crystal.
+ */
+function shedEnvelope(b) {
+  const mSun = b.m / M_SUN;
+  const wd = Math.min(clamp(0.109 * mSun + 0.394, 0.17, 1.38) * M_SUN, b.m);
+  const env = b.m - wd;
+  const name = b.name;
+  const oldR = Math.max(visRadius(b), 1e-9);
+
+  if (env > 0) {
+    const n = Math.min(420, parts.free.length);
+    if (n > 3) {
+      // The envelope leaves from the swollen red-giant surface, out around an
+      // AU, not from where the main-sequence star's photosphere used to be.
+      // Real nebulae drift off at 20–40 km/s, but they are pushed by radiation
+      // pressure over thousands of years rather than thrown; a purely ballistic
+      // launch has to clear the local escape speed or it just rains back down.
+      const rAGB = Math.max(1.2 * AU, oldR * 1.5);
+      const vEsc = Math.sqrt(2 * G * settings.gravity * b.m / rAGB);
+      blastShell(b.p, b.v, n, env, {
+        vMean: Math.max(20 * KMS, vEsc * 1.35), r0: rAGB, coolDays: 400,
+        hot: [150, 255, 226], cool: [255, 126, 178], sizeMin: 1.4, sizeMax: 5.5
+      });
+    }
+  }
+
+  b.m = wd;
+  b.type = 'white_dwarf';
+  b.kind = 'body';
+  b.age = 0;
+  // A freshly exposed core is ferociously hot; it has nothing left to burn and
+  // will spend the rest of the universe's life cooling off.
+  b.temp = 60000;
+  b.spin = TYPES.white_dwarf.spin;
+  b.r = trueRadius('white_dwarf', wd);
+  updateLuminosity(b);
+  refreshVisual(b);
+  fx.flash(b.p, oldR * 30, [170, 255, 230], 0.8);
+  toast(name + ' shed its envelope and became a white dwarf');
 }
 
 /* ============================================================ tidal forces  */
@@ -2543,10 +3556,14 @@ const P_MAX_STEPS = 20;       // substep ceiling per frame, for the cost bound
 const P_CULL = 1.4e5;         // Gm — debris past this has left the system
 
 const parts = {
-  pos: null, vel: null, m: null, size: null, bsize: null, hot: null,
-  col: null, warm: null, cool: null, on: null,
+  pos: null, vel: null, m: null, size: null, bsize: null, hot: null, crate: null,
+  col: null, warm: null, cool: null, on: null, src: null,
   free: [], live: 0, geo: null, pts: null, dirty: false
 };
+
+/* Impact ejecta cools in a day or two. Supernova ejecta is radioactive and stays
+   lit for months, so how fast a grain fades is stored per particle. */
+const COOL_IMPACT = 1 / 1.6;
 
 const flashes = [];
 
@@ -2582,7 +3599,12 @@ function initParticles() {
   parts.size = new Float32Array(P_MAX);
   parts.bsize = new Float32Array(P_MAX);
   parts.hot = new Float32Array(P_MAX);
+  parts.crate = new Float32Array(P_MAX);
   parts.on = new Uint8Array(P_MAX);
+  // Which supernova remnant a grain belongs to, or -1 for ordinary impact
+  // debris. That is what lets a cloud know how much mass it still has, and lets
+  // it hand exactly that mass over when it collapses into a star.
+  parts.src = new Int16Array(P_MAX);
   parts.free.length = 0;
   for (let i = P_MAX - 1; i >= 0; i--) parts.free.push(i);
   parts.live = 0;
@@ -2661,6 +3683,8 @@ function ejecta(center, baseVel, count, totalMass, vEsc, hotCol, coolCol, radius
     parts.size[k] = bs;
     parts.m[k] = each;
     parts.hot[k] = 1;
+    parts.crate[k] = COOL_IMPACT;
+    parts.src[k] = -1;
 
     const w = mix(hotCol, [255, 255, 255], frac * rnd(0, 0.6));
     parts.warm[k3] = w[0] / 255; parts.warm[k3 + 1] = w[1] / 255; parts.warm[k3 + 2] = w[2] / 255;
@@ -2730,6 +3754,8 @@ function ringEjecta(center, srcVel, P, count, totalMass, arc, hotCol, coolCol) {
     parts.size[k] = bs;
     parts.m[k] = each;
     parts.hot[k] = 0.5;
+    parts.crate[k] = COOL_IMPACT;
+    parts.src[k] = -1;
 
     const w = mix(hotCol, [255, 255, 255], Math.random() * 0.4);
     parts.warm[k3] = w[0] / 255; parts.warm[k3 + 1] = w[1] / 255; parts.warm[k3 + 2] = w[2] / 255;
@@ -2743,9 +3769,108 @@ function ringEjecta(center, srcVel, P, count, totalMass, arc, hotCol, coolCol) {
   return each * n;
 }
 
+/**
+ * Blow a shell of real matter outward — a supernova envelope, or the far gentler
+ * puff of a planetary nebula.
+ *
+ * Speeds are drawn from a broken power law (most of the mass slow, a thin skin
+ * very fast) and then multiplied by one common factor chosen so the shell's
+ * total kinetic energy comes out at exactly `eKin`. That single normalisation
+ * is what ties the picture to the physics: hand it 1e51 erg and ten solar
+ * masses and a few thousand km/s falls out on its own, with no fudge factor
+ * anywhere. Pass `vMean` instead to aim for a mean speed directly.
+ *
+ * Every gram of `totalMass` is launched no matter how few slots are left — the
+ * fragments just get chunkier — so mass is conserved exactly. Returns null only
+ * when the pool is completely full, which is the caller's cue to keep the mass.
+ */
+function blastShell(center, baseVel, want, totalMass, opts) {
+  const o = opts || {};
+  const n = Math.min(want, parts.free.length);
+  if (n <= 0 || totalMass <= 0) return null;
+  const each = totalMass / n;
+
+  const hot = o.hot || [235, 245, 255];
+  const cool = o.cool || [255, 108, 62];
+  const sMin = o.sizeMin != null ? o.sizeMin : 1.6;
+  const sMax = o.sizeMax != null ? o.sizeMax : 8.5;
+  const r0 = o.r0 != null ? o.r0 : 0;
+  const crate = 1 / Math.max(o.coolDays || 45, 1e-3);
+  const src = o.src != null ? o.src : -1;
+
+  // ---- shape the velocity spectrum first, then scale it to the energy budget
+  const idx = new Int32Array(n);
+  const dir = new Float32Array(n * 3);
+  const x = new Float32Array(n);
+  let sumX = 0, sumX2 = 0;
+  for (let i = 0; i < n; i++) {
+    idx[i] = parts.free.pop();
+    const u = rnd(-1, 1), th = rnd(0, TAU), sr = Math.sqrt(Math.max(0, 1 - u * u));
+    dir[i * 3] = sr * Math.cos(th); dir[i * 3 + 1] = u; dir[i * 3 + 2] = sr * Math.sin(th);
+    const s = 0.35 + Math.pow(Math.random(), 2.2) * 2.2;
+    x[i] = s; sumX += s; sumX2 += s * s;
+  }
+  // ½·each·Σ(αx)² = eKin  →  α = √(2·eKin / (each·Σx²))
+  const alpha = o.vMean != null
+    ? o.vMean * n / Math.max(sumX, 1e-12)
+    : Math.sqrt(2 * Math.max(o.eKin || 0, 0) / Math.max(each * sumX2, 1e-30));
+
+  let vMax = 0;
+  for (let i = 0; i < n; i++) {
+    const k = idx[i], k3 = k * 3, d3 = i * 3;
+    const sp = alpha * x[i];
+    if (sp > vMax) vMax = sp;
+
+    // A thin shell, not a filled ball: the star's envelope really is a skin.
+    const off = r0 * rnd(1, 1.35);
+    parts.pos[k3] = center.x + dir[d3] * off;
+    parts.pos[k3 + 1] = center.y + dir[d3 + 1] * off;
+    parts.pos[k3 + 2] = center.z + dir[d3 + 2] * off;
+
+    parts.vel[k3] = baseVel.x + dir[d3] * sp;
+    parts.vel[k3 + 1] = baseVel.y + dir[d3 + 1] * sp;
+    parts.vel[k3 + 2] = baseVel.z + dir[d3 + 2] * sp;
+
+    const bs = lerp(sMax, sMin, clamp((x[i] - 0.35) / 2.2, 0, 1)) * rnd(0.8, 1.25);
+    parts.bsize[k] = bs;
+    parts.size[k] = bs;
+    parts.m[k] = each;
+    parts.hot[k] = 1;
+    parts.crate[k] = crate;
+    parts.src[k] = src;
+
+    const w = mix(hot, [255, 255, 255], Math.random() * 0.35);
+    parts.warm[k3] = w[0] / 255; parts.warm[k3 + 1] = w[1] / 255; parts.warm[k3 + 2] = w[2] / 255;
+    parts.cool[k3] = cool[0] / 255; parts.cool[k3 + 1] = cool[1] / 255; parts.cool[k3 + 2] = cool[2] / 255;
+    parts.col[k3] = parts.warm[k3]; parts.col[k3 + 1] = parts.warm[k3 + 1]; parts.col[k3 + 2] = parts.warm[k3 + 2];
+
+    parts.on[k] = 1;
+    parts.live++;
+  }
+
+  // Random directions do not cancel, so nudge the whole shell onto the momentum
+  // it is supposed to carry. The nudge is ~1/√n of a typical speed, which costs
+  // well under a percent of the energy just set above.
+  const wantP = o.netP || baseVel.clone().multiplyScalar(totalMass);
+  let px = 0, py = 0, pz = 0;
+  for (let i = 0; i < n; i++) {
+    const k3 = idx[i] * 3;
+    px += parts.vel[k3] * each; py += parts.vel[k3 + 1] * each; pz += parts.vel[k3 + 2] * each;
+  }
+  const cx = (wantP.x - px) / totalMass, cy = (wantP.y - py) / totalMass, cz = (wantP.z - pz) / totalMass;
+  for (let i = 0; i < n; i++) {
+    const k3 = idx[i] * 3;
+    parts.vel[k3] += cx; parts.vel[k3 + 1] += cy; parts.vel[k3 + 2] += cz;
+  }
+
+  parts.dirty = true;
+  return { n: n, each: each, vMean: alpha * sumX / n, vMax: vMax };
+}
+
 function killParticle(k) {
   const k3 = k * 3;
   parts.on[k] = 0;
+  parts.src[k] = -1;
   parts.m[k] = 0;
   parts.size[k] = 0;
   parts.col[k3] = parts.col[k3 + 1] = parts.col[k3 + 2] = 0;
@@ -2763,6 +3888,10 @@ function clearParticles() {
 let pSources = [];
 const grewBodies = new Set();
 
+/* Running total of the force the debris exerts back on each source, so the
+   sources can be given their share of it once per step. */
+const pReact = new Float64Array(P_SOURCES * 3);
+
 function refreshSources() {
   pSources = sim.bodies.length <= P_SOURCES
     ? sim.bodies.slice()
@@ -2778,11 +3907,13 @@ function stepParticles(dt) {
   const src = pSources, ns = src.length;
   const gm = G * settings.gravity;
   const pos = parts.pos, vel = parts.vel;
+  pReact.fill(0);
 
   for (let k = 0; k < P_MAX; k++) {
     if (!parts.on[k]) continue;
     const k3 = k * 3;
     const px = pos[k3], py = pos[k3 + 1], pz = pos[k3 + 2];
+    const pm = parts.m[k];
     let ax = 0, ay = 0, az = 0, hit = null;
 
     for (let s = 0; s < ns; s++) {
@@ -2795,11 +3926,28 @@ function stepParticles(dt) {
       const soft = 0.35 * b.r;
       const dd = d2 + soft * soft;
       const f = gm * b.m / (dd * Math.sqrt(dd)) * (b.kind === 'wh' ? -1 : 1);
-      ax += dx * f; ay += dy * f; az += dz * f;
+      const fx = dx * f, fy = dy * f, fz = dz * f;
+      ax += fx; ay += fy; az += fz;
+      // Newton's third law. A grain of impact dust pulling back on a planet is
+      // far too faint to matter, but supernova ejecta runs to thousands of Earth
+      // masses per grain — letting that accelerate for free would quietly shove
+      // the whole system sideways.
+      const s3 = s * 3;
+      pReact[s3] -= fx * pm; pReact[s3 + 1] -= fy * pm; pReact[s3 + 2] -= fz * pm;
     }
 
     if (hit) {
-      hit.m += parts.m[k];                            // the mass really transfers
+      // A perfectly inelastic catch: the grain hands over its momentum as well
+      // as its mass. It barely registers for impact dust, but supernova ejecta
+      // arrives at thousands of km/s and genuinely shoves what it lands on.
+      const pm = parts.m[k];
+      const mNew = hit.m + pm;
+      if (mNew > 0) {
+        hit.v.x = (hit.v.x * hit.m + vel[k3] * pm) / mNew;
+        hit.v.y = (hit.v.y * hit.m + vel[k3 + 1] * pm) / mNew;
+        hit.v.z = (hit.v.z * hit.m + vel[k3 + 2] * pm) / mNew;
+      }
+      hit.m = mNew;
       grewBodies.add(hit);
       killParticle(k);
       continue;
@@ -2808,6 +3956,16 @@ function stepParticles(dt) {
     vel[k3] += ax * dt; vel[k3 + 1] += ay * dt; vel[k3 + 2] += az * dt;
     pos[k3] += vel[k3] * dt; pos[k3 + 1] += vel[k3 + 1] * dt; pos[k3 + 2] += vel[k3 + 2] * dt;
   }
+
+  // Hand the sources the recoil the debris just earned them.
+  for (let s = 0; s < ns; s++) {
+    const b = src[s], s3 = s * 3;
+    if (!b.alive || b.m <= 0) continue;
+    const inv = dt / b.m;
+    b.v.x += pReact[s3] * inv;
+    b.v.y += pReact[s3 + 1] * inv;
+    b.v.z += pReact[s3 + 2] * inv;
+  }
   parts.dirty = true;
 }
 
@@ -2815,7 +3973,6 @@ function stepParticles(dt) {
 function updateParticles(simDt) {
   if (parts.live === 0 && !parts.dirty) return;
   const anchor = pSources.length ? pSources[0].p : null;
-  const cooling = simDt / 1.6;                        // ejecta cools within a couple of days
 
   for (let k = 0; k < P_MAX; k++) {
     if (!parts.on[k]) continue;
@@ -2824,7 +3981,7 @@ function updateParticles(simDt) {
       const dx = parts.pos[k3] - anchor.x, dy = parts.pos[k3 + 1] - anchor.y, dz = parts.pos[k3 + 2] - anchor.z;
       if (dx * dx + dy * dy + dz * dz > P_CULL * P_CULL) { killParticle(k); continue; }
     }
-    const h = parts.hot[k] > 0 ? Math.max(0, parts.hot[k] - cooling) : 0;
+    const h = parts.hot[k] > 0 ? Math.max(0, parts.hot[k] - simDt * parts.crate[k]) : 0;
     parts.hot[k] = h;
     const g = Math.pow(h, 0.55);
     parts.col[k3] = lerp(parts.cool[k3], parts.warm[k3], g);
@@ -3142,6 +4299,13 @@ function updateLabels() {
       : px + Math.log10(Math.max(b.m, 1e-12)) * 0.9;
     cands.push([score, b, px]);
   }
+  // A live supernova outranks everything — it is the only thing anyone is
+  // looking at — and its label doubles as a running brightness readout.
+  for (const e of supernovae) {
+    if (e.lum < 1 && !(e.cloud && e.cloud.n > 0)) continue;
+    const wpp = worldPerPixel(Math.max(camera.position.distanceTo(e.p), 1e-9));
+    cands.push([2e9, e, clamp(e.r / wpp, 6, 90)]);
+  }
   cands.sort((a, b) => b[0] - a[0]);
 
   // Bodies that sit on top of each other at this zoom (Earth and its Moon, a
@@ -3196,6 +4360,10 @@ function refreshStarCache() {
   for (const b of sim.bodies) {
     if (b.lum > 0 || (TYPES[b.type].star && b.kind === 'body')) sim.starCache.push(b);
   }
+  // A supernova is a light source like any other — briefly the brightest in the
+  // sky by a factor of billions. It carries .p, .lum and .lightColor, which is
+  // everything the lighting and temperature passes ask of a star.
+  for (const e of supernovae) if (e.lum > 1e-3) sim.starCache.push(e);
 }
 
 function nearestStar(b) {
@@ -3209,6 +4377,9 @@ function nearestStar(b) {
 }
 
 function updateVisuals(realDt, simDt) {
+  // First, because an explosion can destroy bodies and is itself a light source
+  // that the two passes below need to know about.
+  updateSupernovae(simDt);
   refreshStarCache();
   updateTemperatures();
   updateLights();
@@ -3367,6 +4538,21 @@ function pickBody(sx, sy) {
     if (d > reach) continue;
     const score = d - apparentPx(b) * 0.25;
     if (score < bestScore) { bestScore = score; best = b; }
+  }
+  if (best) return best;
+
+  // Only fall through to remnant clouds when nothing solid is under the cursor —
+  // a cloud covers half the screen, and you still need to be able to click the
+  // neutron star sitting in the middle of it.
+  let bestD = Infinity;
+  for (const e of supernovae) {
+    if (!e.alive || !e.cloud || e.cloud.mass <= 0) continue;
+    _lp.copy(e.p).project(camera);
+    if (_lp.z < -1 || _lp.z > 1) continue;
+    const x = (_lp.x + 1) * 0.5 * VIEW.w, y = (1 - _lp.y) * 0.5 * VIEW.h;
+    const d = Math.hypot(x - sx, y - sy);
+    if (d > Math.max(apparentPx(e), 26)) continue;
+    if (d < bestD) { bestD = d; best = e; }
   }
   return best;
 }
@@ -3554,7 +4740,17 @@ function onKey(e) {
       if (sim.selected) { sim.follow = sim.follow === sim.selected ? null : sim.selected; renderInspector(); }
       break;
     case 'Delete': case 'Backspace':
-      if (sim.selected) { const b = sim.selected; select(null); removeBody(b); compact(); }
+      if (sim.selected && sim.selected.kind === 'snr') {
+        const e = sim.selected;
+        disperseCloud(e);
+        e.alive = false;
+        disposeSN(e);
+        const i = supernovae.indexOf(e);
+        if (i >= 0) supernovae.splice(i, 1);
+        select(null);
+      } else if (sim.selected) {
+        const b = sim.selected; select(null); removeBody(b); compact();
+      }
       break;
     case 'Escape': arm(null); closeModal(); break;
     case 't': case 'T': settings.trails = !settings.trails; clearTrails(); syncSettings(); break;
@@ -3626,6 +4822,96 @@ function select(b) {
   if (window.innerWidth <= 700 && sim.selected) showPanel('inspector');
 }
 
+/**
+ * The fate block on a star's panel: the button when it can explode, and a
+ * plain-language reason when it cannot. Body names reach this through
+ * plan.why, so everything here goes through the escaper.
+ */
+function snPanelHTML(plan) {
+  const head = '<div class="an-sec">FATE</div>';
+  if (!plan.ok) return head + '<p class="an-note">' + escAttr(plan.why) + '</p>';
+  return head +
+    '<p class="an-note"><b>' + escAttr(plan.label) + '</b> — ' + escAttr(plan.story) + '</p>' +
+    '<div class="an-row"><button id="is-sn" class="an-danger">GO SUPERNOVA</button></div>';
+}
+
+/**
+ * The panel for a selected remnant cloud. The one control is core temperature,
+ * because in a collapsing cloud temperature and size are the same fact seen
+ * twice: squeeze it and the middle gets hotter, and at ten million kelvin
+ * hydrogen starts fusing whether you meant it to or not.
+ */
+function renderCloudInspector(e) {
+  const host = $('an-insp-body');
+  const c = e.cloud || { mass: 0, n: 0, radius: 0 };
+  $('an-insp-h').textContent = 'REMNANT CLOUD';
+
+  host.innerHTML =
+    '<div class="an-name-in" style="cursor:default;pointer-events:none">' + escAttr(e.label + ' remnant') + '</div>' +
+    '<div class="an-type">from ' + escAttr(e.origin) + '</div>' +
+    '<dl class="an-stats">' +
+    '<dt>Gas &amp; dust</dt><dd id="is-cmass"></dd>' +
+    '<dt>Pieces</dt><dd id="is-cn"></dd>' +
+    '<dt>Radius</dt><dd id="is-crad"></dd>' +
+    '<dt>Expanding at</dt><dd id="is-cvel"></dd>' +
+    '<dt>Age</dt><dd id="is-cage"></dd>' +
+    '<dt>Still glowing</dt><dd id="is-clum"></dd>' +
+    '</dl>' +
+    '<div class="an-field"><label>Core temperature <b id="is-ctv"></b></label>' +
+    '<input type="range" id="is-ctemp" min="1" max="7" step="0.01" value="' +
+    Math.log10(clamp(e.coreT, 10, IGNITE_T)).toFixed(3) + '"></div>' +
+    '<p class="an-note">Squeezing a cloud heats its middle — halve the radius and you double the ' +
+    'core temperature. Drag this all the way to <b>10 million K</b> and hydrogen fusion starts.</p>' +
+    '<div class="an-sec">WHAT IT WOULD MAKE</div>' +
+    '<p class="an-note" id="is-cfore"></p>' +
+    '<div class="an-row"><button id="is-collapse">COLLAPSE NOW</button></div>' +
+    '<div class="an-row"><button id="is-cfollow">' + (sim.follow === e ? 'UNFOLLOW' : 'FOLLOW') +
+    '</button><button id="is-czoom">ZOOM TO</button></div>' +
+    '<div class="an-row"><button id="is-cdisperse" class="an-danger">DISPERSE</button></div>' +
+    '<p class="an-note" style="margin-top:13px">This is where the next generation of stars comes ' +
+    'from. Our own Solar System is thought to have condensed out of a cloud like this one — the ' +
+    'oldest meteorites still carry the decay products of supernova iron.</p>';
+
+  inspRefs = {
+    cmass: $('is-cmass'), cn: $('is-cn'), crad: $('is-crad'), cvel: $('is-cvel'),
+    cage: $('is-cage'), clum: $('is-clum'), ctv: $('is-ctv'), cfore: $('is-cfore')
+  };
+
+  const temp = $('is-ctemp');
+  temp.addEventListener('input', () => {
+    const cur = sim.selected;
+    if (!cur || cur.kind !== 'snr' || !cur.alive) return;
+    inspectorLock++;
+    const lit = setCloudTemp(cur, Math.pow(10, parseFloat(temp.value)));
+    inspectorLock--;
+    if (lit) { condenseCloud(cur); return; }
+    // A hundredfold squeeze would otherwise shrink the thing you are working on
+    // to a sub-pixel dot long before it ignites, so close in as it collapses —
+    // but only once it has actually got small on screen.
+    if (apparentPx(cur) < VIEW.h * 0.16) frameOn(cur, 2.8);
+    updateInspectorStats();
+  });
+  temp.addEventListener('change', () => renderInspector());
+
+  $('is-collapse').addEventListener('click', () => { if (e.alive) condenseCloud(e); });
+  $('is-cfollow').addEventListener('click', () => {
+    sim.follow = sim.follow === e ? null : e;
+    renderInspector();
+  });
+  $('is-czoom').addEventListener('click', () => { frameOn(e, 2.6); sim.follow = e; renderInspector(); });
+  $('is-cdisperse').addEventListener('click', () => {
+    disperseCloud(e);
+    e.alive = false;
+    disposeSN(e);
+    const i = supernovae.indexOf(e);
+    if (i >= 0) supernovae.splice(i, 1);
+    select(null);
+    toast('Cloud dispersed');
+  });
+
+  updateInspectorStats();
+}
+
 function renderInspector() {
   const host = $('an-insp-body');
   const b = sim.selected;
@@ -3635,6 +4921,7 @@ function renderInspector() {
     host.innerHTML = '<div class="an-empty">Nothing selected.<br><br>Tap a body to inspect it, or pick something from <b>Add Body</b> to build.</div>';
     return;
   }
+  if (b.kind === 'snr') { renderCloudInspector(b); return; }
   const def = TYPES[b.type];
   $('an-insp-h').textContent = 'SELECTED';
   // A rocky world's range has to reach past the gas-giant threshold, or the
@@ -3646,6 +4933,11 @@ function renderInspector() {
   const massMin = Math.min(Math.log10(Math.max(def.mass * 0.02, 1e-11)), lm);
   const massMax = Math.max(Math.log10(topMass), lm);
 
+  // Stars get a fate readout: what this one would do if its core gave way now,
+  // or exactly what is missing if it could not.
+  const isStar = def.star && b.kind === 'body';
+  const plan = isStar ? snPlan(b) : null;
+
   host.innerHTML =
     '<input class="an-name-in" id="is-name" maxlength="24" spellcheck="false"' +
     ' title="Click to rename" aria-label="Body name" value="' + escAttr(b.name) + '">' +
@@ -3656,18 +4948,31 @@ function renderInspector() {
     '<dt>Density</dt><dd id="is-den"></dd>' +
     '<dt>Speed</dt><dd id="is-spd"></dd>' +
     '<dt>Surface temp</dt><dd id="is-tmp"></dd>' +
+    (isStar ? '<dt>Luminosity</dt><dd id="is-lum"></dd>' : '') +
+    (isStar && snSet.aging ? '<dt>Fuel burned</dt><dd id="is-age"></dd>' : '') +
     '<dt id="is-orb-l">Orbiting</dt><dd id="is-orb"></dd>' +
     '</dl>' +
     '<div class="an-field"><label>Mass <b id="is-mval"></b></label>' +
     '<input type="range" id="is-mslider" min="' + massMin.toFixed(3) + '" max="' + massMax.toFixed(3) + '" step="0.001" value="' + Math.log10(b.m).toFixed(3) + '"></div>' +
+    (isStar && snSet.on ? snPanelHTML(plan) : '') +
     '<div class="an-row"><button id="is-follow">' + (sim.follow === b ? 'UNFOLLOW' : 'FOLLOW') + '</button><button id="is-zoom">ZOOM TO</button></div>' +
     '<div class="an-row"><button id="is-shatter" class="an-danger">SHATTER</button><button id="is-del" class="an-danger">REMOVE</button></div>' +
     '<p style="font-size:11px;line-height:1.55;color:var(--ink-dim);margin-top:13px">' + def.blurb + '</p>';
 
   inspRefs = {
     mass: $('is-mass'), rad: $('is-rad'), den: $('is-den'), spd: $('is-spd'),
-    tmp: $('is-tmp'), orb: $('is-orb'), orbL: $('is-orb-l'), mval: $('is-mval')
+    tmp: $('is-tmp'), orb: $('is-orb'), orbL: $('is-orb-l'), mval: $('is-mval'),
+    lum: $('is-lum'), age: $('is-age')
   };
+
+  const snBtn = $('is-sn');
+  if (snBtn) {
+    snBtn.addEventListener('click', () => {
+      const name = b.name;
+      const p = goSupernova(b);
+      if (p) { toast(name + ' went ' + p.label + '!'); renderInspector(); }
+    });
+  }
 
   const nameIn = $('is-name');
   nameIn.addEventListener('change', () => { nameIn.value = renameBody(b, nameIn.value); });
@@ -3694,8 +4999,9 @@ function renderInspector() {
     }
     updateInspectorStats();
   });
-  // Released: now it is safe to rebuild, picking up the new type's slider range.
-  slider.addEventListener('change', () => { if (sim.selected) renderInspector(); });
+  // Released: now it is safe to rebuild, picking up the new type's slider range
+  // — or the empty panel, if what was here just detonated.
+  slider.addEventListener('change', () => renderInspector());
   $('is-follow').addEventListener('click', () => {
     sim.follow = sim.follow === b ? null : b;
     renderInspector();
@@ -3710,12 +5016,36 @@ function renderInspector() {
 function updateInspectorStats() {
   const b = sim.selected;
   if (!b || !b.alive || !inspRefs) return;
+
+  if (b.kind === 'snr') {
+    const c = b.cloud || { mass: 0, n: 0, radius: 0 };
+    inspRefs.cmass.textContent = fmtMass(c.mass);
+    inspRefs.cn.textContent = c.n.toLocaleString();
+    inspRefs.crad.textContent = fmtDist(Math.max(c.radius, b.radius));
+    inspRefs.cvel.textContent = fmtKms(b.vBulk);
+    inspRefs.cage.textContent = b.age < 730
+      ? Math.round(b.age).toLocaleString() + ' days'
+      : (b.age / 365.25).toPrecision(3) + ' years';
+    inspRefs.clum.textContent = b.lum > 0.01 ? fmtLum(b.lum) : 'gone dark';
+    inspRefs.ctv.textContent = b.coreT >= 1e6
+      ? (b.coreT / 1e6).toPrecision(3) + ' million K'
+      : Math.round(b.coreT).toLocaleString() + ' K';
+    inspRefs.cfore.textContent = cloudForecast(c.mass);
+    return;
+  }
+
   inspRefs.mass.textContent = fmtMass(b.m);
   inspRefs.rad.textContent = b.kind === 'bh' ? fmtRadius(b.r) + ' (horizon)' : fmtRadius(b.r);
   inspRefs.den.textContent = b.kind === 'bh' ? '—' : fmtDensity(b.m, b.r);
   inspRefs.spd.textContent = fmtSpeed(b.v.length());
   inspRefs.tmp.textContent = b.kind === 'bh' ? '—' : Math.round(b.temp).toLocaleString() + ' K';
   inspRefs.mval.textContent = fmtMass(b.m);
+  if (inspRefs.lum) inspRefs.lum.textContent = fmtLum(b.lum);
+  if (inspRefs.age) {
+    const life = msLifetime(b.m / M_SUN);
+    inspRefs.age.textContent = life > 0
+      ? clamp(b.age / life * 100, 0, 100).toFixed(1) + '%' : '—';
+  }
 
   const prim = dominantAt(b.p, b);
   if (prim && prim.m > b.m * 3) {
@@ -3772,6 +5102,44 @@ function openSettings() {
     tgl('st-trails', 'Orbit trails', 'Trace the paths of the 28 most massive bodies.') +
     tgl('st-labels', 'Name labels', '') +
     tgl('st-lens', 'Gravitational lensing', 'Bend light around black holes. Costs a little performance.') +
+
+    '<div class="an-sec">SUPERNOVAE</div>' +
+    '<p class="an-note">Every number below starts at its real measured value. Change whatever you like — <b>RESET</b> puts the universe back the way it actually is.</p>' +
+    tgl('sn-on', 'Supernovae', 'Stars can explode at all. Turn this off and heavy stars just quietly collapse into black holes, as they did before.') +
+    tgl('sn-trigger', 'Detonate on reaching core-collapse mass', 'Not how it really works — real stars explode when they run out of fuel, not when they get heavy. Handy if you just want to feed a star until it blows.') +
+    tgl('sn-pisn', 'Pair-instability supernovae', 'Between 130 and 250 M☉ a star is destroyed utterly, leaving nothing at all. The brightest explosions there are.') +
+    tgl('sn-aging', 'Stellar aging', 'Stars burn their fuel and die. Heavy ones go supernova; light ones puff off a planetary nebula and end as white dwarfs.') +
+    sld('sn-rate', 'Aging speed', 3, 9, 0.1, snSet.ageRate) +
+    '<p class="an-note" id="sn-rate-note"></p>' +
+
+    '<div class="an-sec">THRESHOLDS</div>' +
+    sld('sn-chandra', 'Chandrasekhar limit', 0.6, 3, 0.01, snSet.chandra) +
+    '<p class="an-note">The most mass electron degeneracy pressure can hold up. A white dwarf that accretes past it detonates as a Type Ia. Really 1.44 M☉.</p>' +
+    sld('sn-cc', 'Core-collapse mass', 2, 40, 0.5, snSet.ccMass) +
+    '<p class="an-note">The lightest star that can build an iron core and collapse it. Really about 8 M☉.</p>' +
+    sld('sn-bh', 'Black-hole mass', 8, 60, 0.5, snSet.bhMass) +
+    '<p class="an-note">Progenitors heavier than this leave a black hole; lighter ones leave a neutron star.</p>' +
+    sld('sn-fail', 'Failed-supernova mass', 20, 150, 1, snSet.failMass) +
+    '<p class="an-note">Above this the core falls straight through and swallows its own shock wave. The star winks out instead of exploding — and yes, we have watched this happen.</p>' +
+
+    '<div class="an-sec">THE EXPLOSION</div>' +
+    sld('sn-energy', 'Kinetic energy', 0.05, 20, 0.05, snSet.energy) +
+    '<p class="an-note" id="sn-energy-note"></p>' +
+    sld('sn-nickel', 'Nickel-56 yield', 0, 6, 0.05, snSet.nickel) +
+    '<p class="an-note" id="sn-nickel-note"></p>' +
+    sld('sn-shell', 'Ejecta particles', 100, 2000, 20, snSet.shellSize) +
+    '<p class="an-note">How finely the envelope is chopped up. Every fragment is real matter with real mass, so this changes the resolution, never the total.</p>' +
+    sld('sn-kick', 'Neutron-star natal kick', 0, 2000, 10, snSet.kick) +
+    '<p class="an-note">Real explosions are lopsided, and they fire the new neutron star off at hundreds of km/s. Observed values run from 100 to about 1,000.</p>' +
+
+    '<div class="an-sec">THE BLAST WAVE</div>' +
+    tgl('sn-blast', 'Shock wave', 'The expanding front kicks and strips whatever it catches, by the share of the shell each body\'s disc actually intercepts.') +
+    tgl('sn-vap', 'Vaporise planets', 'A world takes more energy than gravity binds it with, and it stops being a world. At one AU a supernova delivers two hundred times what it takes to unbind the Earth.') +
+    '<div class="an-toggle"><div>Remnant<small id="sn-rem-d"></small></div><div class="an-row" style="margin:0;flex:none">' +
+    '<button id="sn-rem-auto" style="padding:6px 7px">AUTO</button><button id="sn-rem-neutron" style="padding:6px 7px">NEUTRON</button>' +
+    '<button id="sn-rem-black" style="padding:6px 7px">HOLE</button><button id="sn-rem-none" style="padding:6px 7px">NONE</button></div></div>' +
+    '<div class="an-row"><button id="sn-reset">RESET TO REAL VALUES</button></div>' +
+
     '<div class="an-row" style="margin-top:16px"><button id="st-save">SAVE UNIVERSE</button><button id="st-load">LOAD</button><button id="st-clear" class="an-danger">CLEAR ALL</button></div>';
 
   const scale = $('st-scale'), grav = $('st-grav');
@@ -3806,6 +5174,82 @@ function openSettings() {
   bindTgl('st-labels', 'labels');
   bindTgl('st-lens', 'lensing');
 
+  /* ------------------------------------------------------------ supernovae */
+
+  const sliders = {};
+  const relist = () => { if (sim.selected) renderInspector(); };
+
+  const bind = (id, key, fmt) => {
+    sliders[key] = bindSld(id, fmt, (v) => { snSet[key] = v; }, relist);
+    return sliders[key];
+  };
+
+  // Keep the three collapse thresholds in a sensible order however they are
+  // dragged, or the fate rules would silently contradict each other.
+  const order = () => {
+    snSet.bhMass = Math.max(snSet.bhMass, snSet.ccMass);
+    snSet.failMass = Math.max(snSet.failMass, snSet.bhMass);
+    sliders.bhMass.set(snSet.bhMass);
+    sliders.failMass.set(snSet.failMass);
+  };
+
+  bindTgl('sn-on', 'on', relist, snSet);
+  bindTgl('sn-trigger', 'massTrigger', relist, snSet);
+  bindTgl('sn-pisn', 'pisn', relist, snSet);
+  bindTgl('sn-aging', 'aging', relist, snSet);
+
+  bind('sn-rate', 'ageRate', (v) => '×10' + sup(Math.round(v)));
+  bind('sn-chandra', 'chandra', (v) => v.toFixed(2) + ' M☉');
+  bind('sn-cc', 'ccMass', (v) => v.toFixed(1) + ' M☉').after = order;
+  bind('sn-bh', 'bhMass', (v) => v.toFixed(1) + ' M☉');
+  bind('sn-fail', 'failMass', (v) => v.toFixed(0) + ' M☉');
+  bind('sn-energy', 'energy', fmtErg);
+  bind('sn-nickel', 'nickel', (v) => v.toFixed(2) + '×');
+  bind('sn-shell', 'shellSize', (v) => Math.round(v) + ' pieces');
+  bind('sn-kick', 'kick', (v) => Math.round(v) + ' km/s');
+
+  // Live readouts that turn the abstract numbers into something you can picture.
+  const notes = () => {
+    $('sn-rate-note').textContent = 'A star lives 10¹⁰ years divided by (M/M☉)^2.5. At this speed the Sun '
+      + 'would last about ' + fmtYears(msLifetime(1) / Math.pow(10, snSet.ageRate))
+      + ' of simulated time, and a 20 M☉ star about ' + fmtYears(msLifetime(20) / Math.pow(10, snSet.ageRate)) + '.';
+    $('sn-energy-note').textContent = 'One "foe" — 10⁵¹ erg — is what a real core collapse releases as motion. '
+      + 'At this setting a ten-solar-mass envelope leaves at about '
+      + fmtKms(ejectaSpeed(snSet.energy, 10 * M_SUN)) + '.';
+    $('sn-nickel-note').textContent = 'A supernova shines on radioactive decay, not on the blast. At this yield a '
+      + 'Type II peaks near ' + fmtLum(peakLum(0.062 * snSet.nickel, 8, 2.0e42, 100))
+      + ' and a Type Ia near ' + fmtLum(peakLum(0.6 * snSet.nickel, 14, 0, 0)) + '.';
+  };
+  for (const k in sliders) sliders[k].onChange = notes;
+  notes();
+
+  const remBtns = {
+    auto: $('sn-rem-auto'), neutron: $('sn-rem-neutron'),
+    black: $('sn-rem-black'), none: $('sn-rem-none')
+  };
+  const REM_D = {
+    auto: 'Whatever the physics says: neutron star, black hole, or nothing at all.',
+    neutron: 'Always leave a neutron star, capped at the ' + TOV_LIMIT + ' M☉ limit.',
+    black: 'Always leave a black hole.',
+    none: 'Never leave anything. The whole star becomes ejecta.'
+  };
+  const syncRem = () => {
+    for (const k in remBtns) remBtns[k].classList.toggle('on', snSet.remnant === k);
+    $('sn-rem-d').textContent = REM_D[snSet.remnant];
+  };
+  for (const k in remBtns) remBtns[k].addEventListener('click', () => { snSet.remnant = k; syncRem(); });
+  syncRem();
+
+  bindTgl('sn-blast', 'blast', null, snSet);
+  bindTgl('sn-vap', 'vaporize', null, snSet);
+
+  $('sn-reset').addEventListener('click', () => {
+    Object.assign(snSet, SN_REAL);
+    closeModal();
+    openSettings();
+    toast('Supernova settings back to the real values');
+  });
+
   $('st-save').addEventListener('click', saveUniverse);
   $('st-load').addEventListener('click', loadUniverse);
   $('st-clear').addEventListener('click', () => { clearAll(); closeModal(); });
@@ -3818,14 +5262,80 @@ function tgl(id, label, sub) {
     '</div><div class="an-sw" id="' + id + '"></div></div>';
 }
 
-function bindTgl(id, key, after) {
+function bindTgl(id, key, after, obj) {
+  const store = obj || settings;
   const el = $(id);
-  el.classList.toggle('on', !!settings[key]);
+  el.classList.toggle('on', !!store[key]);
   el.addEventListener('click', () => {
-    settings[key] = !settings[key];
-    el.classList.toggle('on', settings[key]);
+    store[key] = !store[key];
+    el.classList.toggle('on', store[key]);
     if (after) after();
   });
+}
+
+/** A labelled range with a live value readout beside the label. */
+function sld(id, label, min, max, step, value) {
+  return '<div class="an-field"><label>' + label + ' <b id="' + id + '-v"></b></label>' +
+    '<input type="range" id="' + id + '" min="' + min + '" max="' + max +
+    '" step="' + step + '" value="' + value + '"></div>';
+}
+
+/**
+ * Wire one up. `after` runs before the readout refreshes (used to keep coupled
+ * sliders consistent), `onChange` after it (used to recompute the explanatory
+ * notes); both are assigned onto the returned handle, so they can be set up
+ * once every slider in a group exists.
+ */
+function bindSld(id, fmt, apply, onRelease) {
+  const el = $(id), out = $(id + '-v');
+  const ref = {
+    el: el, after: null, onChange: null,
+    show() { out.textContent = fmt(parseFloat(el.value)); },
+    set(v) { el.value = v; ref.show(); }
+  };
+  el.addEventListener('input', () => {
+    apply(parseFloat(el.value));
+    if (ref.after) ref.after();
+    ref.show();
+    if (ref.onChange) ref.onChange();
+  });
+  if (onRelease) el.addEventListener('change', onRelease);
+  ref.show();
+  return ref;
+}
+
+/* ---- readouts that turn the supernova numbers into something picturable --- */
+
+/** ⟨x⟩/√⟨x²⟩ for the velocity spectrum blastShell draws from. */
+const EJ_SHAPE = 0.8471;
+
+const ejectaSpeed = (foe, massMe) =>
+  Math.sqrt(2 * foe * FOE / Math.max(massMe, 1e-9)) * EJ_SHAPE;
+
+/* Ejecta speeds run to thousands of km/s, where fmtSpeed switches to a
+   percentage of light speed — true, but far less readable than the number
+   astronomers actually quote. */
+const fmtKms = (gmPerDay) => Math.round(gmPerDay * 1e9 / 86400 / 1000).toLocaleString() + ' km/s';
+
+/** Sustained peak of the light curve, ignoring the few-hour breakout spike. */
+function peakLum(ni, rise, plateau, tPlat) {
+  const e = { age: 0, ni: ni, rise: rise, plateau: plateau, tPlat: tPlat, breakout: 0 };
+  let best = 0;
+  for (let t = 0.5; t <= 220; t += 0.5) { e.age = t; best = Math.max(best, snLuminosity(e)); }
+  return best;
+}
+
+function fmtErg(foe) {
+  const e = Math.floor(Math.log10(Math.max(foe, 1e-9))) + 51;
+  return (foe / Math.pow(10, e - 51)).toFixed(2) + '×10' + sup(e) + ' erg';
+}
+
+function fmtYears(days) {
+  const y = days / 365.25;
+  if (y >= 1e6) return (y / 1e6).toPrecision(3) + ' million years';
+  if (y >= 1000) return Math.round(y).toLocaleString() + ' years';
+  if (y >= 1) return y.toPrecision(3) + ' years';
+  return Math.max(Math.round(days), 0).toLocaleString() + ' days';
 }
 
 function syncSettings() {
@@ -4039,6 +5549,47 @@ const PRESETS = [
     }
   },
   {
+    name: 'Betelgeuse', desc: 'A red supergiant with four worlds and one problem: it is nearly out of fuel. Press GO SUPERNOVA on it, or switch on Stellar aging and wait.',
+    dist: 16000,
+    build() {
+      const s = makeBody('red_supergiant', new V3(), new V3(), { name: 'Betelgeuse' });
+      // The star itself is three and a half AU across, and drawn three times
+      // that, so the innermost world still has to start twelve AU out.
+      orbitBody('terrestrial', s, 1800, { ang: 0.4 });
+      orbitBody('ocean_world', s, 2600, { ang: 2.1 });
+      orbitBody('gas_giant', s, 4200, { ang: 3.9 });
+      orbitBody('ice_world', s, 6800, { ang: 5.2 });
+      return s;
+    }
+  },
+  {
+    name: 'Type Ia Fuse', desc: 'A white dwarf a whisker under the Chandrasekhar limit, with a brown dwarf falling straight at it. Give it five days.',
+    dist: 260,
+    build() {
+      const wd = makeBody('white_dwarf', new V3(), new V3(), { name: 'Fuse', mass: 1.42 * M_SUN });
+      // Twenty-five Jupiters is just enough to tip it over 1.44 M☉ on impact.
+      makeBody('gas_giant', new V3(-40, 0, 4), new V3(), { name: 'Last Straw', mass: 8000 });
+      // The inner world is well inside the kill radius; the ice giant is far
+      // enough out to be stripped and flung loose instead of destroyed.
+      orbitBody('terrestrial', wd, 220, { ang: 1.1 });
+      orbitBody('ice_giant', wd, 1400, { ang: 3.4 });
+      sim.running = true;
+      return wd;
+    }
+  },
+  {
+    name: 'Wolf–Rayet', desc: 'A star stripped to its bare helium core, with nothing left to lose. This is a Type Ib/c supernova about to happen.',
+    dist: 700,
+    build() {
+      const s = makeBody('wolf_rayet', new V3(), new V3(), { name: 'Regor' });
+      for (let i = 0; i < 5; i++) {
+        orbitBody(pick(['desert_world', 'iron_world', 'lava_world', 'chthonian']), s,
+          rnd(140, 640), { ang: rnd(0, TAU), inc: rnd(-0.12, 0.12) });
+      }
+      return s;
+    }
+  },
+  {
     name: 'Neutron Waltz', desc: 'Two city-sized stellar corpses whipping around each other in hours.',
     dist: 0.9,
     build() {
@@ -4071,6 +5622,7 @@ function clearAll() {
   for (const b of sim.bodies) { disposeVisual(b); }
   sim.bodies.length = 0;
   clearParticles();
+  clearSupernovae();
   grewBodies.clear();
   pSources = [];
   usedNames.clear();
@@ -4105,10 +5657,10 @@ const SAVE_KEY = 'astronomia.save.v1';
 function saveUniverse() {
   try {
     const data = {
-      t: sim.time, settings: settings, rateIdx: rateIdx,
+      t: sim.time, settings: settings, sn: snSet, rateIdx: rateIdx,
       cam: { t: view.target.toArray(), d: view.dist, y: view.yaw, p: view.pitch },
       bodies: sim.bodies.map(b => ({
-        ty: b.type, n: b.name, m: b.m, r: b.r, s: b.seed, sp: b.spin, ti: b.tilt,
+        ty: b.type, n: b.name, m: b.m, r: b.r, s: b.seed, sp: b.spin, ti: b.tilt, ag: b.age,
         p: [b.p.x, b.p.y, b.p.z], v: [b.v.x, b.v.y, b.v.z]
       }))
     };
@@ -4129,11 +5681,14 @@ function loadUniverse() {
 
   clearAll();
   for (const k in data.settings) if (k in settings) settings[k] = data.settings[k];
+  // Key-by-key, so a save written before a setting existed still loads and just
+  // keeps today's default for it.
+  for (const k in (data.sn || {})) if (k in snSet) snSet[k] = data.sn[k];
   sim.time = data.t || 0;
   for (const s of data.bodies || []) {
     if (!TYPES[s.ty]) continue;
     makeBody(s.ty, new V3().fromArray(s.p), new V3().fromArray(s.v),
-      { mass: s.m, r: s.r, name: s.n, seed: s.s, spin: s.sp, tilt: s.ti });
+      { mass: s.m, r: s.r, name: s.n, seed: s.s, spin: s.sp, tilt: s.ti, age: s.ag });
   }
   if (data.cam) {
     view.target.fromArray(data.cam.t);
@@ -4179,9 +5734,33 @@ function openHelp() {
     '<li><b>Slow collisions merge</b> and conserve momentum. <b>Fast ones shatter</b> both bodies into rubble — the test is impact speed against the pair\'s escape velocity.</li>' +
     '<li>The debris thrown out by an impact is <b>real matter, not sparks</b>. Every grain carries mass and is pulled along by the same gravity as the planets, so it orbits, rains back down, settles into rings, or is swallowed by a black hole — and whatever eats it genuinely gets heavier. The counter at the bottom left shows bodies plus live debris.</li>' +
     '<li>Feed a <b>rocky</b> world past <b>60.1 Earth masses</b> and its gravity can finally hold onto hydrogen: it flares up and swells into a <b>gas giant</b>, roughly doubling in width as dense rock gives way to light gas. Worlds that are already gassy skip this and just keep growing.</li>' +
-    '<li>Pile up more than 8% of the Sun\'s mass and the body <b>ignites into a star</b>. Push a star past 25 solar masses and it <b>collapses into a black hole</b>. The full ladder is rock → gas giant → star → black hole.</li>' +
+    '<li>Pile up more than 8% of the Sun\'s mass and the body <b>ignites into a star</b>. The full ladder is rock → gas giant → star → supernova → neutron star or black hole.</li>' +
     '<li>Stray inside a planet\'s <b>Roche limit</b> and tides tear the moon into a ring, exactly as they did at Saturn.</li>' +
     '<li>Surface temperatures come from the real starlight falling on each world, so worlds glow when they roast and frost over when they don\'t.</li>' +
+    '</ul>' +
+    '<h3>SUPERNOVAE</h3>' +
+    '<ul>' +
+    '<li>Select any star and the panel tells you <b>exactly how it will die</b> — and gives you a <b>GO SUPERNOVA</b> button if it can. If it can\'t, it says why, which is usually "not heavy enough yet".</li>' +
+    '<li>A <b>white dwarf</b> that accretes past the <b>Chandrasekhar limit</b> of 1.44 solar masses detonates on its own, no button needed. That is a <b>Type Ia</b>, and because they all go off at the same mass they all reach the same brightness — which is how astronomers measure distances across the universe.</li>' +
+    '<li>A star over about <b>8 solar masses</b> collapses its iron core in roughly a second and rebounds. That is a <b>Type II</b>. Above 20 solar masses the remnant is a black hole; below it, a <b>neutron star</b> — which gets fired off at hundreds of km/s, because the explosion is never symmetric.</li>' +
+    '<li>Over about <b>40 solar masses</b> the core falls straight through and swallows its own shock wave. The star just <b>winks out</b>. We have genuinely watched this happen to a real star.</li>' +
+    '<li>Between <b>130 and 250 solar masses</b> the star\'s own gamma rays turn into matter, the core loses its support, and the whole thing is destroyed with nothing left over at all.</li>' +
+    '<li>The light does <b>not</b> come from the bang — that energy all goes into motion. It comes from about a tenth of a solar mass of radioactive <b>nickel-56</b> forged in the shock, decaying to cobalt and then to iron. That is why a supernova takes three weeks to brighten and months to fade, and the curve here is the real published one.</li>' +
+    '<li>The ejecta is <b>real matter</b>, thrown with exactly 10⁵¹ erg of kinetic energy spread across the envelope. Nobody types in a speed: hand a Type Ia 1.5×10⁵¹ erg and 1.44 solar masses and about 10,000 km/s falls out on its own.</li>' +
+    '<li>The <b>blast wave</b> is real too. A body intercepts the share of the shell its own disc covers, takes that much momentum and energy, and is destroyed if it got more than gravity holds it together with. At one AU that is about two hundred times what it takes to unbind the Earth.</li>' +
+    '<li>Turn on <b>Stellar aging</b> in Settings and stars burn their fuel and die on their own. A star lives 10 billion years divided by (its mass)^2.5, so the Sun gets ten billion years and a twenty-solar-mass star gets six million. Light stars end by puffing off a <b>planetary nebula</b> and settling down as a white dwarf.</li>' +
+    '<li>Every number in that whole list is a slider in <b>Settings ▸ Supernovae</b>, starting at its real measured value, with a RESET that puts them all back.</li>' +
+    '</ul>' +
+    '<h3>BUILDING A NEW STAR OUT OF THE WRECKAGE</h3>' +
+    '<ul>' +
+    '<li>What a supernova leaves behind is a few solar masses of enriched gas — and that is where the <b>next</b> generation of stars comes from. Our own Solar System is thought to have condensed out of a cloud like it, which is why the oldest meteorites still carry the decay products of supernova iron.</li>' +
+    '<li><b>Click the cloud</b> once the flash has faded and it selects like anything else. The panel shows how much gas and dust is genuinely still there — not the amount thrown, the amount that has not yet been swallowed, absorbed or blown out of the system.</li>' +
+    '<li>Drag <b>Core temperature</b> and the cloud squeezes. That link is the virial theorem: a self-gravitating ball has kT ≈ GMμ/R, so halving the radius doubles the temperature in the middle. It is why protostars go on getting hotter all the way down.</li>' +
+    '<li>Reach <b>10 million kelvin</b> and hydrogen fuses. The cloud collapses into a star weighing exactly what the gas weighed, drifting exactly as the gas drifted, and the leftover couple of percent flattens into a disc and accretes into planets.</li>' +
+    '<li>The planets orbit in <b>the plane the cloud was already spinning in</b>, taken from its real angular momentum. That is why every planet in a real system goes round the same way in nearly the same plane — they all inherit the spin of one cloud.</li>' +
+    '<li>Rock forms inside the <b>snow line</b> and ice and giants outside it — 2.7 AU in our own nebula, further out around a brighter star, because that is where water ice can survive.</li>' +
+    '<li>Not every cloud makes a star. Under <b>0.075 solar masses</b> — about eighty Jupiters — hydrogen never catches and you get a brown dwarf instead, glowing on its own contraction and slowly fading. The panel tells you which you are about to get before you commit.</li>' +
+    '<li>So the full circle is: gas &rarr; star &rarr; supernova &rarr; gas &rarr; star. Each turn seeds the next one with heavier elements. Every atom of iron in your blood came through that loop.</li>' +
     '</ul>' +
     '<h3>TWO HONEST FUDGES</h3>' +
     '<ul>' +
@@ -4206,6 +5785,18 @@ function updateHud(realDt) {
     $('an-hud-bodies').textContent = parts.live
       ? sim.bodies.length + ' + ' + parts.live
       : sim.bodies.length;
+
+    // While something is exploding, the brightest thing in the sky is worth a
+    // line of its own — that number is the whole point of a supernova.
+    const snEl = $('an-hud-sn');
+    let best = null;
+    for (const e of supernovae) if (!best || e.lum > best.lum) best = e;
+    if (best && best.lum > 1) {
+      snEl.innerHTML = best.label.toUpperCase() + ' <b>' + fmtLum(best.lum) + '</b>';
+      snEl.style.display = '';
+    } else if (snEl.style.display !== 'none') {
+      snEl.style.display = 'none';
+    }
   }
   const yr = Math.floor(sim.time / 365.25);
   const dy = Math.floor(sim.time - yr * 365.25);
