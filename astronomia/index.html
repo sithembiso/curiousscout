@@ -605,7 +605,13 @@ function fmtDensity(me, gm) {
   const kg = me * KG_PER_ME;
   const m3 = (4 / 3) * Math.PI * Math.pow(gm * 1e9, 3);
   const d = kg / m3;
-  return (d >= 100000 ? d.toExponential(2) : Math.round(d).toLocaleString()) + ' kg/m³';
+  // A knot of vapour is thinner than air, so rounding to whole numbers would
+  // just report every one of them as zero.
+  const s = d >= 100000 ? d.toExponential(2)
+    : d >= 10 ? Math.round(d).toLocaleString()
+    : d >= 0.01 ? d.toPrecision(2)
+    : d > 0 ? d.toExponential(1) : '0';
+  return s + ' kg/m³';
 }
 
 function sup(n) {
@@ -1660,6 +1666,13 @@ const TYPES = {
     surf: 'comet', spin: 2.2, lumpy: 0.45, tail: true,
     blurb: 'A dirty snowball. Bring it near a star and it grows a tail millions of kilometres long.'
   },
+  gas_clump: {
+    // 0.02 M⊕ across 3.2 Earth radii works out at about 3 kg/m³ — thicker than
+    // air, thin enough to see through, which is what a hot vapour knot is.
+    label: 'Gas Clump', group: 'MOONS & DEBRIS', mass: 0.02, rad: 3.2,
+    kind: 'gas', temp: 1800, spin: 3.5,
+    blurb: 'A knot of vapour thrown off a collision, still glowing from the heat of it. Left alone it either thins away to nothing or — if there is enough of it — pulls itself together into a solid world.'
+  },
 
   /* ---- exotic ----------------------------------------------------------- */
   black_hole: {
@@ -1824,6 +1837,7 @@ const SWATCH = {
   ice_world: '#dbeaf7', lava_world: '#ff6a2a', gas_giant: '#d9b183', ice_giant: '#5aa8de',
   ringed_giant: '#e8d3a0',
   moon: '#b0aca6', dwarf_planet: '#cfe0ea', asteroid: '#7d746c', comet: '#9fd8ff',
+  gas_clump: '#ff9a4a',
   black_hole: '#b388ff', smbh: '#ff6fd8', white_hole: '#fff3b0', rogue_planet: '#54627e',
   chthonian: '#a35434', carbon_world: '#8fa8c8', iron_world: '#b08a6e',
   super_puff: '#f2c8d8', eyeball_world: '#7fb8d8', hycean_world: '#3f9fd8',
@@ -2105,6 +2119,10 @@ const isCompact = (b) => b.kind === 'body' && TYPES[b.type].surf === 'neutron';
 
 function captureRadius(b) {
   const r = visRadius(b);
+  // The outside of a knot of gas is wisps — things fly straight through it, and
+  // only the dense middle actually catches anything. Without this a knot the
+  // width of a planet hoovers up every fragment near it on the first step.
+  if (b.kind === 'gas') return r * 0.34;
   return isCompact(b) ? Math.max(r, CAPTURE_MIN) : r;
 }
 
@@ -2277,8 +2295,12 @@ function impact(a, b) {
 
   // A gentle touch accretes; a fast, well-matched hit shatters both. Rubble is
   // already broken, so it only ever accretes — this keeps debris fields from
-  // fragmenting without end.
-  if (vImp < vEsc * 1.6 || ratio < 0.015 || a.rubble || b.rubble) merge(a, b, vImp, vEsc);
+  // fragmenting without end. Gas is the same story taken further: there is
+  // nothing left to break, so a knot of vapour always merges. Without this a
+  // pair of knots can shatter into more knots, and one collision runs away
+  // into a hundred bodies.
+  const soft = a.rubble || b.rubble || a.kind === 'gas' || b.kind === 'gas';
+  if (vImp < vEsc * 1.6 || ratio < 0.015 || soft) merge(a, b, vImp, vEsc);
   else shatter(a, b, vImp);
   return true;
 }
@@ -2336,13 +2358,22 @@ function bounce(a, b) {
     // Even a graze boils off more than it chips away.
     b.m -= gasEjecta(b.p, b.v, Math.round(n * 1.5), b.m * 0.009 * bump, vEsc,
       visRadius(b), { speed: 0.9 });
+    // Both of them come away scuffed where they touched.
+    addScar(b, nrm.clone().negate(), clamp(bump * 0.35, 0.12, 0.5));
+    addScar(a, nrm, clamp(bump * 0.35, 0.12, 0.5));
   }
 }
 
 function merge(a, b, vImp, vEsc) {
   const mTot = a.m + b.m;
+  // Where it was hit, captured before the survivor is moved to the barycentre.
+  const hitDir = b.p.clone().sub(a.p);
   const com = a.p.clone().multiplyScalar(a.m).addScaledVector(b.p, b.m).divideScalar(mTot);
   const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mTot);
+  // Mixing a diffuse knot of gas into a solid world must not swell the world to
+  // the size of the cloud, so a merge involving gas keeps the survivor's own
+  // density instead of adding volumes.
+  const gasMix = a.kind === 'gas' || b.kind === 'gas';
 
   // Splash some of the impactor back out as real debris. Harder accretions throw
   // out proportionally more, and a pebble landing on a planet should not look
@@ -2357,7 +2388,7 @@ function merge(a, b, vImp, vEsc) {
   // merged body's surface rather than inside it.
   a.p.copy(com);
   a.v.copy(vel);
-  a.r = Math.cbrt(a.r * a.r * a.r + b.r * b.r * b.r);
+  a.r = gasMix ? trueRadius(a.type, mTot) : Math.cbrt(a.r * a.r * a.r + b.r * b.r * b.r);
 
   const thrown = ejectMass > 0
     ? ejecta(com, vel, count, ejectMass, vEsc, [255, 190, 110], [96, 84, 76], visRadius(a), { speed: 1 })
@@ -2368,6 +2399,17 @@ function merge(a, b, vImp, vEsc) {
     ? gasEjecta(com, vel, Math.round(count * 1.6), ejectMass * 2.4, vEsc, visRadius(a), { speed: 1.1 })
     : 0;
   a.m = mTot - thrown - gas;
+  if (gasMix) a.r = trueRadius(a.type, a.m);
+
+  // A real hit throws off knots you can go and look at — mostly vapour, some of
+  // it solid. Only worth doing when something substantial actually landed.
+  let clumped = 0;
+  if (!gasMix && sev > 0.55 && b.m > a.m * 0.02) {
+    const want = clamp(Math.round(2 + sev * 3 * heft), 1, 5);
+    clumped = spawnClumps(com, vel, b.m * 0.14 * heft, want,
+      vEsc * rnd(0.9, 1.5), visRadius(a) * 1.3, 0.3);
+    a.m -= clumped;
+  }
 
   // Enough mass in one place and the physics changes character.
   let note = a.name + ' absorbed ' + b.name;
@@ -2375,13 +2417,17 @@ function merge(a, b, vImp, vEsc) {
   if (ev) note = a.name + EVOLVE_NOTE[ev];
   else { updateLuminosity(a); refreshVisual(a); }
 
+  // …and it leaves a mark, sized by how big the thing that hit it was.
+  addScar(a, hitDir, clamp(Math.cbrt(b.m / Math.max(a.m, 1e-12)) * 1.5, 0.14, 1.1));
+
   fx.flash(com, visRadius(a) * 4, [255, 210, 150], 0.7);
-  toast(note);
+  toast(note + (clumped > 0 ? ' — knots of it flew off' : ''));
   removeBody(b);
 }
 
 function shatter(a, b, vImp) {
   const mTot = a.m + b.m;
+  const hitDir = b.p.clone().sub(a.p);
   const com = a.p.clone().multiplyScalar(a.m).addScaledVector(b.p, b.m).divideScalar(mTot);
   const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mTot);
 
@@ -2412,9 +2458,26 @@ function shatter(a, b, vImp) {
   a.r = trueRadius(a.type, remnantM);
   updateLuminosity(a);
   refreshVisual(a);
+  // The survivor wears the hit. This one is a big mark — it was nearly destroyed.
+  addScar(a, hitDir, rnd(0.55, 1.1));
 
-  if (bigFrags > 0 && rubbleM > 0) {
-    spawnDebris(com, vel, rubbleM / bigFrags, bigFrags, vImp * 0.45, visRadius(a) * 1.2);
+  /* What is left splits three ways: a few big solid fragments, a handful of
+     selectable knots that are mostly still vapour, and the fine gas already
+     released above. Roughly a third of the knots never got hot enough to boil
+     and come off solid. */
+  let rest = rubbleM;
+  if (rest > 0) {
+    const knots = clamp(Math.round(3 + Math.random() * 3), 2, 6);
+    rest -= spawnClumps(com, vel, rest * 0.42, knots, vImp * 0.4, visRadius(a) * 1.4, 0.32);
+  }
+  // Recount the slots: the knots above have taken some of them.
+  const nFrags = Math.min(bigFrags, freeSlots());
+  if (nFrags > 0 && rest > 0) {
+    spawnDebris(com, vel, rest / nFrags, nFrags, vImp * 0.45, visRadius(a) * 1.2);
+  } else if (rest > 0) {
+    a.m += rest;                       // nowhere to put it: the survivor keeps it
+    a.r = trueRadius(a.type, a.m);
+    scaleVisual(a);
   }
   fx.flash(com, ra0 * 7, [255, 240, 200], 1);
   toast(a.name + ' and ' + b.name + ' shattered on impact!');
@@ -2604,8 +2667,15 @@ function shatterBody(b) {
   const thrown = ejecta(b.p, b.v, 420, b.m * 0.12, vEsc,
     [255, 235, 195], [104, 90, 80], rb, { speed: 1.25, sizeMin: 1.2, sizeMax: 7.5 });
   const gas = gasEjecta(b.p, b.v, 640, b.m * 0.26, vEsc, rb, { speed: 1.2 });
-  const rubble = b.m - thrown - gas;
-  if (rubble > 0) spawnDebris(b.p, b.v, rubble / frags, frags, vEsc * 0.9, rb);
+  let rubble = b.m - thrown - gas;
+  // A few selectable knots as well — mostly vapour, some of it solid.
+  if (rubble > 0) {
+    rubble -= spawnClumps(b.p, b.v, rubble * 0.4,
+      clamp(Math.round(2 + Math.random() * 3), 2, 5), vEsc * 1.1, rb * 1.4, 0.32);
+  }
+  // Recount: the knots above have taken some of the body slots.
+  const nFrags = Math.min(frags, freeSlots());
+  if (rubble > 0 && nFrags > 0) spawnDebris(b.p, b.v, rubble / nFrags, nFrags, vEsc * 0.9, rb);
 
   fx.flash(b.p, rb * 7, [255, 235, 190], 1);
   toast(b.name + ' was torn apart');
@@ -4152,7 +4222,7 @@ function updateTemperatures() {
 /* ================================================================== renderer */
 
 let renderer, scene, camera, canvasEl;
-let SPHERE, SPHERE_LO, SPHERE_HI;
+let SPHERE, SPHERE_LO, SPHERE_HI, SCAR_GEO;
 const ringGeoCache = new Map();
 
 /**
@@ -4202,6 +4272,9 @@ function initScene() {
   // coarser than the granulation itself, so the displacement would alias into
   // a few random dents instead of resolving individual cells.
   SPHERE_HI = new THREE.SphereGeometry(1, 200, 130);
+  // A unit square laid flat on the surface, used for impact scars. Kept small
+  // enough that the gap between a flat decal and a curved world never shows.
+  SCAR_GEO = new THREE.PlaneGeometry(1, 1);
 
   TEX_GLOW = new THREE.CanvasTexture(glowTexture(256, 0.16, 0.85));
   TEX_HALO = new THREE.CanvasTexture(glowTexture(256, 0.04, 0.30));
@@ -4411,6 +4484,7 @@ function buildVisual(b) {
   if (b.kind === 'bh') buildHole(b, grp);
   else if (b.kind === 'wh') buildWhiteHole(b, grp);
   else if (b.kind === 'gal') buildGalaxy(b, grp);
+  else if (b.kind === 'gas') buildClump(b, grp);
   else buildWorld(b, def, grp);
 
   // A pixel-floor marker so distant bodies never vanish entirely.
@@ -4531,6 +4605,7 @@ function buildWorld(b, def, grp) {
   }
 
   if (b.ringSpec) buildRing(b, grp);
+  if (b.scars && b.scars.length) buildScars(b);
 
   if (def.star) {
     const col = new THREE.Color().fromArray(kelvinToRGB(def.temp).map(c => c / 255));
@@ -4582,6 +4657,301 @@ function buildWhiteHole(b, grp) {
   grp.add(g1); grp.add(g2);
   b.parts.glow = g1; b.parts.halo = g2;
   b.lightColor = new THREE.Color(0xfff0c0);
+}
+
+/* =============================================================== impact scars */
+/*
+ * A world that has just swallowed another one should look like it. Every merge
+ * and every hard graze leaves a mark on the survivor at the point it was hit,
+ * scaled to how big the thing that hit it was — so a body's surface ends up
+ * carrying a record of what it is made of. It is exactly why the Moon and
+ * Mercury look the way they do.
+ *
+ * The mark is a decal held just off the surface and parented to the body's own
+ * mesh, so it turns with the body and leans with its axis. It is stored on the
+ * body rather than painted into the texture, because textures are shared
+ * between every world of the same kind.
+ */
+
+const MAX_SCARS = 7;
+const _ZAXIS = new THREE.Vector3(0, 0, 1);
+
+/** A crater seen from straight above: dark floor, bright rim, splash of rays. */
+function scarTexture(seed, size) {
+  const cv = newCanvas(size, size);
+  const ctx = cv.getContext('2d');
+  const r = mulberry32(seed);
+  const c = size / 2;
+
+  // Rays first, so the crater is painted over their inner ends.
+  const rays = 9 + (r() * 9) | 0;
+  for (let i = 0; i < rays; i++) {
+    const a = r() * TAU;
+    const len = c * (0.55 + r() * 0.42);
+    const wid = c * (0.02 + r() * 0.05);
+    const g = ctx.createLinearGradient(c, c, c + Math.cos(a) * len, c + Math.sin(a) * len);
+    g.addColorStop(0, 'rgba(238,230,220,0.42)');
+    g.addColorStop(1, 'rgba(238,230,220,0)');
+    ctx.save();
+    ctx.translate(c, c); ctx.rotate(a);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, -wid); ctx.lineTo(len, -wid * 2.6); ctx.lineTo(len, wid * 2.6); ctx.lineTo(0, wid);
+    ctx.closePath();
+    ctx.translate(-c, -c);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Ejecta blanket, then the bowl, then the raised rim.
+  let g = ctx.createRadialGradient(c, c, c * 0.26, c, c, c * 0.5);
+  g.addColorStop(0, 'rgba(214,200,186,0.34)');
+  g.addColorStop(1, 'rgba(214,200,186,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(c, c, c * 0.5, 0, TAU); ctx.fill();
+
+  g = ctx.createRadialGradient(c * 0.86, c * 0.86, c * 0.02, c, c, c * 0.28);
+  g.addColorStop(0, 'rgba(14,10,10,0.80)');
+  g.addColorStop(0.62, 'rgba(38,28,26,0.68)');
+  g.addColorStop(1, 'rgba(60,48,44,0.10)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(c, c, c * 0.28, 0, TAU); ctx.fill();
+
+  ctx.strokeStyle = 'rgba(226,214,200,0.5)';
+  ctx.lineWidth = size / 90;
+  ctx.beginPath(); ctx.arc(c, c, c * 0.275, 0, TAU); ctx.stroke();
+  return cv;
+}
+
+/** Turn a world-space direction into the body's own rotating frame. */
+function localOnBody(b, worldDir) {
+  const v = worldDir.clone();
+  if (v.lengthSq() < 1e-18) v.set(1, 0, 0);
+  v.normalize();
+  // World = tilt about Z, then spin about Y — so undo them in that order.
+  v.applyAxisAngle(_ZAXIS, -b.tilt);
+  v.applyAxisAngle(_YAXIS, -b.rot);
+  return v;
+}
+
+/**
+ * Record a mark where `worldDir` points, sized as a fraction of the body's own
+ * radius. Held on the body, so it survives a rebuild and a save.
+ */
+function addScar(b, worldDir, size) {
+  if (!b.alive || b.kind !== 'body') return;
+  const def = TYPES[b.type];
+  // Nothing that has no surface to scar: a star's photosphere heals in minutes
+  // and a gas giant has no ground for a crater to be in.
+  if (def.star || GASSY_SURF.has(def.surf)) return;
+  const n = localOnBody(b, worldDir);
+  b.scars = b.scars || [];
+  b.scars.push({ n: [n.x, n.y, n.z], s: clamp(size, 0.10, 1.15), roll: Math.random() * TAU });
+  // Oldest marks are buried by later resurfacing; keep the panel honest by
+  // counting every one, but only ever draw the most recent handful.
+  b.scarCount = (b.scarCount || 0) + 1;
+  while (b.scars.length > MAX_SCARS) b.scars.shift();
+  if (b.parts) buildScars(b);
+}
+
+function buildScars(b) {
+  const p = b.parts;
+  if (!p || !p.surf || !b.scars) return;
+  if (p.scars) for (const m of p.scars) { p.surf.remove(m); m.material.dispose(); }
+  p.scars = [];
+
+  const tex = cachedTexture('scar', () => scarTexture(90210, 256));
+  for (const sc of b.scars) {
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, depthWrite: false, opacity: 0.85,
+      // Held a hair off the surface; the offset keeps it from z-fighting with
+      // the sphere it is lying on.
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+    });
+    const m = new THREE.Mesh(SCAR_GEO, mat);
+    const n = new THREE.Vector3(sc.n[0], sc.n[1], sc.n[2]).normalize();
+    m.position.copy(n).multiplyScalar(1.006);
+    m.quaternion.setFromUnitVectors(_ZAXIS, n)
+      .multiply(new THREE.Quaternion().setFromAxisAngle(_ZAXIS, sc.roll));
+    m.scale.setScalar(sc.s);
+    p.surf.add(m);          // a child of the mesh, so it turns with the world
+    p.scars.push(m);
+  }
+}
+
+/* ================================================================ gas clumps */
+/*
+ * A collision does not only make gravel and a fine mist. It throws off KNOTS —
+ * lumps of vapour dense enough to hold together for a while, which you can
+ * click on, weigh and watch. Some of what comes off is solid instead, and the
+ * two behave completely differently: rock just orbits, while a gas knot is in a
+ * race between spreading out and pulling itself in. If there is enough of it,
+ * gravity wins and it becomes a world.
+ *
+ * This is not decoration — it is the actual origin story of the Moon, and of
+ * every moon around every giant in the Solar System.
+ */
+
+/* Above this much mass a knot can hold itself together and collapse into a
+   solid body. Below it, it thins out and is gone. */
+const CLUMP_COLLAPSE = 0.045;      // M⊕ — about four Moons
+
+function clumpGeometry(variant) {
+  const key = 'clump:' + variant;
+  if (geoCache.has(key)) return geoCache.get(key);
+  const rng = mulberry32(hashStr(key));
+  const lump = fbm(hashStr('cl' + variant), 4, 2, 4);
+  const pos = [], col = [], siz = [];
+
+  for (let i = 0; i < 900; i++) {
+    const z = rng() * 2 - 1, ph = rng() * TAU, s = Math.sqrt(Math.max(0, 1 - z * z));
+    const dx = s * Math.cos(ph), dy = s * Math.sin(ph), dz = z;
+    const u = ((Math.atan2(dy, dx) / TAU) + 1) % 1;
+    const v = Math.acos(clamp(dz, -1, 1)) / Math.PI;
+    // Ragged, not a ball: a noise field eats a good share of every direction.
+    const lb = clamp(lump(u, v) * 1.8 - 0.4, 0, 1);
+    if (rng() > 0.25 + lb) continue;
+    // Filled rather than hollow — a knot is dense in the middle, which is the
+    // whole reason it might survive.
+    const r = Math.pow(rng(), 0.55) * (0.55 + lb * 0.5);
+    pos.push(dx * r, dy * r * 0.86, dz * r);
+    // Hot and bright at the core, cooling outward through the disc colours —
+    // but only as far as the rose end of them. A knot this fresh has not had
+    // time to get to the cold blue an old disc rim sits at.
+    const c = ramp(DISC_RAMP, clamp(r * 0.82, 0, 1));
+    const j = 0.75 + rng() * 0.5;
+    col.push(c[0] / 255 * j, c[1] / 255 * j, c[2] / 255 * j);
+    siz.push(0.10 + Math.pow(rng(), 2) * 0.36);
+  }
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('aSize', new THREE.Float32BufferAttribute(siz, 1));
+  geoCache.set(key, g);
+  return g;
+}
+
+function buildClump(b, grp) {
+  const puff = new THREE.Points(clumpGeometry(b.seed % 6), new THREE.ShaderMaterial({
+    uniforms: { uMap: { value: TEX_PUFF }, uOp: { value: 0.3 }, uScale: { value: 1 }, uFocal: { value: 1 } },
+    vertexShader: NEB_VERT, fragmentShader: NEB_FRAG,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+  }));
+  puff.frustumCulled = false;
+  puff.renderOrder = 4;
+  grp.add(puff);
+  b.parts.puff = puff;
+
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: TEX_GLOW, color: new THREE.Color(0xffa257), opacity: 0.32,
+    blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+  }));
+  grp.add(glow);
+  b.parts.clumpGlow = glow;
+  b.lightColor = new THREE.Color(0xffb070);
+}
+
+/**
+ * Knots cool, spread, and eventually decide what they are going to be. A heavy
+ * one pulls itself together into a solid world; a light one simply disperses
+ * back into the fine gas it came from.
+ */
+function updateClumps(simDt) {
+  for (let i = sim.bodies.length - 1; i >= 0; i--) {
+    const b = sim.bodies[i];
+    if (!b.alive || b.kind !== 'gas') continue;
+
+    b.clumpAge = (b.clumpAge || 0) + simDt;
+    // Radiating away the heat of the impact that made it.
+    b.temp = Math.max(30, b.temp * Math.exp(-0.0016 * simDt));
+    if (b.clumpAge < (b.clumpLife || 420)) continue;
+
+    if (b.m >= CLUMP_COLLAPSE) collapseClump(b);
+    else disperseClump(b);
+  }
+}
+
+/** Pull a knot together into the solid world its own gravity makes of it. */
+function collapseClump(b) {
+  const star = nearestStar(b);
+  const warm = star ? b.p.distanceTo(star.p) < 2.7 * AU * Math.sqrt(Math.max(star.lum, 1e-4)) : true;
+  const type = discPlanetType(b.m, warm);
+  b.type = type;
+  b.kind = 'body';
+  b.temp = TYPES[type].temp || 300;
+  b.coreT = baseCoreT(TYPES[type], b.m);
+  b.r = trueRadius(type, b.m);
+  b.spin = TYPES[type].spin || 1;
+  b.tilt = rnd(-0.42, 0.42);
+  b.glowPulse = 1;
+  // Born of a collision, and it shows: the surface is pocked from the start.
+  b.scars = null; b.scarCount = 0;
+  const marks = 2 + ((Math.random() * 3) | 0);
+  updateLuminosity(b);
+  refreshVisual(b);
+  for (let i = 0; i < marks; i++) {
+    addScar(b, new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)), rnd(0.22, 0.6));
+  }
+  fx.form(b, false);
+  toast(b.name + ' pulled itself together into a ' + TYPES[type].label.toLowerCase());
+  if (sim.selected === b) renderInspector();
+}
+
+/** Let a knot go: it becomes the fine gas it was always going to become. */
+function disperseClump(b, quiet) {
+  const vEsc = Math.sqrt(2 * G * Math.max(b.m, 1e-12) / Math.max(visRadius(b), 1e-9));
+  const put = gasEjecta(b.p, b.v, 220, b.m, Math.max(vEsc, 0.02), visRadius(b) * 0.4,
+    { speed: 0.6, sizeMin: 8, sizeMax: 30 });
+  // Whatever the particle pool could not take stays as a smaller knot rather
+  // than vanishing — mass is never destroyed here.
+  b.m -= put;
+  if (b.m > 1e-9 && put <= 0) { b.clumpAge = 0; return; }
+  if (!quiet) toast(b.name + ' thinned away to nothing');
+  if (sim.selected === b) select(null);
+  removeBody(b);
+  compact();
+}
+
+/**
+ * Throw off a handful of selectable knots after a collision — mostly gas, some
+ * solid. Returns the mass actually used, which the caller must subtract.
+ */
+function spawnClumps(center, baseVel, totalMass, count, spread, minDist, solidChance) {
+  const n = Math.min(count, freeSlots());
+  if (n <= 0 || totalMass <= 0) return 0;
+  const each = totalMass / n;
+  const made = [];
+  // Knots are far wider than the rubble they come off with, so they have to be
+  // thrown clear of each other or they simply merge back together on the first
+  // step and none of them survive to be looked at.
+  const gap = Math.max(minDist, trueRadius('gas_clump', each) * settings.bodyScale * 2.6);
+
+  for (let i = 0; i < n; i++) {
+    const dir = new THREE.Vector3(rnd(-1, 1), rnd(-0.5, 0.5), rnd(-1, 1));
+    if (dir.lengthSq() < 1e-6) dir.set(1, 0, 0);
+    dir.normalize();
+    const pos = center.clone().addScaledVector(dir, gap * rnd(1.2, 2.8));
+    const vel = baseVel.clone().addScaledVector(dir, spread * rnd(0.3, 1.05));
+
+    // Solid knots are the pieces that never got hot enough to boil.
+    const solid = Math.random() < (solidChance != null ? solidChance : 0.3);
+    if (solid) {
+      made.push(makeBody(each > 0.004 ? 'moon' : 'asteroid', pos, vel,
+        { mass: each, name: 'Fragment ' + sim.nextId, rubble: true, coreT: 3200 }));
+    } else {
+      const b = makeBody('gas_clump', pos, vel, { mass: each, name: 'Clump ' + sim.nextId });
+      b.temp = rnd(1400, 3200);
+      b.clumpLife = rnd(260, 900);
+      b.clumpAge = 0;
+      made.push(b);
+    }
+  }
+  // The set as a whole must drift exactly as the mass it came from did.
+  let tot = 0;
+  for (const f of made) tot += f.m;
+  conserveMomentum(made, baseVel.clone().multiplyScalar(tot));
+  return each * n;
 }
 
 /* ================================================================== rings   */
@@ -5108,6 +5478,7 @@ function scaleVisual(b) {
   if (p.surf) p.surf.scale.setScalar(r);
   if (p.cloud) p.cloud.scale.setScalar(r * 1.018);
   if (p.atmo) p.atmo.scale.setScalar(r * 1.09);
+  if (p.puff) p.puff.scale.setScalar(r);
   if (p.ring && b.ringSpec) p.ring.scale.setScalar(r * b.ringSpec.outer);
   if (p.disk) p.disk.scale.setScalar(r * 7);
   if (p.photon) p.photon.scale.setScalar(r * 5.6);
@@ -6301,6 +6672,7 @@ function updateVisuals(realDt, simDt) {
   // that the two passes below need to know about.
   updateSupernovae(simDt);
   updateDiscs(simDt);
+  updateClumps(simDt);
   coolCores(simDt);
   refreshStarCache();
   updateTemperatures();
@@ -6315,6 +6687,28 @@ function updateVisuals(realDt, simDt) {
     // Galaxies are sized and posed entirely by updateGalaxies, on screen terms
     // that nothing in this loop applies to.
     if (b.kind === 'gal') { b.obj.position.copy(b.p); continue; }
+
+    if (b.kind === 'gas') {
+      const rc = visRadius(b);
+      const wppC = worldPerPixel(Math.max(camera.position.distanceTo(b.p), 1e-9));
+      b.obj.position.copy(b.p);
+      b.obj.rotation.y = b.rot * 0.3;
+      p.puff.scale.setScalar(rc);
+      const uc = p.puff.material.uniforms;
+      uc.uScale.value = rc;
+      uc.uFocal.value = VIEW.h * VIEW.dpr / (2 * Math.tan(FOV * Math.PI / 360));
+      // Fades as it cools: a knot that has given up its heat is barely there.
+      uc.uOp.value = clamp(0.08 + b.temp / 7000, 0.07, 0.44);
+      p.puff.visible = rc / wppC > 1.2;
+      // The colour of the glow IS the temperature, same as everything else here.
+      const kc = kelvinToRGB(clamp(b.temp, 1000, 6000));
+      p.clumpGlow.material.color.setRGB(kc[0] / 255, kc[1] / 255, kc[2] / 255);
+      p.clumpGlow.scale.setScalar(Math.max(rc * 1.5, 7 * wppC));
+      p.clumpGlow.material.opacity = clamp(0.10 + b.temp / 14000, 0.1, 0.42);
+      if (p.dot) p.dot.visible = false;
+      continue;
+    }
+
     const def = TYPES[b.type];
     const r = visRadius(b);
     const px = apparentPx(b);
@@ -7181,6 +7575,66 @@ function bindDisc(b, d) {
   }
 }
 
+/**
+ * The panel for a knot of gas. The one thing worth knowing about it is whether
+ * it is heavy enough to survive — below the collapse mass it is going to spread
+ * out and be gone, and above it there is a world coming.
+ */
+function renderClumpInspector(b) {
+  const host = $('an-insp-body');
+  $('an-insp-h').textContent = 'SELECTED';
+  const lm = Math.log10(Math.max(b.m, 1e-9));
+
+  host.innerHTML =
+    '<input class="an-name-in" id="is-name" maxlength="24" spellcheck="false" value="' + escAttr(b.name) + '">' +
+    '<div class="an-type">GAS CLUMP</div>' +
+    '<dl class="an-stats">' +
+    '<dt>Mass</dt><dd id="is-mass"></dd>' +
+    '<dt>Radius</dt><dd id="is-rad"></dd>' +
+    '<dt>Density</dt><dd id="is-den"></dd>' +
+    '<dt>Speed</dt><dd id="is-spd"></dd>' +
+    '<dt>Temperature</dt><dd id="is-tmp"></dd>' +
+    '<dt>Age</dt><dd id="is-cage2"></dd>' +
+    '<dt id="is-orb-l">Orbiting</dt><dd id="is-orb"></dd>' +
+    '</dl>' +
+    '<div class="an-field"><label>Mass <b id="is-mval"></b></label>' +
+    '<input type="range" id="is-mslider" min="-5" max="2.2" step="0.001" value="' + lm.toFixed(3) + '"></div>' +
+    '<p class="an-note" id="is-fate2"></p>' +
+    '<div class="an-row"><button id="is-collapse2">COLLAPSE IT NOW</button></div>' +
+    '<div class="an-row"><button id="is-follow">' + (sim.follow === b ? 'UNFOLLOW' : 'FOLLOW') + '</button><button id="is-zoom">ZOOM TO</button></div>' +
+    '<div class="an-row"><button id="is-disperse2" class="an-danger">LET IT GO</button></div>' +
+    '<p style="font-size:11px;line-height:1.55;color:var(--ink-dim);margin-top:13px">' + TYPES.gas_clump.blurb + '</p>';
+
+  inspRefs = {
+    mass: $('is-mass'), rad: $('is-rad'), den: $('is-den'), spd: $('is-spd'),
+    tmp: $('is-tmp'), orb: $('is-orb'), orbL: $('is-orb-l'), mval: $('is-mval'),
+    cage2: $('is-cage2'), fate2: $('is-fate2')
+  };
+
+  const nameIn = $('is-name');
+  nameIn.addEventListener('change', () => { nameIn.value = renameBody(b, nameIn.value); });
+  nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameIn.blur(); });
+
+  const ms = $('is-mslider');
+  ms.addEventListener('input', () => {
+    b.m = Math.pow(10, parseFloat(ms.value));
+    b.r = trueRadius('gas_clump', b.m);
+    scaleVisual(b);
+    updateInspectorStats();
+  });
+
+  $('is-collapse2').addEventListener('click', () => {
+    if (!b.alive) return;
+    if (b.m < CLUMP_COLLAPSE) { toast('Too thin to hold together — feed it more mass first'); return; }
+    collapseClump(b);
+  });
+  $('is-follow').addEventListener('click', () => { sim.follow = sim.follow === b ? null : b; renderInspector(); });
+  $('is-zoom').addEventListener('click', () => { frameOn(b, 4); sim.follow = b; renderInspector(); });
+  $('is-disperse2').addEventListener('click', () => { disperseClump(b, true); toast(b.name + ' was let go'); });
+
+  updateInspectorStats();
+}
+
 function renderInspector() {
   const host = $('an-insp-body');
   const b = sim.selected;
@@ -7192,6 +7646,7 @@ function renderInspector() {
   }
   if (b.kind === 'snr') { renderCloudInspector(b); return; }
   if (b.kind === 'gal') { renderGalaxyInspector(b); return; }
+  if (b.kind === 'gas') { renderClumpInspector(b); return; }
   const def = TYPES[b.type];
   $('an-insp-h').textContent = 'SELECTED';
   // A rocky world's range has to reach past the gas-giant threshold, or the
@@ -7222,6 +7677,7 @@ function renderInspector() {
     (isStar ? '<dt>Luminosity</dt><dd id="is-lum"></dd>' : '') +
     (isStar && snSet.aging ? '<dt>Fuel burned</dt><dd id="is-age"></dd>' : '') +
     (b.stripped > 0 ? '<dt>Torn away</dt><dd id="is-strip"></dd>' : '') +
+    (b.scarCount > 0 ? '<dt>Impact scars</dt><dd id="is-scars"></dd>' : '') +
     '<dt id="is-orb-l">Orbiting</dt><dd id="is-orb"></dd>' +
     '</dl>' +
     '<div class="an-field"><label>Mass <b id="is-mval"></b></label>' +
@@ -7237,7 +7693,7 @@ function renderInspector() {
     mass: $('is-mass'), rad: $('is-rad'), den: $('is-den'), spd: $('is-spd'),
     tmp: $('is-tmp'), orb: $('is-orb'), orbL: $('is-orb-l'), mval: $('is-mval'),
     lum: $('is-lum'), age: $('is-age'), core: $('is-core'), strip: $('is-strip'),
-    dm: $('is-dm'), dn: $('is-dn'), dr: $('is-dr')
+    scars: $('is-scars'), dm: $('is-dm'), dn: $('is-dn'), dr: $('is-dr')
   };
 
   if (b.disc && b.disc.alive) bindDisc(b, b.disc);
@@ -7342,6 +7798,17 @@ function updateInspectorStats() {
   }
   if (inspRefs.strip) {
     inspRefs.strip.textContent = Math.round(clamp(b.stripped / Math.max(b.m0, 1e-12), 0, 1) * 100) + '% of it';
+  }
+  if (inspRefs.scars) inspRefs.scars.textContent = b.scarCount + (b.scarCount === 1 ? ' hit' : ' hits');
+  if (inspRefs.cage2) {
+    const left = Math.max(0, (b.clumpLife || 420) - (b.clumpAge || 0));
+    inspRefs.cage2.textContent = Math.round(b.clumpAge || 0).toLocaleString() + ' days';
+    inspRefs.fate2.innerHTML = b.m >= CLUMP_COLLAPSE
+      ? 'Heavy enough that its own gravity wins. In about <b>' + Math.round(left).toLocaleString() +
+        ' days</b> it will pull itself together into a solid world — or press the button and do it now.'
+      : 'Too thin to hold itself together. In about <b>' + Math.round(left).toLocaleString() +
+        ' days</b> it will spread out and be gone. Drag the mass up past <b>' + fmtMass(CLUMP_COLLAPSE) +
+        '</b> and gravity wins instead.';
   }
   if (inspRefs.dm && b.disc) {
     inspRefs.dm.textContent = fmtMass(b.disc.mass);
@@ -8083,7 +8550,8 @@ function saveUniverse() {
         // Everything the customise panel can change, so a rebuilt body comes
         // back exactly as it was left rather than as a factory one.
         ct: b.coreT, tp: b.temp, rg: b.ringSpec, tn: b.tint, gw: b.galWide,
-        st: b.stripped, m0: b.m0,
+        st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount,
+        cl: b.kind === 'gas' ? { age: b.clumpAge, life: b.clumpLife } : null,
         // A protoplanetary disc is saved with its star, not on its own.
         dc: b.disc && b.disc.alive
           ? { rIn: b.disc.rIn, rOut: b.disc.rOut, mass: b.disc.mass, m0: b.disc.m0, made: b.disc.made }
@@ -8119,6 +8587,8 @@ function loadUniverse() {
       // The disc is restored below with its saved budget, not a fresh one.
       noDisc: true
     });
+    if (s.sc && s.sc.length) { b.scars = s.sc; b.scarCount = s.sn || s.sc.length; buildScars(b); }
+    if (s.cl) { b.clumpAge = s.cl.age || 0; b.clumpLife = s.cl.life || 420; }
     if (s.tp != null) { b.temp = s.tp; updateLuminosity(b); }
     if (s.gw != null) b.galWide = s.gw;
     if (s.st != null) b.stripped = s.st;
@@ -8201,6 +8671,8 @@ function openHelp() {
     '<li>Masses, radii and distances are in real units — Earth masses, Earth radii and millions of kilometres. Drop Earth 149.6 million km from a Sun-like star and its year comes out at 365 days.</li>' +
     '<li><b>Slow collisions merge</b> and conserve momentum. <b>Fast ones shatter</b> both bodies into rubble — the test is impact speed against the pair\'s escape velocity.</li>' +
     '<li>Most of what a collision throws out is <b>not gravel — it is gas</b>. Two worlds hitting each other put in far more energy than it takes to melt rock, let alone boil it, so the plume of vapour that comes off outweighs the solid fragments by more than two to one. It is drawn in the same colours as a protoplanetary disc because it is the same stuff at the same temperatures: white-hot where it is fastest, then orange, then cold blue as it spreads and cools. That vapour is exactly where discs, rings and moons come from — ours came off the impact that made the Moon.</li>' +
+    '<li>A collision also throws off <b>knots</b> — lumps big enough to click on and weigh. Most are still vapour, and about a third of them come off <b>solid</b>, because they never got hot enough to boil. Select a gas knot and the panel tells you which way it is going to go: below about four Moons of mass it spreads out and is gone, and above it gravity wins and it <b>pulls itself together into a world</b>. Drag its mass across that line and watch the answer change. This is not a made-up rule — it is how our own Moon was made, out of the wreckage of something the size of Mars hitting the young Earth.</li>' +
+    '<li>Whatever survives a collision <b>wears the mark</b>. A scar is left on the surface exactly where it was hit, sized by how big the thing that hit it was, and it turns with the world and leans with its axis. The panel counts them under <b>Impact scars</b>. Stars and gas giants do not keep them — there is no ground for a crater to be in.</li>' +
     '<li>Anything newly <b>born</b> — a planet condensing out of a disc, a world puffing up into a gas giant, a star catching light — arrives inside a swirl of infalling dust that spirals in and <b>whirls faster as it shrinks</b>, because angular momentum is conserved. Same reason a spinning skater speeds up when they pull their arms in.</li>' +
     '<li>The debris thrown out by an impact is <b>real matter, not sparks</b>. Every grain carries mass and is pulled along by the same gravity as the planets, so it orbits, rains back down, settles into rings, or is swallowed by a black hole — and whatever eats it genuinely gets heavier. The counter at the bottom left shows bodies plus live debris.</li>' +
     '<li>Feed a <b>rocky</b> world past <b>60.1 Earth masses</b> and its gravity can finally hold onto hydrogen: it flares up and swells into a <b>gas giant</b>, roughly doubling in width as dense rock gives way to light gas. Worlds that are already gassy skip this and just keep growing.</li>' +
