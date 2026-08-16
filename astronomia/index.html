@@ -208,6 +208,22 @@
   details.an-more[open] > summary::before { content: "\25BE "; }
   details.an-more > summary:hover { color: var(--accent2); }
 
+  /* terraforming progress */
+  .an-bar {
+    height: 7px; border-radius: 4px; margin: 4px 0 8px;
+    background: rgba(150,130,255,0.18); overflow: hidden;
+  }
+  .an-bar i {
+    display: block; height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, #3f7fd6, #46c08a, #8fe37a);
+    box-shadow: 0 0 9px rgba(110,220,140,0.7);
+    transition: width .2s linear;
+  }
+  .an-bar i.dying {
+    background: linear-gradient(90deg, #7a5a3a, #b0703c, #d99a4a);
+    box-shadow: 0 0 9px rgba(216,150,74,0.6);
+  }
+
   /* ---------- inspector (right) ---------- */
   .an-empty { padding: 18px 14px; font-size: 12px; line-height: 1.6; color: var(--ink-dim); text-align: center; }
 
@@ -1933,6 +1949,7 @@ const settings = {
   grid: true,            // draw a measuring grid while something is armed
   gridSnap: false,       // …and snap the drop point to its intersections
   bdYears: 100,          // years a brown dwarf takes to light up as a red dwarf
+  terraYears: 4,         // years for a dead world to be terraformed from scratch
   discYears: 4,          // years between planets condensing out of a protoplanetary disc
   galMinPx: 1000,        // a galaxy is never drawn narrower than this on screen…
   galMaxPx: 3000         // …nor wider than this
@@ -2035,6 +2052,10 @@ function makeBody(type, pos, vel, overrides) {
       : def.rings ? Object.assign({}, def.rings) : null,
     lum: 0,
     alive: true,
+    // How alive it is, 0 to 1. Worlds that are born living start at 1; the rest
+    // start dead and only change once you switch terraforming on for them.
+    terra: o.terra != null ? o.terra : (isLivingSurf(def) ? 1 : 0),
+    terraOn: !!o.terraOn,
     // How much of its original mass the tides have already shaved off, and the
     // dust waiting to be released as a ring burst.
     stripped: 0,
@@ -2556,6 +2577,98 @@ const COLLAPSE_MASS = 25 * M_SUN;
 /* Worlds that already have a thick hydrogen envelope: the gas-giant rule below
    does not apply to them, they just keep growing towards ignition. */
 const GASSY_SURF = new Set(['gas', 'icegiant', 'puff', 'hycean']);
+
+/* ============================================================== terraforming */
+/*
+ * Making a dead world live.
+ *
+ * It is not a button that repaints a planet. A world is habitable or it is not,
+ * and three things decide which:
+ *
+ *   HEAVY ENOUGH   Too light and its gravity cannot hold an atmosphere down —
+ *                  the gas simply leaks away into space. This is exactly what
+ *                  happened to Mars, which is why it is a frozen desert with
+ *                  1% of Earth's air pressure despite once having rivers.
+ *   NOT TOO HEAVY  Past a point a rocky world holds onto hydrogen and helium
+ *                  too, and becomes a small Neptune with no surface at all.
+ *   THE RIGHT HEAT Water has to be able to sit on the surface as a liquid.
+ *                  That is the whole of what the "habitable zone" means, and it
+ *                  is worked out here from the real starlight actually falling
+ *                  on the world — so moving a planet changes the answer.
+ *
+ * And it is not permanent. A terraformed world only stays alive while those
+ * conditions hold. Drag it out past the snow line or in towards the star and
+ * the oceans go, the green goes, and it dies back — faster than it grew, which
+ * is also true to life.
+ */
+
+const TERRA_MIN_MASS = 0.05;    // M⊕ — below this the air escapes
+const TERRA_MAX_MASS = 20;      // M⊕ — above this it starts holding hydrogen
+const TERRA_MIN_T = 258;        // K — colder and the water never melts
+const TERRA_MAX_T = 348;        // K — hotter and it all boils away
+
+/* Worlds that are already alive when you find them. */
+const LIVING_SURF = new Set(['terran', 'ocean', 'hycean', 'eyeball']);
+const isLivingSurf = (def) => LIVING_SURF.has(def.surf);
+
+/** Can this world be made to live? Returns why not, in plain words, if not. */
+function terraCheck(b) {
+  const no = (why) => ({ ok: false, why: why });
+  if (!b || !b.alive || b.kind !== 'body') return no('Only a solid world can be terraformed.');
+  const def = TYPES[b.type];
+  if (def.star) return no(b.name + ' is a star. There is no surface here to stand on.');
+  if (GASSY_SURF.has(def.surf)) {
+    return no(b.name + ' is a gas world — it is atmosphere all the way down, with no ground underneath ' +
+      'for an ocean to sit on.');
+  }
+  if (b.m < TERRA_MIN_MASS) {
+    return no(b.name + ' is far too light. At ' + fmtMass(b.m) + ' its gravity could never hold an ' +
+      'atmosphere down — the air would leak away into space. It needs at least ' + fmtMass(TERRA_MIN_MASS) +
+      '. This is exactly why Mars is a frozen desert.');
+  }
+  if (b.m > TERRA_MAX_MASS) {
+    return no(b.name + ' is too heavy. At ' + fmtMass(b.m) + ' it holds on to hydrogen as well as air, ' +
+      'and becomes a small Neptune with no surface at all. The limit is about ' + fmtMass(TERRA_MAX_MASS) + '.');
+  }
+  const t = Math.round(b.temp);
+  if (b.temp < TERRA_MIN_T) {
+    return no(b.name + ' is too cold: ' + t.toLocaleString() + ' K, and water freezes at 273. Move it ' +
+      'closer to a star — or give it a brighter one — until it reads at least ' + TERRA_MIN_T + ' K.');
+  }
+  if (b.temp > TERRA_MAX_T) {
+    return no(b.name + ' is too hot: ' + t.toLocaleString() + ' K. Any ocean would boil straight off. ' +
+      'Move it further out until it reads under ' + TERRA_MAX_T + ' K.');
+  }
+  return { ok: true, why: '' };
+}
+
+/**
+ * Grow or lose the living layer. Dying is twice as fast as growing, because
+ * ruining something is always quicker than building it.
+ */
+function updateTerraform(simDt) {
+  if (simDt <= 0) return;
+  const span = Math.max(settings.terraYears, 0.01) * 365.25;
+  for (const b of sim.bodies) {
+    if (!b.alive || !b.terraOn || b.kind !== 'body') continue;
+    const live = terraCheck(b).ok;
+    const before = b.terra;
+    b.terra = clamp(b.terra + (live ? simDt / span : -simDt / span * 2), 0, 1);
+    if (b.terra === before) continue;
+
+    // A dead world needs its living layer built the first time it greens up.
+    if (before <= 0 && b.terra > 0 && b.parts && !b.parts.terraSkin && !isLivingSurf(TYPES[b.type])) {
+      refreshVisual(b);
+    }
+    if (before < 1 && b.terra >= 1) {
+      toast(b.name + ' is alive — oceans, air and all');
+      if (sim.selected === b && !inspectorLock) renderInspector();
+    } else if (before > 0 && b.terra <= 0) {
+      toast(b.name + ' could not hold on to it, and died back');
+      if (sim.selected === b && !inspectorLock) renderInspector();
+    }
+  }
+}
 
 const isRocky = (b) =>
   b.kind === 'body' && !TYPES[b.type].star && !GASSY_SURF.has(TYPES[b.type].surf);
@@ -4635,6 +4748,11 @@ function buildWorld(b, def, grp) {
 
   if (b.ringSpec) buildRing(b, grp);
   if (b.scars && b.scars.length) buildScars(b);
+  // The living layer, built only once a dead world has actually started to
+  // green up — an ocean-and-forest shell fading in over whatever was there.
+  if (b.terra > 0 && !isLivingSurf(def) && !def.star && !GASSY_SURF.has(def.surf)) {
+    buildTerraLayer(b, grp);
+  }
 
   if (def.star) {
     const col = new THREE.Color().fromArray(kelvinToRGB(def.temp).map(c => c / 255));
@@ -4656,6 +4774,44 @@ function buildWorld(b, def, grp) {
     grp.add(coma);
     b.parts.coma = coma;
   }
+}
+
+/**
+ * Oceans, weather and an atmosphere, laid over a dead world as three shells
+ * that fade in together with `b.terra`. Done as an overlay rather than by
+ * swapping the body's type, so the world underneath keeps its own identity —
+ * a terraformed Mars is still Mars, and it is still there when it dies back.
+ */
+function buildTerraLayer(b, grp) {
+  const skin = new THREE.Mesh(SPHERE, new THREE.MeshStandardMaterial({
+    map: surfaceTexture('terrestrial', b.seed),
+    transparent: true, opacity: 0, roughness: 0.8, metalness: 0.02
+  }));
+  skin.scale.setScalar(1.004);
+  grp.add(skin);
+  b.parts.terraSkin = skin;
+
+  const ct = cachedTexture('cloud:terra:' + (b.seed % 3),
+    () => cloudTexture(hashStr('terra' + (b.seed % 3)), 512, 256, 0.55, [255, 255, 255]));
+  const cloud = new THREE.Mesh(SPHERE, new THREE.MeshStandardMaterial({
+    map: ct, transparent: true, opacity: 0, depthWrite: false, roughness: 1
+  }));
+  cloud.scale.setScalar(1.024);
+  grp.add(cloud);
+  b.parts.terraCloud = cloud;
+
+  const atmo = new THREE.Mesh(SPHERE, new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color().fromArray(SKY.map(c => c / 255)) },
+      uLight: { value: new THREE.Vector3(1, 0, 0) },
+      uStrength: { value: 0 }
+    },
+    vertexShader: ATMO_VERT, fragmentShader: ATMO_FRAG,
+    blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, side: THREE.FrontSide
+  }));
+  atmo.scale.setScalar(1.09);
+  grp.add(atmo);
+  b.parts.terraAtmo = atmo;
 }
 
 function buildHole(b, grp) {
@@ -5755,6 +5911,9 @@ function scaleVisual(b) {
   if (p.cloud) p.cloud.scale.setScalar(r * 1.018);
   if (p.atmo) p.atmo.scale.setScalar(r * 1.09);
   if (p.puff) p.puff.scale.setScalar(r);
+  if (p.terraSkin) p.terraSkin.scale.setScalar(r * 1.004);
+  if (p.terraCloud) p.terraCloud.scale.setScalar(r * 1.024);
+  if (p.terraAtmo) p.terraAtmo.scale.setScalar(r * 1.09);
   if (p.ring && b.ringSpec) p.ring.scale.setScalar(r * b.ringSpec.outer);
   if (p.disk) p.disk.scale.setScalar(r * 7);
   if (p.photon) p.photon.scale.setScalar(r * 5.6);
@@ -6924,6 +7083,8 @@ const _tmpA = new THREE.Vector3();
 const _tmpB = new THREE.Vector3();
 const _basis = new THREE.Matrix4();
 const FROST = new THREE.Color(0.72, 0.82, 0.95);
+/* What a living world fades to when it stops being one: dust. */
+const DEAD = new THREE.Color(0.60, 0.53, 0.44);
 
 function refreshStarCache() {
   sim.starCache.length = 0;
@@ -6955,6 +7116,9 @@ function updateVisuals(realDt, simDt) {
   coolCores(simDt);
   refreshStarCache();
   updateTemperatures();
+  // After the temperatures, because whether a world can live is decided by the
+  // starlight actually falling on it this frame.
+  updateTerraform(simDt);
   updateLights();
   updateGalaxies();
   updateGrid();
@@ -7064,6 +7228,34 @@ function updateVisuals(realDt, simDt) {
       mat.emissive.setRGB(e, e * 0.28, e * 0.05);
       const cold = clamp((110 - b.temp) / 70, 0, 1) * 0.5;
       mat.color.copy(b.baseColor).lerp(FROST, cold);
+      // A world that was born living and is now losing it goes brown first.
+      if (b.terra < 1 && isLivingSurf(def)) mat.color.lerp(DEAD, (1 - b.terra) * 0.85);
+    }
+
+    // ---- the living layer fading in or out over a terraformed world
+    if (p.terraSkin) {
+      const t = clamp(b.terra, 0, 1);
+      const show = t > 0.004 && !tiny;
+      p.terraSkin.visible = show;
+      if (show) {
+        p.terraSkin.material.opacity = t;
+        p.terraSkin.rotation.y = b.rot;
+        // Oceans appear before the land greens over, so the shine comes in first.
+        p.terraSkin.material.roughness = lerp(0.95, 0.72, t);
+      }
+      if (p.terraCloud) {
+        p.terraCloud.visible = show && px > 5;
+        p.terraCloud.material.opacity = t * 0.85;
+        p.terraCloud.rotation.y = b.rot * 1.12;
+      }
+      if (p.terraAtmo) {
+        p.terraAtmo.visible = show && px > 4;
+        p.terraAtmo.material.uniforms.uStrength.value = t * 0.95;
+        const s = nearestStar(b);
+        if (s) _dir.copy(s.p).sub(b.p).normalize();
+        else _dir.copy(camera.position).sub(b.p).normalize();
+        p.terraAtmo.material.uniforms.uLight.value.copy(_dir);
+      }
     }
 
     // ---- comet tail: grows as it nears a star, always pointing away from it
@@ -7533,6 +7725,62 @@ function renderCloudInspector(e) {
   updateInspectorStats();
 }
 
+/* ------------------------------------------------------- terraform block  */
+
+/** The TERRAFORM section: what is stopping it, or how far along it is. */
+function terraHTML(b) {
+  const def = TYPES[b.type];
+  if (def.star || GASSY_SURF.has(def.surf) || b.kind !== 'body') return '';
+  const chk = terraCheck(b);
+  const pct = Math.round(b.terra * 100);
+  const born = isLivingSurf(def);
+
+  let h = '<div class="an-sec">TERRAFORMING</div>';
+
+  if (b.terraOn) {
+    h += '<div class="an-bar"><i id="is-tfbar" style="width:' + pct + '%"></i></div>' +
+      '<p class="an-note" id="is-tfnote"></p>';
+  }
+
+  if (!chk.ok) {
+    h += '<p class="an-note">' + escAttr(chk.why) + '</p>';
+  } else if (!b.terraOn) {
+    h += '<p class="an-note">' + escAttr(b.name) + ' sits where water can be liquid and is heavy enough to ' +
+      'hold its air down. ' + (born
+        ? 'It is already alive — switch this on and it will stay that way only for as long as that remains true.'
+        : 'Give it oceans, weather and a sky.') + '</p>';
+  }
+
+  h += '<div class="an-row">' +
+    '<button id="is-terra"' + (chk.ok || b.terraOn ? '' : ' disabled') + '>' +
+    (b.terraOn ? 'STOP' : 'TERRAFORM') + '</button>' +
+    (b.terraOn && b.terra < 1 && chk.ok ? '<button id="is-terra-now">FINISH IT</button>' : '') +
+    '</div>';
+  return h;
+}
+
+function bindTerra(b) {
+  const btn = $('is-terra');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      b.terraOn = !b.terraOn;
+      if (b.terraOn && b.terra > 0 && b.parts && !b.parts.terraSkin && !isLivingSurf(TYPES[b.type])) refreshVisual(b);
+      toast(b.terraOn ? 'Terraforming ' + b.name + '…' : 'Left ' + b.name + ' to its own devices');
+      renderInspector();
+    });
+  }
+  const now = $('is-terra-now');
+  if (now) {
+    now.addEventListener('click', () => {
+      if (!terraCheck(b).ok) return;
+      b.terra = 1;
+      if (b.parts && !b.parts.terraSkin && !isLivingSurf(TYPES[b.type])) refreshVisual(b);
+      toast(b.name + ' is alive — oceans, air and all');
+      renderInspector();
+    });
+  }
+}
+
 /* --------------------------------------------------------- customise block */
 /*
  * Everything about a body that is a number can be dialled here: how big it is,
@@ -7975,12 +8223,14 @@ function renderInspector() {
     (isStar && snSet.aging ? '<dt>Fuel burned</dt><dd id="is-age"></dd>' : '') +
     (b.stripped > 0 ? '<dt>Torn away</dt><dd id="is-strip"></dd>' : '') +
     (b.scarCount > 0 ? '<dt>Impact scars</dt><dd id="is-scars"></dd>' : '') +
+    (b.terra > 0 && b.kind === 'body' ? '<dt>Living surface</dt><dd id="is-life"></dd>' : '') +
     '<dt id="is-orb-l">Orbiting</dt><dd id="is-orb"></dd>' +
     '</dl>' +
     '<div class="an-field"><label>Mass <b id="is-mval"></b></label>' +
     '<input type="range" id="is-mslider" min="' + massMin.toFixed(3) + '" max="' + massMax.toFixed(3) + '" step="0.001" value="' + Math.log10(b.m).toFixed(3) + '"></div>' +
     (isStar && snSet.on ? snPanelHTML(plan) : '') +
     (b.disc && b.disc.alive ? discHTML(b.disc) : '') +
+    terraHTML(b) +
     customiseHTML(b) +
     '<div class="an-row"><button id="is-follow">' + (sim.follow === b ? 'UNFOLLOW' : 'FOLLOW') + '</button><button id="is-zoom">ZOOM TO</button></div>' +
     '<div class="an-row"><button id="is-shatter" class="an-danger">SHATTER</button><button id="is-del" class="an-danger">REMOVE</button></div>' +
@@ -7990,10 +8240,12 @@ function renderInspector() {
     mass: $('is-mass'), rad: $('is-rad'), den: $('is-den'), spd: $('is-spd'),
     tmp: $('is-tmp'), orb: $('is-orb'), orbL: $('is-orb-l'), mval: $('is-mval'),
     lum: $('is-lum'), age: $('is-age'), core: $('is-core'), strip: $('is-strip'),
-    scars: $('is-scars'), dm: $('is-dm'), dn: $('is-dn'), dr: $('is-dr')
+    scars: $('is-scars'), dm: $('is-dm'), dn: $('is-dn'), dr: $('is-dr'),
+    tfbar: $('is-tfbar'), tfnote: $('is-tfnote'), life: $('is-life')
   };
 
   if (b.disc && b.disc.alive) bindDisc(b, b.disc);
+  bindTerra(b);
   bindCustomise(b);
 
   const snBtn = $('is-sn');
@@ -8097,6 +8349,18 @@ function updateInspectorStats() {
     inspRefs.strip.textContent = Math.round(clamp(b.stripped / Math.max(b.m0, 1e-12), 0, 1) * 100) + '% of it';
   }
   if (inspRefs.scars) inspRefs.scars.textContent = b.scarCount + (b.scarCount === 1 ? ' hit' : ' hits');
+  if (inspRefs.life) inspRefs.life.textContent = Math.round(b.terra * 100) + '%';
+  if (inspRefs.tfbar) {
+    const pct = Math.round(b.terra * 100);
+    inspRefs.tfbar.style.width = pct + '%';
+    const live = terraCheck(b).ok;
+    inspRefs.tfbar.className = live ? '' : 'dying';
+    inspRefs.tfnote.textContent = pct >= 100
+      ? (live ? 'Alive and holding. It stays that way while these conditions do.'
+              : 'Alive, but the conditions have gone — it is about to start dying back.')
+      : live ? 'Greening up: ' + pct + '% of the way there.'
+             : 'Dying back: down to ' + pct + '%, and falling twice as fast as it grew.';
+  }
   if (inspRefs.cage2) {
     const left = Math.max(0, (b.clumpLife || 420) - (b.clumpAge || 0));
     inspRefs.cage2.textContent = Math.round(b.clumpAge || 0).toLocaleString() + ' days';
@@ -8189,6 +8453,8 @@ function openSettings() {
     '<p class="an-note" id="st-bd-note"></p>' +
     sld('st-disc', 'Planet every', 0.25, 60, 0.25, settings.discYears) +
     '<p class="an-note">How long a protoplanetary disc takes to condense each new planet out of itself. Ours took tens of millions of years to build all eight.</p>' +
+    sld('st-terra', 'Terraforming takes', 0.25, 100, 0.25, settings.terraYears) +
+    '<p class="an-note">How long a dead world takes to be given oceans, weather and a sky — and it only holds on to them while it stays heavy enough and warm enough. Dying back happens twice as fast.</p>' +
 
     '<div class="an-sec">GALAXIES</div>' +
     '<p class="an-note">A galaxy here is <b>six thousand real stars</b>, each one orbiting under the gravity of every galaxy core in the scene — which is what lets two of them genuinely collide. A real galaxy is millions of times wider than this sandbox can hold, so a new one is built at whatever size fills this much of your screen when you drop it. After that it has a real size in real units, and everything that happens to it is real physics.</p>' +
@@ -8281,6 +8547,8 @@ function openSettings() {
 
   bindSld('st-disc', (v) => v < 1 ? Math.round(v * 365.25) + ' days' : v.toFixed(2) + ' years',
     (v) => { settings.discYears = v; });
+  bindSld('st-terra', (v) => v < 1 ? Math.round(v * 365.25) + ' days' : v.toFixed(2) + ' years',
+    (v) => { settings.terraYears = v; });
 
   // The two galaxy limits must not be able to cross each other.
   const galLo = bindSld('st-galmin', (v) => Math.round(v) + ' px', (v) => {
@@ -8820,6 +9088,23 @@ const PRESETS = [
     }
   },
   {
+    name: 'Terraforming', desc: 'Four dead worlds around one star. Only one of them can be brought to life where it stands — select each and the panel tells you exactly what is wrong with the other three.',
+    dist: 900,
+    build() {
+      const s = makeBody('sun_like', new V3(), new V3(), { name: 'Sol' });
+      // Too close: an ocean here would boil off.
+      orbitBody('desert_world', s, 0.42 * AU, { ang: 0.4, over: { name: 'Cinder', mass: 0.9 } });
+      // In the zone, heavy enough, and dead. This is the one.
+      orbitBody('desert_world', s, 1.02 * AU, { ang: 2.1, over: { name: 'Hope', mass: 1.1 } });
+      // In the zone but far too light to hold an atmosphere down — the Mars problem.
+      orbitBody('moon', s, 1.25 * AU, { ang: 3.6, over: { name: 'Thin', mass: 0.02 } });
+      // Right mass, but out past the snow line and frozen solid.
+      orbitBody('ice_world', s, 3.4 * AU, { ang: 5.0, over: { name: 'Frostbite', mass: 0.8 } });
+      sim.running = true;
+      return s;
+    }
+  },
+  {
     name: 'Empty Space', desc: 'A clean slate. Build whatever you like.',
     dist: 500,
     build() { }
@@ -8896,6 +9181,7 @@ function saveUniverse() {
               ax: b.galAxis ? b.galAxis.toArray() : null }
           : null,
         st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount,
+        tf: b.terra, tfo: b.terraOn,
         cl: b.kind === 'gas' ? { age: b.clumpAge, life: b.clumpLife } : null,
         // A protoplanetary disc is saved with its star, not on its own.
         dc: b.disc && b.disc.alive
@@ -8929,6 +9215,7 @@ function loadUniverse() {
     const b = makeBody(s.ty, new V3().fromArray(s.p), new V3().fromArray(s.v), {
       mass: s.m, r: s.r, name: s.n, seed: s.s, spin: s.sp, tilt: s.ti, age: s.ag,
       coreT: s.ct, rings: s.rg !== undefined ? s.rg : undefined,
+      terra: s.tf, terraOn: s.tfo,
       // The disc is restored below with its saved budget, not a fresh one.
       noDisc: true
     });
@@ -8989,6 +9276,17 @@ function openHelp() {
     '<li>Switch on <b>Has rings</b> and any world at all gets a set. Then drag the <b>inner and outer edges</b>, how <b>solid</b> they are, and pick <b>two colours</b> for the ringlets to be painted between.</li>' +
     '<li><b>RESET TO …</b> at the bottom puts everything back the way that kind of body normally is.</li>' +
     '<li>Wind the <b>spin</b> below <b>0.02 hours</b> a turn and the body cannot survive it. Its equator is now moving faster than gravity can hold on to, so it <b>throws its outer layers off from the middle</b> — in the plane it is spinning in, in the direction it is turning — and keeps going until only its dense core is left. A gas giant stripped that far is a <b>chthonian world</b>; a rocky one is an <b>iron world</b>. Real asteroids do this: Bennu is losing material off its equator right now, and almost none spin faster than one turn in two hours, because the ones that did are gone.</li>' +
+    '</ul>' +
+    '<h3>TERRAFORMING: BRINGING A DEAD WORLD TO LIFE</h3>' +
+    '<ul>' +
+    '<li>Select any rocky world and the panel has a <b>TERRAFORMING</b> section. If it can be brought to life, there is a button. If it cannot, it tells you exactly what is wrong — and that is the real point of it.</li>' +
+    '<li>Three things have to be true, and they are the three things that actually decide whether a world can be lived on:</li>' +
+    '<li><b>Heavy enough.</b> Under about a twentieth of an Earth its gravity cannot hold an atmosphere down and the air leaks away into space. That is not a made-up rule — it is precisely why <b>Mars</b> is a frozen desert with a hundredth of our air pressure, despite once having rivers running across it.</li>' +
+    '<li><b>Not too heavy.</b> Past about twenty Earths a rocky world starts holding on to hydrogen as well, and turns into a small Neptune with no surface at all to stand on.</li>' +
+    '<li><b>The right heat.</b> Water has to be able to sit on the surface as a liquid: roughly 258 K to 348 K. This is the whole meaning of the <b>habitable zone</b>, and it is worked out from the real starlight falling on that world right now — so <b>moving a planet changes the answer</b>. Drag a frozen world inwards until the panel stops complaining and it will take.</li>' +
+    '<li>It is not instant and it is <b>not permanent</b>. Oceans fill, clouds gather and the land greens over across a few years, and the world only stays that way while those three things stay true. Shove it out past the snow line, or feed its star until it swells, and it browns off and dies — <b>twice as fast as it grew</b>, because ruining something is always quicker than building it.</li>' +
+    '<li>The world underneath keeps its own name and its own kind. A terraformed Mars is still Mars, with the living layer laid over the top — and it is still Mars when it dies back.</li>' +
+    '<li>Try <b>Terraforming</b> in Systems: four dead worlds around one star, and only one of them can be brought to life where it stands. The other three each fail for a different one of the three reasons.</li>' +
     '</ul>' +
     '<h3>TIDES: BEING TORN APART SLOWLY</h3>' +
     '<ul>' +
