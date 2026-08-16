@@ -2186,6 +2186,7 @@ function step(dt) {
   sim.time += dt;
   resolveCollisions();
   if (settings.tidal) updateTides(dt);
+  updateSpin(dt);
 }
 
 /** Advance the simulation by one rendered frame's worth of time. */
@@ -2292,10 +2293,13 @@ function absorb(hole, prey) {
   const vEsc = Math.sqrt(2 * G * hole.m / Math.max(rp, 1e-9));
   const spare = prey.m * 0.06;
   // Clear of the horizon as well as the prey, or it is swallowed immediately.
+  const clear = Math.max(rp, visRadius(hole));
   const thrown = ejecta(prey.p, prey.v, 210, spare, vEsc * 0.5,
-    [200, 160, 255], [90, 80, 120], Math.max(rp, visRadius(hole)), { speed: 1 });
+    [200, 160, 255], [90, 80, 120], clear, { speed: 1 });
+  // Most of a world torn up on the way in comes off as vapour, not gravel.
+  const gas = gasEjecta(prey.p, prey.v, 340, prey.m * 0.13, vEsc * 0.5, clear, { speed: 0.9 });
 
-  hole.m = mTot - thrown;
+  hole.m = mTot - thrown - gas;
   hole.r = schwarzschild(hole.m);
   refreshVisual(hole);
   fx.flash(prey.p, rp * 6, [200, 170, 255], 0.5);
@@ -2329,6 +2333,9 @@ function bounce(a, b) {
     const n = Math.round(50 + 110 * bump);
     b.m -= ejecta(b.p, b.v, n, b.m * 0.004 * bump, vEsc,
       [255, 225, 175], [110, 100, 92], visRadius(b), { speed: 0.8 });
+    // Even a graze boils off more than it chips away.
+    b.m -= gasEjecta(b.p, b.v, Math.round(n * 1.5), b.m * 0.009 * bump, vEsc,
+      visRadius(b), { speed: 0.9 });
   }
 }
 
@@ -2355,7 +2362,12 @@ function merge(a, b, vImp, vEsc) {
   const thrown = ejectMass > 0
     ? ejecta(com, vel, count, ejectMass, vEsc, [255, 190, 110], [96, 84, 76], visRadius(a), { speed: 1 })
     : 0;
-  a.m = mTot - thrown;
+  // The vapour plume: more mass and more of it than the rubble, because at
+  // these speeds rock does not chip, it boils.
+  const gas = ejectMass > 0
+    ? gasEjecta(com, vel, Math.round(count * 1.6), ejectMass * 2.4, vEsc, visRadius(a), { speed: 1.1 })
+    : 0;
+  a.m = mTot - thrown - gas;
 
   // Enough mass in one place and the physics changes character.
   let note = a.name + ' absorbed ' + b.name;
@@ -2379,13 +2391,18 @@ function shatter(a, b, vImp) {
   // Two tiers of real wreckage. A handful of large fragments become full N-body
   // objects that pull on everything; the fine ejecta becomes thousands of test
   // particles. Every gram is accounted for out of mTot.
-  const fine = mTot * 0.09;
-  const thrown = ejecta(com, vel, 520, fine, vEsc,
+  const fine = mTot * 0.07;
+  const thrown = ejecta(com, vel, 430, fine, vEsc,
     [255, 235, 195], [104, 90, 80], ra0, { speed: 1.35, sizeMin: 1.2, sizeMax: 7.5 });
+  // Two worlds hitting each other hard enough to break both of them apart put
+  // far more energy in than it takes to vaporise rock, so the plume outweighs
+  // the gravel by better than two to one. This is where a debris disc — and
+  // eventually a moon — comes from.
+  const gas = gasEjecta(com, vel, 700, mTot * 0.16, vEsc, ra0, { speed: 1.25 });
 
   const keep = clamp(0.35 + 0.3 * (1 - b.m / a.m), 0.2, 0.72);
   const bigFrags = Math.min(clamp(Math.round(6 + (1 - keep) * 16), 4, 18), freeSlots());
-  const avail = mTot - thrown;
+  const avail = mTot - thrown - gas;
   const remnantM = bigFrags > 0 ? Math.min(a.m * keep, avail) : avail;
   const rubbleM = avail - remnantM;
 
@@ -2510,7 +2527,6 @@ const EVOLVE_NOTE = {
  * than rock.
  */
 function becomeGasGiant(b) {
-  const oldR = visRadius(b);
   b.type = 'gas_giant';
   b.kind = 'body';
   b.spin = TYPES.gas_giant.spin;
@@ -2519,7 +2535,7 @@ function becomeGasGiant(b) {
   b.glowPulse = 1;                       // a few seconds of heat from collapsing in
   updateLuminosity(b);
   refreshVisual(b);
-  fx.flash(b.p, Math.max(visRadius(b), oldR) * 5, [255, 214, 150], 0.95);
+  fx.form(b, false);
 }
 
 function becomeStar(b) {
@@ -2533,6 +2549,7 @@ function becomeStar(b) {
   b.coreT = baseCoreT(TYPES[b.type], b.m);
   updateLuminosity(b);
   refreshVisual(b);
+  fx.form(b, true);
 }
 
 /**
@@ -2551,7 +2568,6 @@ function ripenBrownDwarfs(dt) {
     b.bdAge = (b.bdAge || 0) + dt;
     if (b.bdAge < span) continue;
     const name = b.name;
-    const oldR = visRadius(b);
     b.type = 'red_dwarf';
     b.age = 0;
     b.bdAge = 0;
@@ -2562,7 +2578,7 @@ function ripenBrownDwarfs(dt) {
     b.glowPulse = 1;
     updateLuminosity(b);
     refreshVisual(b);
-    fx.flash(b.p, Math.max(visRadius(b), oldR) * 8, [255, 196, 120], 1);
+    fx.form(b, true);
     toast(name + ' finally caught fire — it is a red dwarf now!');
   }
 }
@@ -2584,10 +2600,11 @@ function shatterBody(b) {
   const rb = visRadius(b);
   const vEsc = Math.sqrt(2 * G * b.m / Math.max(rb, 1e-9));
 
-  // Fine ejecta first, then split what's left between the large fragments.
-  const thrown = ejecta(b.p, b.v, 520, b.m * 0.16, vEsc,
+  // Vapour and fine ejecta first, then split what's left between the fragments.
+  const thrown = ejecta(b.p, b.v, 420, b.m * 0.12, vEsc,
     [255, 235, 195], [104, 90, 80], rb, { speed: 1.25, sizeMin: 1.2, sizeMax: 7.5 });
-  const rubble = b.m - thrown;
+  const gas = gasEjecta(b.p, b.v, 640, b.m * 0.26, vEsc, rb, { speed: 1.2 });
+  const rubble = b.m - thrown - gas;
   if (rubble > 0) spawnDebris(b.p, b.v, rubble / frags, frags, vEsc * 0.9, rb);
 
   fx.flash(b.p, rb * 7, [255, 235, 190], 1);
@@ -3359,7 +3376,10 @@ function condenseCloud(e) {
   star.v.y += (totalP.y - py) / star.m;
   star.v.z += (totalP.z - pz) / star.m;
 
-  fx.flash(centre, Math.max(visRadius(star) * 14, e.r * 0.5), [255, 246, 226], 1);
+  // Planets first and only a couple of them: the pool is four deep, and the
+  // star being born is the one animation that must not get stolen.
+  for (let i = 0; i < Math.min(made.length, 2); i++) fx.form(made[i], false);
+  fx.form(star, true);
   e.alive = false;
   disposeSN(e);
   const idx = supernovae.indexOf(e);
@@ -3897,6 +3917,188 @@ function tidalDisrupt(s, P, d) {
   removeBody(s);
   s.disrupted = true;
   compact();
+}
+
+/* ========================================================= spinning apart   */
+/*
+ * Spin something fast enough and it throws itself to pieces.
+ *
+ * A rotating body is held together by its own gravity and pulled apart by the
+ * centrifugal effect at its equator. Once the equator is turning faster than
+ * orbital speed, whatever is sitting there is no longer resting on anything —
+ * it is in orbit, and it leaves. The body sheds its outer layers from the
+ * equator, in the plane it is spinning in, and keeps shedding until only the
+ * dense core it could never fling off is left.
+ *
+ * This is not invented: it is why fast-rotating asteroids like Bennu are
+ * losing material from their equators, and why the very fastest of them cannot
+ * exist above about a two-hour rotation without falling apart.
+ */
+
+/* One turn in 0.02 hours — 72 seconds. Far, far past break-up for anything
+   bigger than a boulder, which is the point of picking it. */
+const SPIN_SHED = 0.02 / 24;      // days
+
+/**
+ * The share of a body its core makes up — the part that survives being spun.
+ * Earth's iron core is about a third of its mass; a gas giant's rocky core is
+ * only a few per cent of it, which is why spinning one apart leaves so little.
+ */
+function coreFraction(def) {
+  if (def.star) return 0.28;
+  if (def.surf === 'iron') return 0.92;
+  if (GASSY_SURF.has(def.surf)) return 0.05;
+  if (def.surf === 'comet' || def.surf === 'rock') return 0.42;
+  return 0.33;
+}
+
+/** What is left when a body has thrown everything else away. */
+function bareCore(b) {
+  const def = TYPES[b.type];
+  if (def.star || b.kind !== 'body') return null;
+  // The game already has names for both of these: a gas giant stripped to its
+  // core IS a chthonian world, and a rocky world stripped to its core is an
+  // iron world.
+  if (GASSY_SURF.has(def.surf)) return 'chthonian';
+  if (def.surf !== 'iron' && !def.lumpy) return 'iron_world';
+  return null;
+}
+
+function updateSpin(dt) {
+  const bs = sim.bodies;
+  for (let i = 0; i < bs.length; i++) {
+    const b = bs[i];
+    if (!b.alive || b.kind !== 'body') continue;
+    const period = Math.abs(b.spin);
+
+    if (period >= SPIN_SHED) { b.shedding = false; continue; }
+
+    // First step over the line: work out how much of it is core and cannot go.
+    // A body already ground down to its core keeps the core mass it ended on,
+    // so spinning it again does not shave a fresh third off what is left — it
+    // only gets a new core once it has been fed back up to well above the old one.
+    if (!b.shedding) {
+      b.shedding = true;
+      if (b.coreM == null || b.m > b.coreM * 2.2) b.coreM = b.m * coreFraction(TYPES[b.type]);
+      b.spinPending = 0;
+      if (b.m > b.coreM) toast(b.name + ' is spinning itself apart!');
+    }
+    if (b.m <= b.coreM) continue;
+
+    /* Mass is queued for release first and only leaves the body once particles
+       have actually been found to carry it. If the debris pool is full, the
+       queue simply stops draining and the body keeps that mass — it is never
+       subtracted from one place without arriving in another. */
+    const over = clamp(SPIN_SHED / Math.max(period, 1e-9), 1, 40);
+    const room = b.m - b.coreM - b.spinPending;
+    if (room > 0) b.spinPending += Math.min(room, b.m * 0.45 * over * dt);
+
+    // Released in bursts, so each grain carries a visible amount of matter.
+    if (b.spinPending > b.coreM * 0.05) {
+      const put = spinShed(b, b.spinPending);
+      if (put > 0) {
+        b.spinPending -= put;
+        b.m -= put;
+        b.r = trueRadius(b.type, b.m);
+        scaleVisual(b);
+      }
+    }
+
+    if (b.m <= b.coreM * 1.001) {
+      const core = bareCore(b);
+      if (core && b.type !== core) {
+        b.type = core;
+        b.r = trueRadius(core, b.m);
+        b.coreT = Math.max(b.coreT, baseCoreT(TYPES[core], b.m));
+        b.glowPulse = 1;
+        updateLuminosity(b);
+        refreshVisual(b);
+      }
+      toast(b.name + ' has nothing left but its core');
+      // `shedding` deliberately stays true: the guard above now holds it here
+      // until the spin is slowed back down or it is fed more mass.
+    }
+  }
+}
+
+/**
+ * Fling material off the equator, in the plane the body is actually spinning
+ * in and in the direction it is actually turning — so the wreckage comes off
+ * as a flat, one-way disc rather than a sphere of shrapnel.
+ *
+ * Returns the mass actually placed, which is nothing at all when the debris
+ * pool is full — the caller must take that off the body rather than assuming.
+ */
+function spinShed(b, mass) {
+  // The body leans by b.tilt about Z, so its pole is Y turned by that much.
+  const axis = new THREE.Vector3(-Math.sin(b.tilt), Math.cos(b.tilt), 0).normalize();
+  let u = new THREE.Vector3(0, 0, 1);
+  if (Math.abs(axis.dot(u)) > 0.9) u.set(1, 0, 0);
+  u.crossVectors(axis, u).normalize();
+  const w = new THREE.Vector3().crossVectors(axis, u).normalize();
+
+  const rv = Math.max(visRadius(b), 1e-9);
+  const vEsc = Math.sqrt(2 * G * settings.gravity * Math.max(b.m, 1e-12) / rv);
+  /* The honest equatorial speed. At a 72-second rotation this runs to hundreds
+     of km/s and at the slider's floor to thousands, which would put every grain
+     outside the simulation inside one frame — so it is capped. The cap is the
+     one dishonest number here, and it exists purely so you can watch it. */
+  const vEq = TAU * b.r / Math.max(Math.abs(b.spin), 1e-9);
+  const vTop = clamp(vEq, vEsc * 1.05, vEsc * 22);
+  // Circular speed just above the surface. Material lifting off the equator at
+  // break-up leaves at about this — it is not thrown, it simply stops being
+  // held down — so most of it goes into orbit and shears out into a ring, and
+  // only the fastest tail gets away. That is how a moon ends up being made out
+  // of the wreckage instead of it all just leaving.
+  const vOrb = vEsc / Math.SQRT2;
+  const dir = b.spin < 0 ? -1 : 1;
+
+  const n = Math.min(150, parts.free.length);
+  if (n <= 0 || mass <= 0) return 0;
+  const each = mass / n;
+  const hot = [255, 232, 190], cool = [122, 104, 92];
+
+  for (let i = 0; i < n; i++) {
+    const k = parts.free.pop();
+    const k3 = k * 3;
+    const th = rnd(0, TAU);
+    const ct = Math.cos(th), st = Math.sin(th);
+    // Position on the equator, thrown out a little and barely off the plane.
+    const outX = u.x * ct + w.x * st, outY = u.y * ct + w.y * st, outZ = u.z * ct + w.z * st;
+    const tanX = (-u.x * st + w.x * ct) * dir, tanY = (-u.y * st + w.y * ct) * dir, tanZ = (-u.z * st + w.z * ct) * dir;
+    const off = rv * rnd(1.1, 1.5);
+    const lift = rv * rnd(-0.10, 0.10);
+
+    parts.pos[k3] = b.p.x + outX * off + axis.x * lift;
+    parts.pos[k3 + 1] = b.p.y + outY * off + axis.y * lift;
+    parts.pos[k3 + 2] = b.p.z + outZ * off + axis.z * lift;
+
+    // Power law: most grains barely clear the surface, a few really fly.
+    const sp = lerp(vOrb * 1.02, vTop, Math.pow(Math.random(), 2.4)) * rnd(0.94, 1.06);
+    // Mostly tangential — it is lifting off, not being blown — with a nudge out.
+    const rad = sp * rnd(0.02, 0.10);
+    parts.vel[k3] = b.v.x + tanX * sp + outX * rad;
+    parts.vel[k3 + 1] = b.v.y + tanY * sp + outY * rad;
+    parts.vel[k3 + 2] = b.v.z + tanZ * sp + outZ * rad;
+
+    const bs = rnd(1.6, 7);
+    parts.bsize[k] = bs;
+    parts.size[k] = bs;
+    parts.m[k] = each;
+    parts.hot[k] = 1;
+    parts.crate[k] = COOL_IMPACT * 0.6;
+    parts.src[k] = -1;
+
+    const ww = mix(hot, [255, 255, 255], Math.random() * 0.5);
+    parts.warm[k3] = ww[0] / 255; parts.warm[k3 + 1] = ww[1] / 255; parts.warm[k3 + 2] = ww[2] / 255;
+    parts.cool[k3] = cool[0] / 255; parts.cool[k3 + 1] = cool[1] / 255; parts.cool[k3 + 2] = cool[2] / 255;
+    parts.col[k3] = parts.warm[k3]; parts.col[k3 + 1] = parts.warm[k3 + 1]; parts.col[k3 + 2] = parts.warm[k3 + 2];
+
+    parts.on[k] = 1;
+    parts.live++;
+  }
+  parts.dirty = true;
+  return each * n;
 }
 
 /* ========================================================== temperature     */
@@ -4764,7 +4966,7 @@ function condenseFromDisc(d) {
   // A new planet sweeps its own lane clean, so the hole in the middle widens a
   // little — but never so far that the disc stops making inner worlds at all.
   if (r < d.rIn * 1.4) d.rIn = Math.min(r * 1.25, d.rOut * 0.05);
-  fx.flash(b.p, visRadius(b) * 10, [255, 214, 150], 0.7);
+  fx.form(b, false);
   toast(b.name + ' condensed out of ' + host.name + '’s disc');
   return true;
 }
@@ -5141,6 +5343,119 @@ function initParticles() {
     scene.add(s);
     flashes.push({ sprite: s, life: 0, max: 1, size: 1 });
   }
+  initForms();
+}
+
+/* ====================================================== formation animation */
+/*
+ * What it looks like when something is born.
+ *
+ * A world does not appear; it falls together. So a new planet or star arrives
+ * inside a swirling shell of dust that spirals inward, spinning faster and
+ * faster as it shrinks — because that is what conservation of angular momentum
+ * makes it do, and it is the same reason a figure skater speeds up when they
+ * pull their arms in. It closes on the body, lights up, and flashes out.
+ */
+
+const FORM_POOL = 4;
+const forms = [];
+
+/** A unit-radius swirl of infalling dust: thick, ragged and lopsided. */
+function formGeometry(seed) {
+  const key = 'form:' + seed;
+  if (geoCache.has(key)) return geoCache.get(key);
+  const rng = mulberry32(hashStr(key));
+  const gauss = () => (rng() + rng() + rng() - 1.5) * 0.7;
+  const pos = [], col = [], siz = [];
+  const HOT = [1.0, 0.95, 0.78], MID = [1.0, 0.58, 0.22], COLD = [0.42, 0.34, 0.72];
+
+  for (let i = 0; i < 1600; i++) {
+    // Weighted outward, so the cloud reads as a shell closing in rather than a
+    // solid ball that merely gets smaller.
+    const r = 0.30 + Math.pow(rng(), 0.6) * 0.70;
+    const th = rng() * TAU;
+    // Trailing streamers: the further out a mote is, the further behind it lags.
+    const lag = r * 2.6;
+    const x = Math.cos(th + lag) * r, z = Math.sin(th + lag) * r;
+    const y = gauss() * (0.05 + r * 0.30);
+    pos.push(x, y, z);
+    const c = r < 0.55 ? mix(HOT, MID, (r - 0.30) / 0.25) : mix(MID, COLD, (r - 0.55) / 0.45);
+    const j = 0.7 + rng() * 0.6;
+    col.push(c[0] * j, c[1] * j, c[2] * j);
+    // Fine grains, deliberately. Big soft puffs read as fog rather than as dust
+    // being pulled in, and up close they blur into one wash.
+    siz.push(0.012 + Math.pow(rng(), 2.2) * 0.055);
+  }
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('aSize', new THREE.Float32BufferAttribute(siz, 1));
+  geoCache.set(key, g);
+  return g;
+}
+
+function initForms() {
+  for (let i = 0; i < FORM_POOL; i++) {
+    const grp = new THREE.Group();
+    const swirl = new THREE.Points(formGeometry(i), new THREE.ShaderMaterial({
+      uniforms: { uMap: { value: TEX_PUFF }, uOp: { value: 0 }, uScale: { value: 1 }, uFocal: { value: 1 } },
+      vertexShader: NEB_VERT, fragmentShader: NEB_FRAG,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+    }));
+    swirl.frustumCulled = false;
+    swirl.renderOrder = 6;
+    grp.add(swirl);
+
+    const core = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: TEX_GLOW, blending: THREE.AdditiveBlending, transparent: true,
+      depthWrite: false, depthTest: false, opacity: 0
+    }));
+    core.renderOrder = 8;
+    grp.add(core);
+
+    grp.visible = false;
+    scene.add(grp);
+    forms.push({ grp: grp, swirl: swirl, core: core, life: 0, max: 1, size: 1, body: null, spin: 0 });
+  }
+}
+
+function updateForms(realDt) {
+  for (let i = 0; i < forms.length; i++) {
+    const f = forms[i];
+    if (f.life <= 0) continue;
+    f.life -= realDt;
+    const t = clamp(f.life / f.max, 0, 1);          // 1 at the start, 0 at the end
+
+    // Ride along with whatever is being born — a new planet is already moving.
+    if (f.body && f.body.alive) f.grp.position.copy(f.body.p);
+
+    if (f.life <= 0) {
+      f.grp.visible = false;
+      f.body = null;
+      fx.flash(f.grp.position, f.size * 2.6, f.flashCol, 1);
+      continue;
+    }
+
+    // Free-fall inward: slow at first, then a rush at the end.
+    const R = f.size * (0.10 + 1.25 * Math.pow(t, 1.7));
+    f.swirl.scale.setScalar(R);
+    // Angular momentum is conserved, so as it draws in it whirls up.
+    f.spin += (0.7 + 7 * (1 - t)) * realDt;
+    f.swirl.rotation.y = f.spin;
+
+    const u = f.swirl.material.uniforms;
+    u.uScale.value = R;
+    u.uFocal.value = VIEW.h * VIEW.dpr / (2 * Math.tan(FOV * Math.PI / 360));
+    // Fades up quickly, then thins out as the last of it lands.
+    const fadeIn = clamp((1 - t) / 0.10, 0, 1);
+    const fadeOut = clamp(t / 0.22, 0, 1);
+    u.uOp.value = 0.55 * fadeIn * fadeOut;
+
+    const wpp = worldPerPixel(Math.max(camera.position.distanceTo(f.grp.position), 1e-9));
+    f.core.scale.setScalar(Math.max(f.size * (0.10 + 0.55 * Math.pow(1 - t, 2)), 8 * wpp));
+    f.core.material.opacity = Math.pow(1 - t, 2.4);
+  }
 }
 
 /**
@@ -5198,6 +5513,80 @@ function ejecta(center, baseVel, count, totalMass, vEsc, hotCol, coolCol, radius
     const w = mix(hotCol, [255, 255, 255], frac * rnd(0, 0.6));
     parts.warm[k3] = w[0] / 255; parts.warm[k3 + 1] = w[1] / 255; parts.warm[k3 + 2] = w[2] / 255;
     parts.cool[k3] = coolCol[0] / 255; parts.cool[k3 + 1] = coolCol[1] / 255; parts.cool[k3 + 2] = coolCol[2] / 255;
+    parts.col[k3] = parts.warm[k3]; parts.col[k3 + 1] = parts.warm[k3 + 1]; parts.col[k3 + 2] = parts.warm[k3 + 2];
+
+    parts.on[k] = 1;
+    parts.live++;
+  }
+  parts.dirty = true;
+  return each * n;
+}
+
+/* The colours a protoplanetary disc is painted in, as 0–255 ramp stops: white
+   hot where it is falling inward, orange, then dusty rose and cold blue at the
+   rim. Impact vapour is the same stuff at the same temperatures, so it is
+   coloured off the same ramp — which is not a coincidence. Every disc IS the
+   vapour and dust of things that hit each other. */
+const DISC_RAMP = [
+  [0.00, [255, 240, 196]], [0.22, [255, 176, 80]], [0.45, [255, 118, 34]],
+  [0.72, [150, 62, 104]], [1.00, [46, 82, 184]]
+];
+
+/**
+ * Throw out a cloud of GAS AND VAPOUR rather than rock.
+ *
+ * A real impact between two worlds does not just make gravel. Most of what
+ * comes off is rock flash-boiled into vapour — the energy is far past what it
+ * takes to melt, let alone vaporise — and that vapour is what settles into a
+ * disc and later condenses back into moons. So collisions here release more
+ * mass as gas than they do as solid fragments, and the gas is drawn as big,
+ * soft, slow-cooling puffs in the disc's own colours instead of sharp grit.
+ */
+function gasEjecta(center, baseVel, count, totalMass, vEsc, radius, opts) {
+  const o = opts || {};
+  const n = Math.min(count, parts.free.length);
+  if (n <= 0 || totalMass <= 0) return 0;
+  const each = totalMass / n;
+  const push = o.speed != null ? o.speed : 1.15;
+  const sMin = o.sizeMin != null ? o.sizeMin : 6;
+  const sMax = o.sizeMax != null ? o.sizeMax : 26;
+
+  for (let i = 0; i < n; i++) {
+    const k = parts.free.pop();
+    const k3 = k * 3;
+
+    const u = rnd(-1, 1), th = rnd(0, TAU), sr = Math.sqrt(Math.max(0, 1 - u * u));
+    const dx = sr * Math.cos(th), dy = u * (o.flat != null ? o.flat : 1), dz = sr * Math.sin(th);
+
+    // Gas leaves faster and far more evenly than rubble does — it is pushed by
+    // its own pressure, not thrown.
+    const frac = Math.pow(Math.random(), 1.15);
+    const sp = vEsc * push * (0.4 + frac * 1.5);
+
+    const off = radius * rnd(1.05, 2.6);
+    parts.pos[k3] = center.x + dx * off;
+    parts.pos[k3 + 1] = center.y + dy * off;
+    parts.pos[k3 + 2] = center.z + dz * off;
+    parts.vel[k3] = baseVel.x + dx * sp;
+    parts.vel[k3 + 1] = baseVel.y + dy * sp;
+    parts.vel[k3 + 2] = baseVel.z + dz * sp;
+
+    // Fat and soft. A vapour plume has no edges, so the puffs have to be wide
+    // enough to run into one another and read as one cloud.
+    const bs = lerp(sMax, sMin, Math.random()) * rnd(0.7, 1.3);
+    parts.bsize[k] = bs;
+    parts.size[k] = bs;
+    parts.m[k] = each;
+    parts.hot[k] = 1;
+    // Vapour stays lit far longer than a cooling pebble does.
+    parts.crate[k] = COOL_IMPACT * 0.22;
+    parts.src[k] = -1;
+
+    // The fastest gas is the hottest and sits at the white end of the ramp.
+    const w = ramp(DISC_RAMP, clamp(1 - frac + rnd(-0.12, 0.12), 0, 1));
+    const c = ramp(DISC_RAMP, clamp(0.86 + rnd(0, 0.14), 0, 1));
+    parts.warm[k3] = w[0] / 255; parts.warm[k3 + 1] = w[1] / 255; parts.warm[k3 + 2] = w[2] / 255;
+    parts.cool[k3] = c[0] / 510; parts.cool[k3 + 1] = c[1] / 510; parts.cool[k3 + 2] = c[2] / 510;
     parts.col[k3] = parts.warm[k3]; parts.col[k3 + 1] = parts.warm[k3 + 1]; parts.col[k3 + 2] = parts.warm[k3 + 2];
 
     parts.on[k] = 1;
@@ -5531,10 +5920,32 @@ const fx = {
     f.sprite.position.copy(pos);
     f.sprite.material.color.setRGB(color[0] / 255, color[1] / 255, color[2] / 255);
     f.sprite.visible = true;
+  },
+
+  /**
+   * Play the birth animation on `b`. `star` picks the hotter, whiter palette
+   * and a longer wind-up, because a star takes rather more falling together
+   * than a planet does.
+   */
+  form(b, star) {
+    let f = null;
+    for (let i = 0; i < forms.length; i++) if (forms[i].life <= 0) { f = forms[i]; break; }
+    // All four busy: steal the one closest to finishing rather than skipping it.
+    if (!f) { f = forms[0]; for (const g of forms) if (g.life < f.life) f = g; }
+    f.life = f.max = star ? 2.2 : 1.5;
+    f.size = Math.max(visRadius(b) * (star ? 14 : 11), 34 * worldPerPixel(
+      Math.max(camera.position.distanceTo(b.p), 1e-9)));
+    f.body = b;
+    f.spin = Math.random() * TAU;
+    f.flashCol = star ? [255, 244, 224] : [255, 214, 150];
+    f.core.material.color.setRGB(1, star ? 0.95 : 0.82, star ? 0.86 : 0.55);
+    f.grp.position.copy(b.p);
+    f.grp.visible = true;
   }
 };
 
 function updateFx(realDt, simDt) {
+  updateForms(realDt);
   for (let i = 0; i < flashes.length; i++) {
     const f = flashes[i];
     if (f.life <= 0) { if (f.sprite.visible) f.sprite.visible = false; continue; }
@@ -6481,6 +6892,9 @@ function customiseHTML(b) {
     '<input type="range" id="is-spin-s" min="-4" max="4" step="0.01" value="' +
     Math.log10(spinAbs).toFixed(3) + '"></div>' +
     tgl('is-retro', 'Spins backwards', 'Like Venus, Uranus and Pluto really do.') +
+    '<p class="an-note">Wind it below <b>0.02 hours</b> a turn and the equator is moving faster than ' +
+    'gravity can hold on to it: the body starts <b>flinging itself apart</b> from the middle, and keeps ' +
+    'going until nothing but its core is left. Time has to be running for that to happen.</p>' +
     '<div class="an-field"><label>Axial tilt <b id="is-tiv"></b></label>' +
     '<input type="range" id="is-tilt-s" min="-180" max="180" step="1" value="' +
     Math.round(b.tilt * DEG) + '"></div>';
@@ -7754,6 +8168,7 @@ function openHelp() {
     '<li>Every selected body has a <b>CUSTOMISE</b> section. Open it and you can change its <b>radius</b> (mass stays put, so it gets denser or lighter), how fast it <b>spins</b> and which way round, how far over it <b>leans</b>, how hot it is <b>inside</b>, and what <b>colour</b> it is.</li>' +
     '<li>Switch on <b>Has rings</b> and any world at all gets a set. Then drag the <b>inner and outer edges</b>, how <b>solid</b> they are, and pick <b>two colours</b> for the ringlets to be painted between.</li>' +
     '<li><b>RESET TO …</b> at the bottom puts everything back the way that kind of body normally is.</li>' +
+    '<li>Wind the <b>spin</b> below <b>0.02 hours</b> a turn and the body cannot survive it. Its equator is now moving faster than gravity can hold on to, so it <b>throws its outer layers off from the middle</b> — in the plane it is spinning in, in the direction it is turning — and keeps going until only its dense core is left. A gas giant stripped that far is a <b>chthonian world</b>; a rocky one is an <b>iron world</b>. Real asteroids do this: Bennu is losing material off its equator right now, and almost none spin faster than one turn in two hours, because the ones that did are gone.</li>' +
     '</ul>' +
     '<h3>TIDES: BEING TORN APART SLOWLY</h3>' +
     '<ul>' +
@@ -7785,6 +8200,8 @@ function openHelp() {
     '<li>Every body pulls on every other one with real Newtonian gravity, stepped with a leapfrog integrator that keeps orbits stable for thousands of years.</li>' +
     '<li>Masses, radii and distances are in real units — Earth masses, Earth radii and millions of kilometres. Drop Earth 149.6 million km from a Sun-like star and its year comes out at 365 days.</li>' +
     '<li><b>Slow collisions merge</b> and conserve momentum. <b>Fast ones shatter</b> both bodies into rubble — the test is impact speed against the pair\'s escape velocity.</li>' +
+    '<li>Most of what a collision throws out is <b>not gravel — it is gas</b>. Two worlds hitting each other put in far more energy than it takes to melt rock, let alone boil it, so the plume of vapour that comes off outweighs the solid fragments by more than two to one. It is drawn in the same colours as a protoplanetary disc because it is the same stuff at the same temperatures: white-hot where it is fastest, then orange, then cold blue as it spreads and cools. That vapour is exactly where discs, rings and moons come from — ours came off the impact that made the Moon.</li>' +
+    '<li>Anything newly <b>born</b> — a planet condensing out of a disc, a world puffing up into a gas giant, a star catching light — arrives inside a swirl of infalling dust that spirals in and <b>whirls faster as it shrinks</b>, because angular momentum is conserved. Same reason a spinning skater speeds up when they pull their arms in.</li>' +
     '<li>The debris thrown out by an impact is <b>real matter, not sparks</b>. Every grain carries mass and is pulled along by the same gravity as the planets, so it orbits, rains back down, settles into rings, or is swallowed by a black hole — and whatever eats it genuinely gets heavier. The counter at the bottom left shows bodies plus live debris.</li>' +
     '<li>Feed a <b>rocky</b> world past <b>60.1 Earth masses</b> and its gravity can finally hold onto hydrogen: it flares up and swells into a <b>gas giant</b>, roughly doubling in width as dense rock gives way to light gas. Worlds that are already gassy skip this and just keep growing.</li>' +
     '<li>Pile up more than 8% of the Sun\'s mass and the body <b>ignites into a star</b>. The full ladder is rock → gas giant → star → supernova → neutron star or black hole.</li>' +
