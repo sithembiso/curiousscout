@@ -2089,6 +2089,8 @@ function updateLuminosity(b) {
 function removeBody(b) {
   b.alive = false;
   usedNames.delete(b.name);
+  // A galaxy takes its stars with it.
+  if (b.kind === 'gal') freeGalaxyStars(b.id);
 }
 
 function compact() {
@@ -2134,6 +2136,18 @@ function computeAccel() {
 
   for (let i = 0; i < n; i++) bs[i].a.set(0, 0, 0);
 
+  /* Plummer softening lengths, hoisted out of the inner loop. A galaxy's mass
+     is not in a point — it is spread through a bulge, a disc and a halo — so
+     its softening is the scale of the disc rather than the width of the bulge.
+     Without that, two galaxy cores swinging past each other behave like two
+     black holes: they slingshot at thousands of km/s and the encounter is over
+     before it starts, instead of decaying into a merger. */
+  const softs = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const b = bs[i];
+    softs[i] = b.kind === 'gal' ? Math.max(b.galR, 1) * GAL_SOFT : 0.35 * b.r;
+  }
+
   for (let i = 0; i < n; i++) {
     const bi = bs[i], pi = bi.p;
     const ri = captureRadius(bi);
@@ -2145,9 +2159,10 @@ function computeAccel() {
       const dx = pj.x - pi.x, dy = pj.y - pi.y, dz = pj.z - pi.z;
       const d2 = dx * dx + dy * dy + dz * dz;
 
-      // Plummer softening scaled by the bodies' own size: keeps the force
-      // finite when two objects are overlapping instead of blowing up.
-      const soft = 0.35 * (bi.r + bj.r);
+      // Keeps the force finite when two objects are overlapping instead of
+      // blowing up. For a pair of ordinary bodies this is exactly 0.35·(rᵢ+rⱼ),
+      // as it always was.
+      const soft = softs[i] + softs[j];
       const dd = d2 + soft * soft;
       const d = Math.sqrt(dd);
       const inv3 = 1 / (dd * d);
@@ -2225,6 +2240,19 @@ function advance(frameSeconds) {
   // makes no difference at all.
   if (snSet.aging) ageStars(target);
   ripenBrownDwarfs(target);
+
+  /* Galaxy stars get their own capped substepping. There can be tens of
+     thousands of them and their orbits are slow and smooth, so they neither
+     need nor can afford the planets' step count. */
+  refreshGalCores();
+  if (galCores.length) {
+    const gSteps = Math.min(steps, GAL_SUBSTEPS);
+    const gdt = target / gSteps;
+    for (let s = 0; s < gSteps; s++) {
+      stepGalaxyStars(gdt);
+      updateGalaxyPairs(gdt);
+    }
+  }
 
   // Debris gets its own, capped substepping. It does not need the planets'
   // accuracy, and at extreme time compression 64 passes over a full pool would
@@ -4287,6 +4315,7 @@ function initScene() {
   buildSky();
   buildGrid();
   initParticles();
+  initGalaxyStars();
   initPost();
   resize();
 }
@@ -5033,132 +5062,379 @@ function setRings(b, spec, repaint) {
 
 /* ================================================================ galaxies  */
 /*
- * A galaxy cannot be drawn to scale here and there is no point pretending
- * otherwise: the Milky Way is about 9×10^17 Gm across, roughly a trillion times
- * the width of the biggest thing this sandbox can hold. So a galaxy is drawn at
- * a fixed *screen* size instead — never narrower than settings.galMinPx nor
- * wider than settings.galMaxPx — and only its heavy middle actually gravitates.
- * It is scenery with a mass, and it is labelled as such.
+ * A galaxy is not a picture here. It is a few thousand individual stars, each
+ * one integrated under the gravity of every galaxy core in the scene — which is
+ * the whole reason two of them can be crashed into each other and do something
+ * worth watching.
+ *
+ * This is the restricted N-body model Toomre & Toomre used in 1972 to work out
+ * where the tails and bridges of interacting galaxies come from, and it is
+ * still the standard way to reproduce them. Each star is a TEST particle: it
+ * feels the cores, but has no pull of its own. That is what makes thousands of
+ * them affordable, and it costs almost nothing in realism, because in a real
+ * galaxy the stars really are a rounding error next to the mass they orbit.
+ *
+ * The three things it gets right, and the three things you see in the sky:
+ *
+ *   TIDAL TAILS   The far side of a disc is pulled less hard than the near
+ *                 side, so a passing companion flings a long thin streamer out
+ *                 behind it. The Antennae, the Mice, the Tadpole — all this.
+ *   BRIDGES       Material dragged the other way, straight towards the intruder.
+ *   MERGERS       Dynamical friction drains the orbit, the cores spiral in and
+ *                 coalesce, and the two ordered discs are left as one shapeless
+ *                 blob. That is where elliptical galaxies come from, and it is
+ *                 what the Milky Way and Andromeda are going to do.
+ *
+ * ONE HONEST NOTE ON SCALE. A real galaxy is about 9×10^17 Gm across, roughly a
+ * trillion times the width of the largest thing this sandbox can otherwise
+ * hold. Drawn at true size, nothing else in the simulation would be one pixel.
+ * So a galaxy is built at whatever world size it is created at — the pixel
+ * range in Settings picks that at the moment you place it — and everything
+ * after that, orbits, tails and all, is real physics at that size. The shapes
+ * are right and the timescale is not: a collision that would take a billion
+ * years plays out in months.
  */
 
-const GAL_PTS = 5200;
+/* Star slots shared across every galaxy in the scene. */
+const GAL_MAX = 34000;
+const GAL_STARS = 11000;        // per galaxy, budget permitting
+const GAL_SUBSTEPS = 3;         // per frame — galaxy orbits are slow and smooth
+/* Softening as a fraction of the disc radius. It gives the inner disc a
+   near-solid-body rotation curve, which is both what real galaxies do and what
+   stops the arms winding themselves into mush after two turns. */
+const GAL_SOFT = 0.55;
+
+const galx = {
+  pos: null, vel: null, col: null, siz: null, own: null,
+  free: [], live: 0, geo: null, pts: null, dirty: false
+};
+
+function initGalaxyStars() {
+  galx.pos = new Float32Array(GAL_MAX * 3);
+  galx.vel = new Float32Array(GAL_MAX * 3);
+  galx.col = new Float32Array(GAL_MAX * 3);
+  galx.siz = new Float32Array(GAL_MAX);
+  galx.own = new Int32Array(GAL_MAX);
+  galx.free.length = 0;
+  for (let i = GAL_MAX - 1; i >= 0; i--) { galx.free.push(i); galx.own[i] = -1; }
+  galx.live = 0;
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(galx.pos, 3));
+  geo.setAttribute('aCol', new THREE.BufferAttribute(galx.col, 3));
+  geo.setAttribute('aSize', new THREE.BufferAttribute(galx.siz, 1));
+  galx.geo = geo;
+  // Screen-fixed point size, so the stars stay stars however far you zoom in —
+  // fly into a galaxy and it opens out into individual specks, as it should.
+  galx.pts = new THREE.Points(geo, new THREE.ShaderMaterial({
+    uniforms: { uMap: { value: TEX_GLOW }, uDpr: { value: VIEW.dpr } },
+    vertexShader: FX_VERT, fragmentShader: FX_FRAG,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+  }));
+  galx.pts.frustumCulled = false;
+  galx.pts.renderOrder = -5;             // behind every solid body in the scene
+  scene.add(galx.pts);
+}
 
 /**
- * A barred spiral, built the way one actually looks: a fat central bulge, two
- * or four logarithmic arms wound out of it, blue-white star formation strung
- * along the arms with pink hydrogen knots, and a thin dusty disc between them.
+ * Circular speed at radius r in a galaxy's own softened potential. Using the
+ * same law the integrator uses is what makes a freshly built disc actually sit
+ * still instead of immediately falling in or flying apart.
  */
-function galaxyGeometry(seed, arms) {
-  const key = 'gal:' + seed + ':' + arms;
-  if (geoCache.has(key)) return geoCache.get(key);
-  const rng = mulberry32(hashStr(key));
+function galVCirc(m, r, soft) {
+  const dd = r * r + soft * soft;
+  return Math.sqrt(G * settings.gravity * m * r * r / (dd * Math.sqrt(dd)));
+}
+
+/** Free every star belonging to a galaxy — called when one is removed. */
+function freeGalaxyStars(id) {
+  for (let k = 0; k < GAL_MAX; k++) {
+    if (galx.own[k] !== id) continue;
+    galx.own[k] = -1;
+    galx.siz[k] = 0;
+    galx.free.push(k);
+    galx.live--;
+  }
+  galx.dirty = true;
+}
+
+function clearGalaxyStars() {
+  if (!galx.own) return;
+  for (let k = 0; k < GAL_MAX; k++) {
+    if (galx.own[k] < 0) continue;
+    galx.own[k] = -1; galx.siz[k] = 0; galx.free.push(k); galx.live--;
+  }
+  galx.dirty = true;
+}
+
+/**
+ * Lay out a galaxy's stars: a fat old bulge, then a disc wound into
+ * logarithmic arms, every one of them on a circular orbit in the disc plane
+ * with a little random dispersion so it is not a wire model.
+ */
+function seedGalaxyStars(b) {
+  freeGalaxyStars(b.id);
+  const rng = mulberry32(b.seed ^ 0x9e37);
   const gauss = () => (rng() + rng() + rng() + rng() - 2) * 0.5;
+  const R = Math.max(b.galR, 1e-6);
+  const soft = R * GAL_SOFT;
+  const arms = b.galArms;
 
-  const pos = [], col = [], siz = [];
-  const WIND = 3.4;                       // how tightly the arms coil
-  const BULGE = [1.0, 0.86, 0.58];        // old, yellow core stars
-  const ARM = [0.74, 0.85, 1.0];          // young, blue arm stars
-  const HII = [1.0, 0.46, 0.62];          // pink hydrogen where stars are forming
-  const DUST = [0.30, 0.24, 0.30];
+  // The disc plane. Two galaxies meeting at an angle is what makes a collision
+  // interesting, so every galaxy gets its own tilt.
+  const ax = b.galAxis;
+  let u = new THREE.Vector3(0, 0, 1);
+  if (Math.abs(ax.dot(u)) > 0.9) u.set(1, 0, 0);
+  u.crossVectors(ax, u).normalize();
+  const w = new THREE.Vector3().crossVectors(ax, u).normalize();
+  const spin = b.galSpin || 1;
 
-  for (let i = 0; i < GAL_PTS; i++) {
-    const inBulge = i < GAL_PTS * 0.26;
-    let x, y, z, c, s;
+  const WIND = 3.2;
+  const BULGE = [1.0, 0.84, 0.54];      // old, yellow core stars
+  const ARM = [0.72, 0.84, 1.0];        // young, blue arm stars
+  const HII = [1.0, 0.44, 0.60];        // pink hydrogen where stars are forming
+  const DISC = [0.52, 0.50, 0.66];
 
-    if (inBulge) {
-      // A flattened ellipsoid, densest dead centre.
-      const r = Math.pow(rng(), 2.1) * 0.22;
-      const u = rng() * 2 - 1, th = rng() * TAU, sr = Math.sqrt(Math.max(0, 1 - u * u));
-      x = sr * Math.cos(th) * r; z = sr * Math.sin(th) * r; y = u * r * 0.42;
-      c = mix(BULGE, [1, 1, 1], Math.pow(1 - Math.min(r / 0.22, 1), 2) * 0.7);
-      s = 0.006 + Math.pow(rng(), 2) * 0.016;
+  const want = Math.min(GAL_STARS, galx.free.length);
+  for (let i = 0; i < want; i++) {
+    const k = galx.free.pop();
+    const k3 = k * 3;
+    const bulge = i < want * 0.24;
+    let r, th, h, c, s;
+
+    if (bulge) {
+      r = (0.02 + Math.pow(rng(), 2.1) * 0.20) * R;
+      th = rng() * TAU;
+      h = gauss() * r * 0.55;                       // a fat, round bulge
+      c = mix(BULGE, [1, 1, 1], Math.pow(1 - r / (0.22 * R), 2) * 0.7);
+      s = 1.1 + Math.pow(rng(), 2) * 1.5;
     } else {
-      // Area-weighted radius so the disc does not pile up in the middle.
-      const r = 0.18 + Math.sqrt(rng()) * 0.82;
-      const arm = (rng() * arms) | 0;
-      // Logarithmic spiral, with the scatter widening outwards as arms do.
-      const spread = (0.16 + r * 0.34) * gauss() * 2.2;
-      const th = Math.log(r / 0.10) * WIND + arm * (TAU / arms) + spread;
-      x = Math.cos(th) * r; z = Math.sin(th) * r;
-      y = gauss() * (0.012 + r * 0.020);
-
-      const onArm = clamp(1 - Math.abs(spread) / (0.2 + r * 0.4), 0, 1);
-      c = mix(mix(DUST, ARM, onArm), BULGE, clamp(1.15 - r * 1.7, 0, 1));
-      if (onArm > 0.55 && rng() < 0.16) c = mix(c, HII, 0.8);      // a nebula knot
-      const dim = 0.45 + onArm * 0.75;
+      r = (0.14 + Math.sqrt(rng()) * 0.86) * R;
+      const t = r / R;
+      const spread = (0.16 + t * 0.34) * gauss() * 2.2;
+      th = Math.log(Math.max(t, 0.02) / 0.10) * WIND + ((rng() * arms) | 0) * (TAU / arms) + spread;
+      h = gauss() * (0.012 + t * 0.020) * R;        // a thin disc
+      const onArm = clamp(1 - Math.abs(spread) / (0.2 + t * 0.4), 0, 1);
+      c = mix(DISC, ARM, onArm);
+      if (onArm > 0.55 && rng() < 0.15) c = mix(c, HII, 0.85);
+      const dim = 0.42 + onArm * 0.8;
       c = [c[0] * dim, c[1] * dim, c[2] * dim];
-      s = 0.005 + Math.pow(rng(), 2.4) * 0.022;
+      s = 0.9 + Math.pow(rng(), 2.4) * 1.8;
     }
 
-    pos.push(x, y, z);
-    col.push(c[0], c[1], c[2]);
-    siz.push(s);
+    const ct = Math.cos(th), st = Math.sin(th);
+    const ox = u.x * ct + w.x * st, oy = u.y * ct + w.y * st, oz = u.z * ct + w.z * st;
+    const tx = (-u.x * st + w.x * ct) * spin, ty = (-u.y * st + w.y * ct) * spin, tz = (-u.z * st + w.z * ct) * spin;
+
+    galx.pos[k3] = b.p.x + ox * r + ax.x * h;
+    galx.pos[k3 + 1] = b.p.y + oy * r + ax.y * h;
+    galx.pos[k3 + 2] = b.p.z + oz * r + ax.z * h;
+
+    // Circular in the disc plane, plus a small random dispersion — real discs
+    // are warm, and a perfectly cold one looks like a diagram.
+    const vc = galVCirc(b.m, r, soft) * (bulge ? rnd(0.55, 0.95) : rnd(0.97, 1.03));
+    const disp = vc * (bulge ? 0.34 : 0.05);
+    galx.vel[k3] = b.v.x + tx * vc + gauss() * disp;
+    galx.vel[k3 + 1] = b.v.y + ty * vc + gauss() * disp;
+    galx.vel[k3 + 2] = b.v.z + tz * vc + gauss() * disp;
+
+    galx.col[k3] = c[0]; galx.col[k3 + 1] = c[1]; galx.col[k3 + 2] = c[2];
+    galx.siz[k] = s;
+    galx.own[k] = b.id;
+    galx.live++;
+  }
+  galx.dirty = true;
+}
+
+/** Every galaxy core in the scene, with the softening its own disc implies. */
+const galCores = [];
+function refreshGalCores() {
+  galCores.length = 0;
+  for (const b of sim.bodies) {
+    if (b.kind === 'gal' && b.alive) galCores.push(b);
+  }
+}
+
+/**
+ * Move the stars. Symplectic Euler — kick then drift — one force evaluation per
+ * step, and stable over the many orbits a collision takes.
+ */
+function stepGalaxyStars(dt) {
+  if (galx.live === 0 || galCores.length === 0) return;
+  const gm = G * settings.gravity;
+  const n = galCores.length;
+  // Hoisted so the inner loop is plain arithmetic.
+  const cx = [], cy = [], cz = [], cm = [], cs = [];
+  for (let i = 0; i < n; i++) {
+    const g = galCores[i];
+    cx.push(g.p.x); cy.push(g.p.y); cz.push(g.p.z);
+    cm.push(gm * g.m);
+    const so = Math.max(g.galR * GAL_SOFT, 1e-6);
+    cs.push(so * so);
   }
 
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3));
-  g.setAttribute('aSize', new THREE.Float32BufferAttribute(siz, 1));
-  geoCache.set(key, g);
-  return g;
+  const pos = galx.pos, vel = galx.vel;
+  for (let k = 0; k < GAL_MAX; k++) {
+    if (galx.own[k] < 0) continue;
+    const k3 = k * 3;
+    const px = pos[k3], py = pos[k3 + 1], pz = pos[k3 + 2];
+    let ax = 0, ay = 0, az = 0;
+    for (let i = 0; i < n; i++) {
+      const dx = cx[i] - px, dy = cy[i] - py, dz = cz[i] - pz;
+      // Plummer softening on the core, standing in for the fact that a galaxy's
+      // mass is spread through a bulge and a halo rather than sitting in a point.
+      const dd = dx * dx + dy * dy + dz * dz + cs[i];
+      const f = cm[i] / (dd * Math.sqrt(dd));
+      ax += dx * f; ay += dy * f; az += dz * f;
+    }
+    vel[k3] += ax * dt; vel[k3 + 1] += ay * dt; vel[k3 + 2] += az * dt;
+    pos[k3] += vel[k3] * dt; pos[k3 + 1] += vel[k3 + 1] * dt; pos[k3 + 2] += vel[k3 + 2] * dt;
+  }
+  galx.dirty = true;
 }
+
+/**
+ * Dynamical friction, and the merger it causes.
+ *
+ * Two galaxies on a passing orbit would, as bare point masses, swing past each
+ * other and separate forever. Real ones do not: each one ploughs through the
+ * other's stars and halo, leaves a wake of material pulled in behind it, and
+ * that wake pulls back. The orbit decays, they fall together again, and after
+ * a few passes they coalesce. Chandrasekhar worked the effect out in 1943, and
+ * it is the single reason galaxy mergers happen at all.
+ *
+ * The version here is deliberately crude — a drag on the relative motion that
+ * switches on once the discs overlap — but it is applied as an equal and
+ * opposite impulse, so momentum is conserved exactly.
+ */
+/* Deliberately weak, and very steep. A grazing pass should barely be damped —
+   that is the pass that throws the tails — while a deep one, where the cores
+   are ploughing through the thick of each other, is damped hard. Get this
+   wrong in the other direction and the first approach turns straight into a
+   plunge, the discs are scrambled into a featureless halo, and you never see
+   a tail at all. */
+const GAL_FRICTION = 0.022;
+
+function updateGalaxyPairs(dt) {
+  const gs = galCores;
+  for (let i = 0; i < gs.length; i++) {
+    for (let j = i + 1; j < gs.length; j++) {
+      const a = gs[i], b = gs[j];
+      if (!a.alive || !b.alive) continue;
+      const dx = b.p.x - a.p.x, dy = b.p.y - a.p.y, dz = b.p.z - a.p.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const reach = a.galR + b.galR;
+      if (d >= reach) continue;
+
+      // Overlap fraction: nothing at first touch, everything at the centre.
+      const over = clamp(1 - d / Math.max(reach, 1e-9), 0, 1);
+      const k = clamp(GAL_FRICTION * over * over * over * dt, 0, 0.5);
+      const mu = a.m * b.m / Math.max(a.m + b.m, 1e-12);
+      const rvx = b.v.x - a.v.x, rvy = b.v.y - a.v.y, rvz = b.v.z - a.v.z;
+      // Equal and opposite, so the pair's momentum does not move.
+      a.v.x += rvx * k * mu / a.m; a.v.y += rvy * k * mu / a.m; a.v.z += rvz * k * mu / a.m;
+      b.v.x -= rvx * k * mu / b.m; b.v.y -= rvy * k * mu / b.m; b.v.z -= rvz * k * mu / b.m;
+
+      // Close enough that there is only one galaxy left.
+      if (d < reach * 0.055) { mergeGalaxies(a.m >= b.m ? a : b, a.m >= b.m ? b : a); return; }
+    }
+  }
+}
+
+/**
+ * Two galaxies become one. The stars are not thrown away — they are handed over
+ * exactly where they are, still moving exactly as they were, which is why the
+ * remnant is the shapeless blob a real merger leaves rather than a tidy new
+ * spiral. This is how elliptical galaxies are made.
+ */
+function mergeGalaxies(a, b) {
+  const mTot = a.m + b.m;
+  a.p.multiplyScalar(a.m / mTot).addScaledVector(b.p, b.m / mTot);
+  a.v.multiplyScalar(a.m / mTot).addScaledVector(b.v, b.m / mTot);
+  a.m = mTot;
+  // The remnant is puffed up by everything the collision stirred.
+  a.galR = Math.max(a.galR, b.galR) * 1.18;
+  a.galMerged = (a.galMerged || 0) + 1 + (b.galMerged || 0);
+
+  // Hand the other galaxy's stars over where they stand.
+  for (let k = 0; k < GAL_MAX; k++) if (galx.own[k] === b.id) galx.own[k] = a.id;
+  galx.dirty = true;
+
+  fx.flash(a.p, a.galR * 0.25, [255, 240, 210], 0.9);
+  toast(a.name + ' and ' + b.name + ' have merged into one galaxy');
+  if (sim.selected === b) select(a);
+  removeBody(b);
+  compact();
+  refreshGalCores();
+}
+
+/*
+ * How long one turn of the outer disc takes. A real galaxy takes about 230
+ * million years; here it takes eleven, because the whole object is built at a
+ * size the sandbox can hold and the clock has to be compressed to match.
+ * Fixing the PERIOD rather than the mass is what keeps a galaxy looking right
+ * however big you make it — the shapes and the dynamics stay honest, and only
+ * the scale is compressed.
+ */
+const GAL_PERIOD = 4000;      // days for one turn at the disc edge
+
+/** The core mass a galaxy of this size needs for that rotation period. */
+const galMassFor = (R) =>
+  4 * Math.PI * Math.PI * R * R * R / (G * GAL_PERIOD * GAL_PERIOD);
 
 function buildGalaxy(b, grp) {
   const rng = mulberry32(b.seed);
   b.galArms = b.galArms || (rng() < 0.62 ? 2 : 4);
-  b.galR = b.galR || 1;
-  // How wide this one wants to be on screen, inside the allowed window.
-  b.galWide = b.galWide || lerp(settings.galMinPx, settings.galMaxPx, rng());
-
-  const spiral = new THREE.Points(galaxyGeometry(b.seed % 9973, b.galArms), new THREE.ShaderMaterial({
-    uniforms: { uMap: { value: TEX_PUFF }, uOp: { value: 0.9 }, uScale: { value: 1 }, uFocal: { value: 1 } },
-    vertexShader: NEB_VERT, fragmentShader: NEB_FRAG,
-    transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending
-  }));
-  spiral.frustumCulled = false;
-  spiral.renderOrder = -5;                  // behind every real body in the scene
-  // Every galaxy leans differently, so a screenful of them does not read as a
-  // stack of identical stickers.
-  spiral.rotation.set(rnd(-0.9, 0.9), rnd(0, TAU), rnd(-0.6, 0.6));
-  grp.add(spiral);
-  b.parts.spiral = spiral;
+  b.galSpin = b.galSpin || (rng() < 0.5 ? 1 : -1);
+  // How wide it was asked to be on screen when it was placed. Once it exists
+  // that is history: from here on it has a real size in real units.
+  if (b.galWide == null) b.galWide = lerp(settings.galMinPx, settings.galMaxPx, rng());
+  if (b.galR == null) {
+    // The pixel range picks how much of the screen it fills when dropped, with
+    // a floor so that placing one while zoomed in on a moon still gives you a
+    // galaxy rather than a two-AU curiosity.
+    b.galR = Math.max(b.galWide * 0.5 * worldPerPixel(view.dist), 900);
+    b.m = galMassFor(b.galR);
+  }
+  if (!b.galAxis) {
+    const sw = rng() * TAU;
+    b.galAxis = new THREE.Vector3(0, 1, 0)
+      .applyAxisAngle(new THREE.Vector3(Math.cos(sw), 0, Math.sin(sw)), (rng() - 0.5) * 1.9)
+      .normalize();
+  }
 
   const core = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: TEX_HALO, color: new THREE.Color(0xfff0c4), opacity: 0.55,
+    map: TEX_HALO, color: new THREE.Color(0xfff0c4), opacity: 0.5,
     blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, depthTest: false
   }));
   core.renderOrder = -4;
   grp.add(core);
   b.parts.galCore = core;
   b.lightColor = new THREE.Color(0xffe6b8);
+
+  seedGalaxyStars(b);
 }
 
-/**
- * Hold every galaxy inside its screen-size window. This is the one thing in the
- * whole simulation drawn at a size that is not physical, and it is deliberate —
- * see the note above.
- */
 function updateGalaxies() {
-  const lo = Math.min(settings.galMinPx, settings.galMaxPx);
-  const hi = Math.max(settings.galMinPx, settings.galMaxPx);
   for (const b of sim.bodies) {
     if (b.kind !== 'gal' || !b.parts) continue;
-    const dist = Math.max(camera.position.distanceTo(b.p), 1e-9);
-    const wpp = worldPerPixel(dist);
-    // The width it "wants" to be, then clamped into the window and turned back
-    // into a world radius.
-    const wantPx = clamp((b.galWide || 1600), lo, hi);
-    b.galR = wantPx * 0.5 * wpp;
-    const sp = b.parts.spiral;
-    if (sp) {
-      sp.scale.setScalar(b.galR);
-      sp.material.uniforms.uScale.value = b.galR;
-      sp.material.uniforms.uFocal.value = VIEW.h * VIEW.dpr / (2 * Math.tan(FOV * Math.PI / 360));
-      sp.rotation.y += 0.0006;
-    }
-    if (b.parts.galCore) b.parts.galCore.scale.setScalar(b.galR * 0.5);
-    if (b.parts.dot) b.parts.dot.visible = false;
     b.obj.position.copy(b.p);
+    const wpp = worldPerPixel(Math.max(camera.position.distanceTo(b.p), 1e-9));
+    // The glow standing in for the unresolved crowd of stars in the bulge.
+    if (b.parts.galCore) {
+      b.parts.galCore.scale.setScalar(Math.max(b.galR * 0.22, 18 * wpp));
+      b.parts.galCore.material.opacity = clamp(0.55 - (b.galMerged ? 0.2 : 0), 0.2, 0.6);
+    }
+    if (b.parts.dot) b.parts.dot.visible = false;
+  }
+  if (galx.pts) {
+    galx.pts.material.uniforms.uDpr.value = VIEW.dpr;
+    if (galx.dirty) {
+      galx.geo.attributes.position.needsUpdate = true;
+      galx.geo.attributes.aCol.needsUpdate = true;
+      galx.geo.attributes.aSize.needsUpdate = true;
+      galx.dirty = false;
+    }
   }
 }
 
@@ -6517,7 +6793,10 @@ function applyCamera() {
 function frameOn(b, margin) {
   if (!b) return;
   view.target.copy(b.p);
-  view.dist = clamp(visRadius(b) * (margin || 9), MIN_DIST, MAX_DIST);
+  // A galaxy's bulge is a speck next to its disc; framing on the bulge would
+  // put the camera inside the thing you asked to look at.
+  const r = b.kind === 'gal' ? b.galR : visRadius(b);
+  view.dist = clamp(r * (margin || 9), MIN_DIST, MAX_DIST);
 }
 
 function resize() {
@@ -7496,28 +7775,35 @@ function renderGalaxyInspector(b) {
   const host = $('an-insp-body');
   $('an-insp-h').textContent = 'SELECTED';
   const lm = Math.log10(Math.max(b.m, 1));
+  const lr = Math.log10(Math.max(b.galR, 1));
+  let stars = 0;
+  for (let k = 0; k < GAL_MAX; k++) if (galx.own[k] === b.id) stars++;
 
   host.innerHTML =
     '<input class="an-name-in" id="is-name" maxlength="24" spellcheck="false" value="' + escAttr(b.name) + '">' +
-    '<div class="an-type">GALAXY</div>' +
+    '<div class="an-type">' + (b.galMerged ? 'MERGER REMNANT' : 'GALAXY') + '</div>' +
     '<dl class="an-stats">' +
     '<dt>Core mass</dt><dd id="is-mass"></dd>' +
-    '<dt>Drawn width</dt><dd id="is-gw"></dd>' +
-    '<dt>Spiral arms</dt><dd>' + b.galArms + '</dd>' +
+    '<dt>Disc radius</dt><dd id="is-gw"></dd>' +
+    '<dt>Stars simulated</dt><dd>' + stars.toLocaleString() + '</dd>' +
+    '<dt>Spiral arms</dt><dd>' + b.galArms + (b.galSpin < 0 ? ' ↺' : '') + '</dd>' +
+    (b.galMerged ? '<dt>Galaxies eaten</dt><dd>' + b.galMerged + '</dd>' : '') +
     '<dt id="is-orb-l">Orbiting</dt><dd id="is-orb"></dd>' +
     '</dl>' +
     '<div class="an-field"><label>Core mass <b id="is-mval"></b></label>' +
     '<input type="range" id="is-mslider" min="3" max="' + Math.log10(1e12 * M_SUN).toFixed(2) +
     '" step="0.01" value="' + lm.toFixed(3) + '"></div>' +
-    '<p class="an-note">Only the bulge in the middle pulls on anything. A real galaxy weighs about a trillion Suns — drag it all the way up and see what that does.</p>' +
-    '<div class="an-field"><label>Drawn width <b id="is-gwv"></b></label>' +
-    '<input type="range" id="is-gwide" min="' + settings.galMinPx + '" max="' + settings.galMaxPx +
-    '" step="10" value="' + Math.round(clamp(b.galWide, settings.galMinPx, settings.galMaxPx)) + '"></div>' +
-    '<p class="an-note">A galaxy is far too big to draw to scale — the Milky Way is a hundred thousand light-years across — so it is drawn at a fixed size on your screen instead, between ' +
-    settings.galMinPx + ' and ' + settings.galMaxPx + ' pixels. Zooming does not change it.</p>' +
+    '<p class="an-note">Everything that holds this galaxy together. A real one weighs about a trillion Suns — drag it all the way up and see what that does to the stars.</p>' +
+    '<div class="an-field"><label>Disc radius <b id="is-gwv"></b></label>' +
+    '<input type="range" id="is-gwide" min="1" max="7" step="0.01" value="' + lr.toFixed(3) + '"></div>' +
+    '<p class="an-note">Changing this rebuilds the disc from scratch, so anything already happening to it is lost.</p>' +
+    '<div class="an-row"><button id="is-reseed">REBUILD THE DISC</button></div>' +
     '<div class="an-row"><button id="is-follow">' + (sim.follow === b ? 'UNFOLLOW' : 'FOLLOW') + '</button><button id="is-zoom">ZOOM TO</button></div>' +
     '<div class="an-row"><button id="is-del" class="an-danger">REMOVE</button></div>' +
-    '<p style="font-size:11px;line-height:1.55;color:var(--ink-dim);margin-top:13px">' + TYPES.galaxy.blurb + '</p>';
+    '<p style="font-size:11px;line-height:1.55;color:var(--ink-dim);margin-top:13px">' +
+    (b.galMerged
+      ? 'What is left after a collision: two ordered discs stirred into one shapeless blob, with the stars still on whatever orbits the wreck left them. This is where elliptical galaxies come from.'
+      : TYPES.galaxy.blurb) + '</p>';
 
   inspRefs = { mass: $('is-mass'), gw: $('is-gw'), mval: $('is-mval'), orb: $('is-orb'), orbL: $('is-orb-l') };
 
@@ -7531,13 +7817,24 @@ function renderGalaxyInspector(b) {
     computeAccel();
     updateInspectorStats();
   });
-  const gw = $('is-gwide');
-  const showGw = () => $('is-gwv').textContent = Math.round(b.galWide) + ' px';
-  showGw();
-  gw.addEventListener('input', () => { b.galWide = parseFloat(gw.value); showGw(); updateInspectorStats(); });
 
+  const gw = $('is-gwide');
+  const showGw = () => $('is-gwv').textContent = fmtDist(b.galR);
+  showGw();
+  gw.addEventListener('input', () => { b.galR = Math.pow(10, parseFloat(gw.value)); showGw(); updateInspectorStats(); });
+  // Rebuilt on release, not on every frame of the drag — reseeding six thousand
+  // stars sixty times a second would be absurd. The mass comes along with the
+  // size, so a resized galaxy still turns once every GAL_PERIOD days.
+  gw.addEventListener('change', () => {
+    b.m = galMassFor(b.galR);
+    seedGalaxyStars(b);
+    computeAccel();
+    renderInspector();
+  });
+
+  $('is-reseed').addEventListener('click', () => { seedGalaxyStars(b); b.galMerged = 0; renderInspector(); toast(b.name + '’s disc rebuilt'); });
   $('is-follow').addEventListener('click', () => { sim.follow = sim.follow === b ? null : b; renderInspector(); });
-  $('is-zoom').addEventListener('click', () => { frameOn(b, 9); sim.follow = b; renderInspector(); });
+  $('is-zoom').addEventListener('click', () => { frameOn(b, 2.4); sim.follow = b; renderInspector(); });
   $('is-del').addEventListener('click', () => { select(null); removeBody(b); compact(); });
 
   updateInspectorStats();
@@ -7770,7 +8067,7 @@ function updateInspectorStats() {
 
   if (b.kind === 'gal') {
     inspRefs.mass.textContent = fmtMass(b.m);
-    if (inspRefs.gw) inspRefs.gw.textContent = Math.round(b.galWide) + ' px on screen';
+    if (inspRefs.gw) inspRefs.gw.textContent = fmtDist(b.galR);
     inspRefs.mval.textContent = fmtMass(b.m);
     const gp = dominantAt(b.p, b);
     if (gp && gp.m > b.m * 3) {
@@ -7894,9 +8191,9 @@ function openSettings() {
     '<p class="an-note">How long a protoplanetary disc takes to condense each new planet out of itself. Ours took tens of millions of years to build all eight.</p>' +
 
     '<div class="an-sec">GALAXIES</div>' +
-    '<p class="an-note">A galaxy is millions of times wider than anything else here, so it cannot be drawn to scale. It is drawn at a fixed size on your screen instead, and these are the limits of that.</p>' +
-    sld('st-galmin', 'Smallest a galaxy is drawn', 200, 3000, 50, settings.galMinPx) +
-    sld('st-galmax', 'Largest a galaxy is drawn', 400, 5000, 50, settings.galMaxPx) +
+    '<p class="an-note">A galaxy here is <b>six thousand real stars</b>, each one orbiting under the gravity of every galaxy core in the scene — which is what lets two of them genuinely collide. A real galaxy is millions of times wider than this sandbox can hold, so a new one is built at whatever size fills this much of your screen when you drop it. After that it has a real size in real units, and everything that happens to it is real physics.</p>' +
+    sld('st-galmin', 'Smallest a new galaxy', 200, 3000, 50, settings.galMinPx) +
+    sld('st-galmax', 'Largest a new galaxy', 400, 5000, 50, settings.galMaxPx) +
 
     '<div class="an-sec">SUPERNOVAE</div>' +
     '<p class="an-note">Every number below starts at its real measured value. Change whatever you like — <b>RESET</b> puts the universe back the way it actually is.</p>' +
@@ -8470,15 +8767,56 @@ const PRESETS = [
     }
   },
   {
-    name: 'Galaxy', desc: 'A spiral galaxy, drawn thousands of pixels across because the real thing would never fit. Its heavy middle still pulls on everything nearby.',
-    dist: 2000,
+    name: 'Galaxy', desc: 'A spiral galaxy — six thousand stars, each one really orbiting. Its heavy middle pulls on everything nearby.',
+    dist: 9000,
     build() {
       const g = makeBody('galaxy', new V3(), new V3(), { name: 'Andromeda' });
-      const s = orbitBody('sun_like', g, 900, { ang: 0.6 });
-      orbitBody('terrestrial', s, 149.6, { ang: 1.2 });
-      orbitBody('gas_giant', s, 620, { ang: 3.4 });
+      g.galR = 3200;
+      g.m = galMassFor(g.galR);
+      g.galAxis = new V3(0, 1, 0);
+      seedGalaxyStars(g);
       sim.running = true;
+      rateIdx = 7; sim.rate = RATES[rateIdx]; syncRate();
       return g;
+    }
+  },
+  {
+    name: 'Galaxy Collision', desc: 'Two spirals on a grazing pass. Watch the tidal tails whip out behind them, then the orbit decay, then the merger. This is what the Milky Way and Andromeda are going to do.',
+    dist: 26000,
+    build() {
+      // A prograde grazing encounter — the arrangement Toomre & Toomre used to
+      // reproduce the Antennae, and the one that throws the longest tails. The
+      // two discs are tilted differently so the tails are not mirror images.
+      const R = 3200, sep = R * 4.4;
+      const a = makeBody('galaxy', new V3(-sep / 2, 0, 0), new V3(), { name: 'Milky Way' });
+      const b = makeBody('galaxy', new V3(sep / 2, R * 0.28, 0), new V3(), { name: 'Andromeda' });
+      a.galR = R; b.galR = R * 0.88;
+      a.m = galMassFor(a.galR); b.m = galMassFor(b.galR);
+      a.galAxis = new V3(0, 1, 0);
+      b.galAxis = new V3(0.44, 0.86, 0.26).normalize();     // tilted to the encounter
+      a.galArms = 2; b.galArms = 2;
+      /* Both discs turn the same way round as the orbit does. This is the whole
+         trick: a PROGRADE encounter resonates with the stars' own motion and
+         throws enormous tails, while a retrograde one — the same two galaxies,
+         one of them merely spinning the other way — barely marks them. Toomre
+         and Toomre found this in 1972 and it is why the Antennae has two tails
+         and not none. */
+      a.galSpin = -1; b.galSpin = -1;
+      seedGalaxyStars(a); seedGalaxyStars(b);
+
+      /* Two thirds of the circular speed, measured through the same softened
+         potential the integrator uses. That puts them on a long ellipse that
+         brings them grazing past each other rather than either orbiting neatly
+         forever or falling straight in. */
+      const soft = a.galR * GAL_SOFT + b.galR * GAL_SOFT;
+      const dd = sep * sep + soft * soft;
+      const acc = G * settings.gravity * (a.m + b.m) * sep / (dd * Math.sqrt(dd));
+      const v = Math.sqrt(acc * sep) * 0.66;
+      a.v.set(0, 0, -v * 0.5); b.v.set(0, 0, v * 0.5);
+
+      sim.running = true;
+      rateIdx = 8; sim.rate = RATES[rateIdx]; syncRate();
+      return a;
     }
   },
   {
@@ -8506,6 +8844,7 @@ function clearAll() {
   for (const b of sim.bodies) { disposeVisual(b); }
   sim.bodies.length = 0;
   clearParticles();
+  clearGalaxyStars();
   clearSupernovae();
   clearDiscs();
   grewBodies.clear();
@@ -8549,7 +8888,13 @@ function saveUniverse() {
         p: [b.p.x, b.p.y, b.p.z], v: [b.v.x, b.v.y, b.v.z],
         // Everything the customise panel can change, so a rebuilt body comes
         // back exactly as it was left rather than as a factory one.
-        ct: b.coreT, tp: b.temp, rg: b.ringSpec, tn: b.tint, gw: b.galWide,
+        ct: b.coreT, tp: b.temp, rg: b.ringSpec, tn: b.tint,
+        // A galaxy is saved as its shape, not as six thousand star positions —
+        // the disc is rebuilt fresh on load. A collision in progress is lost.
+        gx: b.kind === 'gal'
+          ? { R: b.galR, arms: b.galArms, spin: b.galSpin, merged: b.galMerged || 0,
+              ax: b.galAxis ? b.galAxis.toArray() : null }
+          : null,
         st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount,
         cl: b.kind === 'gas' ? { age: b.clumpAge, life: b.clumpLife } : null,
         // A protoplanetary disc is saved with its star, not on its own.
@@ -8590,7 +8935,12 @@ function loadUniverse() {
     if (s.sc && s.sc.length) { b.scars = s.sc; b.scarCount = s.sn || s.sc.length; buildScars(b); }
     if (s.cl) { b.clumpAge = s.cl.age || 0; b.clumpLife = s.cl.life || 420; }
     if (s.tp != null) { b.temp = s.tp; updateLuminosity(b); }
-    if (s.gw != null) b.galWide = s.gw;
+    if (s.gx && b.kind === 'gal') {
+      b.galR = s.gx.R; b.galArms = s.gx.arms; b.galSpin = s.gx.spin;
+      b.galMerged = s.gx.merged || 0;
+      if (s.gx.ax) b.galAxis = new V3().fromArray(s.gx.ax);
+      seedGalaxyStars(b);
+    }
     if (s.st != null) b.stripped = s.st;
     if (s.m0 != null) b.m0 = s.m0;
     if (s.tn) {
@@ -8651,7 +9001,18 @@ function openHelp() {
     '<ul>' +
     '<li>A <b>Protostar + Disc</b> is a star still being born, wrapped in the flat disc of gas and dust it is feeding from. Start time and the disc <b>condenses into planets</b>, one at a time — rock and small worlds on the warm side of the <b>ice line</b>, giants just beyond it, exactly the order our own Solar System came out in. Every planet takes its mass out of the disc, so once the disc is spent, that is that.</li>' +
     '<li>A <b>brown dwarf</b> is a failed star: heavier than any planet, too light to fuse hydrogen. Here one keeps contracting until it <b>lights up as a red dwarf</b> after a hundred years (change that in Settings). A real one never manages it — it just fades for trillions of years — so this one is for fun.</li>' +
-    '<li>A <b>galaxy</b> is a hundred billion stars in a spiral. A real one is a hundred thousand light-years across, millions of times wider than anything else here, so it is the one thing not drawn to scale: it holds a <b>fixed size on your screen</b>, between 1,000 and 3,000 pixels, however far you zoom. Only its heavy middle actually pulls on anything — and you can wind that up to a trillion Suns and see what happens.</li>' +
+    '<li>A <b>galaxy</b> is eleven thousand individual stars, and every one of them is really orbiting. Drop two and crash them together — that is what <b>Galaxy Collision</b> in Systems sets up.</li>' +
+    '</ul>' +
+    '<h3>CRASHING GALAXIES TOGETHER</h3>' +
+    '<ul>' +
+    '<li>Each star is a <b>test particle</b>: it feels the pull of every galaxy core in the scene, but has no pull of its own. That is the model Alar and Jüri Toomre used in 1972 to work out where the strange shapes of interacting galaxies come from, and it is still how they are reproduced today. It costs almost nothing in realism — in a real galaxy the stars really are a rounding error next to the mass they orbit — and it is what makes twenty thousand of them affordable at once.</li>' +
+    '<li>What you get, and what is up there in the sky:</li>' +
+    '<li><b>TIDAL TAILS.</b> The far side of a disc is pulled less hard than the near side, so a passing galaxy flings a long thin streamer out behind it. These get <b>enormous</b> — ten times wider than the galaxy that threw them. The Antennae, the Mice and the Tadpole are all this.</li>' +
+    '<li><b>BRIDGES.</b> Material dragged the other way, straight across towards the intruder.</li>' +
+    '<li><b>THE MERGER.</b> Each galaxy ploughs through the other and leaves a wake of stars pulled in behind it, and that wake pulls back. The orbit decays a little on every pass, they fall together again, and after three or four passes they coalesce. Chandrasekhar worked this out in 1943 and it is the only reason galaxies merge at all. What is left is a shapeless blob — and that is where <b>elliptical galaxies come from</b>. It is also what the Milky Way and Andromeda are going to do, in about four billion years.</li>' +
+    '<li>One thing decides how big the tails are, and it is not mass or speed: <b>which way the disc is spinning</b>. A <b>prograde</b> pass, where the disc turns the same way round as the orbit, resonates with the stars\' own motion and throws vast tails. Turn the same galaxy the other way and the very same encounter barely marks it. Toomre found that too.</li>' +
+    '<li><b>The one thing that is not to scale.</b> A real galaxy is about a trillion times wider than the largest thing this sandbox can otherwise hold — drawn true, nothing else would be a single pixel. So a galaxy is built at whatever size fills part of your screen when you drop it (Settings sets the range), and its core mass is then chosen to give it a sensible rotation. After that everything is real physics at that size: the shapes are right, the timescale is not. A collision that would take a billion years plays out here in a couple of hundred.</li>' +
+    '<li>Saving a universe stores a galaxy\'s <b>shape</b>, not the position of every star, so a collision in progress is not preserved — the discs come back fresh.</li>' +
     '</ul>' +
     '<h3>MOVING AROUND</h3>' +
     '<div class="an-keys">' +
