@@ -168,6 +168,45 @@
     transform: rotate(-20deg); opacity: .85;
   }
   .an-dot.hole { background: #07060f !important; border: 2px solid currentColor; }
+  /* a protoplanetary disc: a dot inside a wide, flat halo */
+  .an-dot.disc::after {
+    content: ""; display: block; position: relative; top: 5px; left: -9px;
+    width: 35px; height: 9px; border: 1.6px solid currentColor; border-radius: 50%;
+    transform: rotate(-14deg); opacity: .6;
+    box-shadow: 0 0 7px currentColor;
+  }
+  .an-dot.gal {
+    background: radial-gradient(circle, #fff6d8 0%, currentColor 38%, rgba(0,0,0,0) 72%) !important;
+    box-shadow: 0 0 11px currentColor;
+  }
+  .an-dot.gal::after {
+    content: ""; display: block; position: relative; top: 4px; left: -8px;
+    width: 33px; height: 12px; border: 1.4px solid currentColor; border-radius: 50%;
+    transform: rotate(-24deg); opacity: .55;
+  }
+
+  /* ---------- customise block (inspector) ---------- */
+  .an-sub {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 1.2px;
+    color: var(--accent2); margin: 12px 0 2px;
+  }
+  .an-swatches { display: flex; gap: 6px; margin-top: 8px; }
+  .an-swatches input[type=color] {
+    flex: 1; height: 26px; padding: 0; cursor: pointer;
+    background: transparent; border: 1px solid rgba(150,130,255,0.34); border-radius: 7px;
+  }
+  .an-swatches input[type=color]::-webkit-color-swatch-wrapper { padding: 2px; }
+  .an-swatches input[type=color]::-webkit-color-swatch { border: none; border-radius: 5px; }
+
+  details.an-more { margin-top: 14px; border-top: 1px solid rgba(140,120,255,0.2); padding-top: 10px; }
+  details.an-more > summary {
+    font-family: "Press Start 2P", monospace; font-size: 7.5px; letter-spacing: 1.3px;
+    color: var(--accent); cursor: pointer; list-style: none; padding: 2px 0;
+  }
+  details.an-more > summary::-webkit-details-marker { display: none; }
+  details.an-more > summary::before { content: "\25B8 "; }
+  details.an-more[open] > summary::before { content: "\25BE "; }
+  details.an-more > summary:hover { color: var(--accent2); }
 
   /* ---------- inspector (right) ---------- */
   .an-empty { padding: 18px 14px; font-size: 12px; line-height: 1.6; color: var(--ink-dim); text-align: center; }
@@ -427,7 +466,7 @@
   <div class="an-top">
     <div class="an-brand">
       <a class="an-back" href="../" title="Back to CuriousScout" aria-label="Back to CuriousScout">&#9664;</a>
-      <div class="an-title">AstroNomia <span>1.0.3</span></div>
+      <div class="an-title">AstroNomia <span>1.0.4</span></div>
     </div>
 
     <div class="an-time panel">
@@ -488,14 +527,14 @@
 </div>
 
 <div class="an-boot" id="an-boot">
-  <div class="an-title">AstroNomia <span>1.0.3</span></div>
+  <div class="an-title">AstroNomia <span>1.0.4</span></div>
   <p id="an-boot-msg">FORMING THE UNIVERSE&hellip;</p>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ==========================================================================
-   AstroNomia 1.0.3 — a space sandbox
+   AstroNomia 1.0.4 — a space sandbox
    --------------------------------------------------------------------------
    Units used everywhere in the simulation:
      mass   = Earth masses      (M⊕ = 5.972e24 kg)
@@ -932,12 +971,12 @@ const SURFACE = {
     const dunes = ridged(fbm(seed + 77, 26, 6, 3));
     pixelPass(ctx, W, H, (u, v) => {
       const e = base(u, v);
-      let c = ramp([[0, [96, 52, 34]], [0.35, [152, 88, 52]], [0.6, [188, 124, 76]], [0.85, [208, 158, 108]], [1, [226, 196, 156]]], e);
+      let c = ramp(o.pal || [[0, [96, 52, 34]], [0.35, [152, 88, 52]], [0.6, [188, 124, 76]], [0.85, [208, 158, 108]], [1, [226, 196, 156]]], e);
       c = mix(c, [232, 204, 164], dunes(u, v) * 0.22);
       return c;
     });
-    craters(ctx, W, H, rng, 46, 0.006, 0.05, [226, 196, 158]);
-    iceCaps(ctx, W, H, rng, 0.09, [246, 240, 234]);
+    craters(ctx, W, H, rng, o.craters != null ? o.craters : 46, 0.006, 0.05, [226, 196, 158]);
+    iceCaps(ctx, W, H, rng, o.caps != null ? o.caps : 0.09, [246, 240, 234]);
   },
 
   /* Fractured ice shell — Europa, Enceladus. */
@@ -947,7 +986,7 @@ const SURFACE = {
     const dirt = fbm(seed + 12, 3, 2, 3);
     pixelPass(ctx, W, H, (u, v) => {
       const e = base(u, v);
-      let c = ramp([[0, [176, 190, 208]], [0.5, [214, 228, 240]], [1, [246, 250, 255]]], e);
+      let c = ramp(o.pal || [[0, [176, 190, 208]], [0.5, [214, 228, 240]], [1, [246, 250, 255]]], e);
       const d = dirt(u, v);
       if (d < 0.4) c = mix(c, [148, 132, 118], (0.4 - d) * 1.1);
       return c;
@@ -1540,6 +1579,16 @@ const TYPES = {
     surf: 'neutron', temp: 600000, star: true, spin: 1 / 86400, lumCap: 0.02,
     blurb: 'A city-sized stellar corpse spinning hundreds of times a second. One teaspoon weighs a billion tonnes.'
   },
+  brown_dwarf: {
+    label: 'Brown Dwarf', group: 'STARS', mass: 40 * 317.8, rad: 11.0,
+    surf: 'gas', temp: 1300, star: true, brown: true, spin: 0.35,
+    opts: {
+      pal: [[0, [26, 10, 12]], [0.22, [92, 26, 22]], [0.4, [158, 54, 32]], [0.52, [72, 20, 20]],
+        [0.66, [176, 66, 38]], [0.82, [64, 18, 18]], [1, [22, 8, 10]]],
+      bands: 6, storms: 2
+    },
+    blurb: 'A "failed star" — heavier than any planet but too light to fuse hydrogen, so it just glows a dull infrared red. In AstroNomia one keeps shrinking and heating until it lights up as a red dwarf; give it a hundred years.'
+  },
 
   /* ---- planets ---------------------------------------------------------- */
   terrestrial: {
@@ -1675,15 +1724,102 @@ const TYPES = {
     surf: 'icegiant', spin: 0.9, atmo: [80, 110, 160],
     opts: { pal: [[0, [24, 34, 66]], [0.35, [38, 58, 104]], [0.55, [54, 82, 132]], [0.75, [40, 62, 108]], [1, [20, 30, 60]]] },
     blurb: 'HYPOTHETICAL — a giant hiding far beyond Neptune, hinted at by the tilted orbits of distant ice.'
+  },
+
+  /* ---- discs & galaxies -------------------------------------------------- */
+  protostar: {
+    label: 'Protostar + Disc', group: 'DISCS & GALAXIES', mass: 0.9 * M_SUN, rad: 2.4 * R_SUN,
+    surf: 'star', temp: 4200, star: true, spin: 8, spots: 18, disc: true, opts: { warm: 0.55 },
+    blurb: 'A star still being born, wrapped in the flat disc of gas and dust it is feeding from. Wait, and the disc will clump together into planets — which is exactly how our own Solar System was made.'
+  },
+  galaxy: {
+    label: 'Galaxy', group: 'DISCS & GALAXIES', mass: 4.3e6 * M_SUN, rad: 0,
+    kind: 'gal', spin: 6e6,
+    blurb: 'A hundred billion stars in a spiral. A real one is a hundred thousand light-years across — millions of times wider than this whole sandbox — so it is drawn far smaller than life, and only its heavy middle actually pulls on anything.'
+  },
+
+  /* ---- the real Solar System -------------------------------------------- */
+  /* Real masses, real radii, real spin periods, real axial tilts.            */
+  sol_sun: {
+    label: 'The Sun', group: 'SOLAR SYSTEM', pname: 'Sol', mass: M_SUN, rad: R_SUN,
+    surf: 'star', temp: 5772, star: true, spin: 25.05, spots: 8, tilt: 0.126, opts: { warm: 0.34 },
+    blurb: 'Our own star. It holds 99.86% of all the mass in the Solar System, and has another five billion years to go.'
+  },
+  sol_mercury: {
+    label: 'Mercury', group: 'SOLAR SYSTEM', pname: 'Mercury', mass: 0.0553, rad: 0.3829,
+    surf: 'rock', spin: 58.646, tilt: 0.0005, opts: { craters: 210, dark: true },
+    blurb: 'The smallest planet and the fastest — a year here lasts 88 days. Baked on one side, freezing on the other, and covered in craters like the Moon.'
+  },
+  sol_venus: {
+    label: 'Venus', group: 'SOLAR SYSTEM', pname: 'Venus', mass: 0.815, rad: 0.9499,
+    // 737 K, and none of it from sunlight: without the greenhouse effect of all
+    // that carbon dioxide Venus would sit at about 230 K, colder than Earth.
+    surf: 'desert', spin: -243.02, tilt: 3.0955, atmo: [255, 226, 160], clouds: 0.95, floorT: 737,
+    opts: {
+      pal: [[0, [120, 82, 40]], [0.4, [186, 148, 84]], [0.7, [224, 196, 132]], [1, [246, 232, 188]]],
+      craters: 8, caps: 0
+    },
+    blurb: 'Earth\'s evil twin: almost the same size, but wrapped in acid cloud and hot enough to melt lead. It also spins backwards, and slower than it orbits — a day here is longer than its year.'
+  },
+  sol_earth: {
+    label: 'Earth', group: 'SOLAR SYSTEM', pname: 'Earth', mass: 1, rad: 1,
+    surf: 'terran', spin: 0.99727, tilt: 0.4091, atmo: SKY, clouds: 0.55,
+    blurb: 'The only place anyone has ever lived. Seven-tenths water, tipped 23.4° on its axis — which is the entire reason we have seasons.'
+  },
+  sol_luna: {
+    label: 'The Moon', group: 'SOLAR SYSTEM', pname: 'Luna', mass: 0.0123, rad: 0.2727,
+    surf: 'rock', spin: 27.322, tilt: 0.0269, opts: { craters: 170 },
+    blurb: 'Our Moon, and the only other world people have stood on. It turns exactly once per orbit, so it always shows us the same face.'
+  },
+  sol_mars: {
+    label: 'Mars', group: 'SOLAR SYSTEM', pname: 'Mars', mass: 0.107, rad: 0.5320,
+    surf: 'desert', spin: 1.02595, tilt: 0.4396, atmo: [255, 170, 130], clouds: 0.05,
+    blurb: 'The rusty one. It has the tallest volcano and the deepest canyon in the Solar System, and a day almost exactly as long as ours.'
+  },
+  sol_jupiter: {
+    label: 'Jupiter', group: 'SOLAR SYSTEM', pname: 'Jupiter', mass: 317.8, rad: 11.209,
+    surf: 'gas', spin: 0.41354, tilt: 0.0546, atmo: [255, 220, 180], lumCap: 0,
+    opts: {
+      pal: [[0, [128, 92, 62]], [0.18, [198, 160, 112]], [0.34, [242, 226, 196]], [0.48, [176, 132, 92]],
+        [0.62, [246, 234, 208]], [0.78, [186, 140, 96]], [1, [116, 82, 56]]],
+      bands: 11, storms: 5, stormPal: [[214, 96, 62], [246, 232, 202], [188, 84, 54]]
+    },
+    blurb: 'The giant — twice as heavy as everything else in the Solar System put together. Its Great Red Spot is a storm wider than Earth that has been blowing for centuries.'
+  },
+  sol_saturn: {
+    label: 'Saturn', group: 'SOLAR SYSTEM', pname: 'Saturn', mass: 95.16, rad: 9.449,
+    surf: 'gas', spin: 0.43958, atmo: [255, 232, 192],
+    opts: { pal: [[0, [150, 122, 80]], [0.25, [214, 190, 142]], [0.45, [244, 228, 190]], [0.6, [206, 178, 130]], [0.8, [232, 214, 176]], [1, [156, 128, 88]]], bands: 8, storms: 3 },
+    rings: { inner: 1.24, outer: 2.27, pal: [[236, 220, 190], [166, 142, 112]], tilt: 0.4665, opacity: 0.92 },
+    blurb: 'The ringed one. Those rings are billions of lumps of ice, some the size of a house, and they are barely ten metres thick. Saturn is also less dense than water — it would float.'
+  },
+  sol_uranus: {
+    label: 'Uranus', group: 'SOLAR SYSTEM', pname: 'Uranus', mass: 14.536, rad: 4.007,
+    surf: 'icegiant', spin: -0.71833, atmo: [180, 240, 245],
+    opts: { pal: [[0, [110, 178, 186]], [0.35, [150, 214, 216]], [0.55, [178, 232, 232]], [0.75, [146, 208, 212]], [1, [104, 168, 180]]] },
+    rings: { inner: 1.64, outer: 2.00, pal: [[110, 128, 146], [48, 58, 76]], tilt: 1.7064, opacity: 0.45 },
+    blurb: 'The tipped-over planet. Something knocked it onto its side long ago, so it rolls around the Sun like a barrel and each pole gets 42 years of daylight.'
+  },
+  sol_neptune: {
+    label: 'Neptune', group: 'SOLAR SYSTEM', pname: 'Neptune', mass: 17.147, rad: 3.883,
+    surf: 'icegiant', spin: 0.6713, tilt: 0.4943, atmo: [110, 160, 255],
+    opts: { pal: [[0, [22, 44, 116]], [0.3, [40, 72, 168]], [0.5, [62, 104, 202]], [0.72, [44, 78, 174]], [1, [20, 40, 108]]] },
+    blurb: 'The farthest planet, and the windiest place in the Solar System — its storms blow at 2,000 km/h. It was found with mathematics before anyone ever looked for it.'
+  },
+  sol_pluto: {
+    label: 'Pluto', group: 'SOLAR SYSTEM', pname: 'Pluto', mass: 0.00218, rad: 0.1868,
+    surf: 'ice', spin: -6.3872, tilt: 2.1386,
+    opts: { pal: [[0, [96, 74, 62]], [0.5, [186, 166, 150]], [1, [238, 230, 214]] ] },
+    blurb: 'A dwarf planet since 2006, and still everyone\'s favourite. It has a heart-shaped plain of frozen nitrogen and a moon half its own width.'
   }
 };
 
-const GROUPS = ['STARS', 'PLANETS', 'MOONS & DEBRIS', 'EXOTIC', 'HYPOTHETICAL'];
+const GROUPS = ['STARS', 'PLANETS', 'MOONS & DEBRIS', 'EXOTIC', 'HYPOTHETICAL', 'DISCS & GALAXIES', 'SOLAR SYSTEM'];
 
 /* Representative swatch colour for each palette entry. */
 const SWATCH = {
   red_dwarf: '#ff7a52', sun_like: '#ffe9a8', blue_giant: '#b9d4ff', red_supergiant: '#ff8a5c',
-  wolf_rayet: '#dff0ff', white_dwarf: '#e8f2ff', neutron_star: '#cfe4ff',
+  wolf_rayet: '#dff0ff', white_dwarf: '#e8f2ff', neutron_star: '#cfe4ff', brown_dwarf: '#a03a2c',
   terrestrial: '#4d96ff', super_earth: '#5aa870', ocean_world: '#2bb4d6', desert_world: '#c98a52',
   ice_world: '#dbeaf7', lava_world: '#ff6a2a', gas_giant: '#d9b183', ice_giant: '#5aa8de',
   ringed_giant: '#e8d3a0',
@@ -1691,7 +1827,11 @@ const SWATCH = {
   black_hole: '#b388ff', smbh: '#ff6fd8', white_hole: '#fff3b0', rogue_planet: '#54627e',
   chthonian: '#a35434', carbon_world: '#8fa8c8', iron_world: '#b08a6e',
   super_puff: '#f2c8d8', eyeball_world: '#7fb8d8', hycean_world: '#3f9fd8',
-  theia: '#9a8f84', planet_nine: '#3a5a92'
+  theia: '#9a8f84', planet_nine: '#3a5a92',
+  protostar: '#ffb46a', galaxy: '#c8a2ff',
+  sol_sun: '#ffe08a', sol_mercury: '#9c948c', sol_venus: '#e8c98a', sol_earth: '#3f7fd6',
+  sol_luna: '#c9c4bc', sol_mars: '#c1502a', sol_jupiter: '#d6a870', sol_saturn: '#e8d3a0',
+  sol_uranus: '#9fdcdc', sol_neptune: '#2f56c8', sol_pluto: '#cbbfae'
 };
 
 const NAME_POOL = {
@@ -1699,7 +1839,9 @@ const NAME_POOL = {
   PLANETS: ['Terra', 'Aurora', 'Meridian', 'Tellus', 'Nyx', 'Halcyon', 'Elysia', 'Thalassa', 'Cinder', 'Vesper', 'Zephyr', 'Oasis', 'Kestrel', 'Lumen', 'Onyx', 'Cobalt', 'Verdant', 'Solace', 'Anvil', 'Marrow'],
   'MOONS & DEBRIS': ['Luna', 'Io', 'Europa', 'Callisto', 'Titan', 'Rhea', 'Dione', 'Mimas', 'Charon', 'Phobos', 'Deimos', 'Triton', 'Enceladus', 'Iapetus', 'Hyperion', 'Pebble', 'Shard', 'Nomad', 'Drifter', 'Ember'],
   EXOTIC: ['Cygnus X', 'Gargantua', 'Erebus', 'Abyss', 'Maelstrom', 'Kerr', 'Penrose', 'Hades', 'Tartarus', 'Vantablack'],
-  HYPOTHETICAL: ['Tyche', 'Vulcan', 'Phaeton', 'Nemesis', 'Lilith', 'Persephone', 'Chiron', 'Aether', 'Erytheia', 'Hesperus']
+  HYPOTHETICAL: ['Tyche', 'Vulcan', 'Phaeton', 'Nemesis', 'Lilith', 'Persephone', 'Chiron', 'Aether', 'Erytheia', 'Hesperus'],
+  'DISCS & GALAXIES': ['Andromeda', 'Triangulum', 'Whirlpool', 'Sombrero', 'Pinwheel', 'Cartwheel', 'Centaurus A', 'Bode', 'Cigar', 'Sculptor'],
+  'SOLAR SYSTEM': ['Terra', 'Aurora', 'Meridian', 'Vesper', 'Zephyr', 'Onyx', 'Cobalt', 'Solace']
 };
 
 const usedNames = new Set();
@@ -1721,6 +1863,9 @@ function renameBody(b, raw) {
 function makeName(type) {
   const def = TYPES[type];
   const pool = NAME_POOL[def.group] || NAME_POOL.PLANETS;
+  // The Solar System entries are specific worlds, not examples of a kind, so
+  // they keep their own names — "Jupiter II" only if you place a second one.
+  if (def.pname) return unique(def.pname);
   if (type === 'theia') return unique('Theia');
   if (type === 'planet_nine') return unique('Planet Nine');
   for (let i = 0; i < 24; i++) {
@@ -1763,11 +1908,20 @@ const settings = {
   gravity: 1,
   collisions: 'merge',   // merge | bounce | off
   tidal: true,
+  strip: true,           // inside the Roche limit, shave mass off before breaking up
+  stripRate: 1,          // × how fast that shaving goes
+  tideHeat: true,        // …and let the kneading raise the body's internal temperature
   trails: true,
   labels: true,
   lensing: true,
   hzone: false,
-  autoOrbit: true
+  autoOrbit: true,
+  grid: true,            // draw a measuring grid while something is armed
+  gridSnap: false,       // …and snap the drop point to its intersections
+  bdYears: 100,          // years a brown dwarf takes to light up as a red dwarf
+  discYears: 4,          // years between planets condensing out of a protoplanetary disc
+  galMinPx: 1000,        // a galaxy is never drawn narrower than this on screen…
+  galMaxPx: 3000         // …nor wider than this
 };
 
 /**
@@ -1798,10 +1952,41 @@ const SN_REAL = Object.assign({}, snSet);
 
 /* ------------------------------------------------------------ body creation */
 
+/* The gravitating core of a galaxy — its bulge, not its disc. The drawn spiral
+   is millions of times wider than this and is pure scenery (see GAL_PX). */
+const GAL_CORE_R = 6;            // Gm
+
 function trueRadius(type, mass) {
   const def = TYPES[type];
   if (def.kind === 'bh' || def.kind === 'wh') return schwarzschild(mass);
+  if (def.kind === 'gal') return GAL_CORE_R;
   return def.rad * R_EARTH * Math.cbrt(mass / def.mass);   // constant density
+}
+
+/**
+ * Starting internal temperature, in kelvin. This is the *inside* of a body, not
+ * its sunlit surface: leftover heat from forming, plus whatever radioactivity
+ * and tides have added since. Earth's core really is about 5,700 K — as hot as
+ * the surface of the Sun — and this is the number tidal kneading pushes up.
+ */
+function baseCoreT(def, mass) {
+  if (def.kind === 'bh' || def.kind === 'wh' || def.kind === 'gal') return 0;
+  if (def.star) {
+    // Measured values, not a formula: the inside of a star has almost nothing
+    // to do with the temperature of its surface. The Sun's photosphere is
+    // 5,778 K and its core is 15.7 million.
+    if (def.brown) return 3e6;
+    if (def.surf === 'neutron') return 5e8;
+    if (def.surf === 'dwarfstar') return 1e7;
+    return def.temp * 2718;                  // puts a Sun-like star at 15.7 MK
+  }
+  // Bigger worlds trap their formation heat far better than small ones do, so
+  // the seed is the value for a one-Earth-mass world and everything scales off
+  // it. That lands Earth at 5,700 K, the Moon at 1,700 and Pluto at 1,000 —
+  // which are the numbers geologists actually quote.
+  const scale = Math.pow(clamp(mass, 1e-6, 1e5), 0.28);
+  const seed = def.glowHot ? 7000 : GASSY_SURF.has(def.surf) ? 4200 : 5700;
+  return clamp(seed * scale, 60, 90000);
 }
 
 function makeBody(type, pos, vel, overrides) {
@@ -1824,10 +2009,23 @@ function makeBody(type, pos, vel, overrides) {
     seed: o.seed != null ? o.seed : (Math.random() * 1e6) | 0,
     spin: o.spin != null ? o.spin : (def.spin || 1),
     rot: Math.random() * TAU,
-    tilt: o.tilt != null ? o.tilt : (def.rings ? def.rings.tilt : rnd(-0.42, 0.42)),
+    tilt: o.tilt != null ? o.tilt
+      : def.tilt != null ? def.tilt
+      : def.rings ? def.rings.tilt : rnd(-0.42, 0.42),
     temp: def.temp || 0,
+    // Internal temperature. Tides raise it, and it leaks away again slowly.
+    coreT: o.coreT != null ? o.coreT : baseCoreT(def, mass),
+    // Per-body ring specification, so any world can be given rings and any
+    // ringed world can have its own changed. Cloned, never shared with TYPES.
+    ringSpec: o.rings !== undefined ? (o.rings ? Object.assign({}, o.rings) : null)
+      : def.rings ? Object.assign({}, def.rings) : null,
     lum: 0,
     alive: true,
+    // How much of its original mass the tides have already shaved off, and the
+    // dust waiting to be released as a ring burst.
+    stripped: 0,
+    stripPending: 0,
+    m0: mass,
     // Rubble is flagged as already-disrupted so tides cannot shatter it again.
     // Without this, fragments born inside a Roche limit break up on the next
     // step, and each generation spawns more — a runaway to the body cap.
@@ -1843,6 +2041,8 @@ function makeBody(type, pos, vel, overrides) {
   updateLuminosity(b);
   buildVisual(b);
   sim.bodies.push(b);
+  // A protostar arrives wrapped in the disc it is still feeding from.
+  if (def.disc && !o.noDisc) makeDisc(b, o.disc);
   return b;
 }
 
@@ -1851,6 +2051,10 @@ function visRadius(b) {
   if (b.kind === 'bh' || b.kind === 'wh') return b.r * 2.6 * settings.bodyScale * BH_VIS;
   // A remnant cloud is light-days across already; exaggerating it would be absurd.
   if (b.kind === 'snr') return b.r;
+  // Deliberately NOT a galaxy's drawn size: that is a screen measurement (see
+  // updateGalaxies) and letting it into the physics would give a galaxy a
+  // capture radius and a Roche limit the width of the visible universe. What
+  // gravitates is the bulge, and this is how wide the bulge is.
   return b.r * settings.bodyScale;
 }
 
@@ -1954,7 +2158,9 @@ function computeAccel() {
         const rvx = bj.v.x - bi.v.x, rvy = bj.v.y - bi.v.y, rvz = bj.v.z - bi.v.z;
         touch += Math.sqrt(rvx * rvx + rvy * rvy + rvz * rvz) * lastStepDt;
       }
-      if (d2 < touch * touch) collisionPairs.push(bi, bj);
+      // A galaxy is mostly empty space — things fly through one, they do not
+      // hit it — so it never registers a collision.
+      if (d2 < touch * touch && bi.kind !== 'gal' && bj.kind !== 'gal') collisionPairs.push(bi, bj);
     }
   }
   lastMinTdyn = Math.sqrt(minT2);
@@ -1979,7 +2185,7 @@ function step(dt) {
   }
   sim.time += dt;
   resolveCollisions();
-  if (settings.tidal) checkTides();
+  if (settings.tidal) updateTides(dt);
 }
 
 /** Advance the simulation by one rendered frame's worth of time. */
@@ -1999,6 +2205,7 @@ function advance(frameSeconds) {
   // life is measured in millions of years, so a fraction of a day either way
   // makes no difference at all.
   if (snSet.aging) ageStars(target);
+  ripenBrownDwarfs(target);
 
   // Debris gets its own, capped substepping. It does not need the planets'
   // accuracy, and at extreme time compression 64 passes over a full pool would
@@ -2256,6 +2463,12 @@ const isRocky = (b) =>
 function checkEvolution(b) {
   if (!b.alive || b.kind !== 'body') return null;
   const def = TYPES[b.type];
+  if (def.brown) {
+    // Feed a brown dwarf enough and it does not have to wait a hundred years —
+    // it crosses the hydrogen-burning limit there and then.
+    if (b.m >= IGNITE_MASS) { becomeStar(b); return 'star'; }
+    return null;
+  }
   if (def.star) {
     // Nothing at all holds up a neutron star past the Tolman–Oppenheimer–Volkoff
     // limit, so it just goes quietly.
@@ -2317,8 +2530,41 @@ function becomeStar(b) {
   b.temp = TYPES[b.type].temp;
   b.r = trueRadius(b.type, b.m);
   b.spin = TYPES[b.type].spin;
+  b.coreT = baseCoreT(TYPES[b.type], b.m);
   updateLuminosity(b);
   refreshVisual(b);
+}
+
+/**
+ * Brown dwarfs light up.
+ *
+ * A real brown dwarf never does this — that is the whole definition of one: it
+ * is too light to ever start burning hydrogen, and it just fades for trillions
+ * of years. Here they keep contracting until they do ignite, on a clock you set
+ * in Settings (a hundred years out of the box). Watching a failed star finally
+ * catch is more fun than watching it not.
+ */
+function ripenBrownDwarfs(dt) {
+  const span = Math.max(settings.bdYears, 0.01) * 365.25;
+  for (const b of sim.bodies) {
+    if (!b.alive || b.kind !== 'body' || !TYPES[b.type].brown) continue;
+    b.bdAge = (b.bdAge || 0) + dt;
+    if (b.bdAge < span) continue;
+    const name = b.name;
+    const oldR = visRadius(b);
+    b.type = 'red_dwarf';
+    b.age = 0;
+    b.bdAge = 0;
+    b.temp = TYPES.red_dwarf.temp;
+    b.spin = TYPES.red_dwarf.spin;
+    b.r = trueRadius('red_dwarf', b.m);
+    b.coreT = baseCoreT(TYPES.red_dwarf, b.m);
+    b.glowPulse = 1;
+    updateLuminosity(b);
+    refreshVisual(b);
+    fx.flash(b.p, Math.max(visRadius(b), oldR) * 8, [255, 196, 120], 1);
+    toast(name + ' finally caught fire — it is a red dwarf now!');
+  }
 }
 
 function becomeBlackHole(b) {
@@ -2428,6 +2674,11 @@ function snPlan(b) {
   if (!b || !b.alive || b.kind !== 'body') return no('Only a star has a core that can collapse.');
   const def = TYPES[b.type];
   if (!def.star) return no(b.name + ' is not a star — there is no core here to collapse.');
+  if (def.brown) {
+    return no(b.name + ' is a brown dwarf: it has never managed to fuse hydrogen at all, so there ' +
+      'is nothing here to run out of. Wait for it to light up, or feed it past ' +
+      (IGNITE_MASS / M_SUN).toFixed(3) + ' M☉ to start it now.');
+  }
   if (def.surf === 'neutron') {
     return no('A neutron star is already what a supernova leaves behind. Feed it past ' +
       TOV_LIMIT + ' M☉ and it collapses into a black hole instead.');
@@ -3422,7 +3673,7 @@ function ageStars(dt) {
   for (const b of sim.bodies) {
     if (b.kind !== 'body') continue;
     const def = TYPES[b.type];
-    if (!def.star || def.surf === 'neutron' || def.surf === 'dwarfstar') continue;
+    if (!def.star || def.brown || def.surf === 'neutron' || def.surf === 'dwarfstar') continue;
     b.age += dt * boost;
     if (b.age >= msLifetime(b.m / M_SUN)) (dying || (dying = [])).push(b);
   }
@@ -3510,23 +3761,104 @@ function rocheLimit(P, s) {
   );
 }
 
-function checkTides() {
+/*
+ * Crossing the Roche limit is not a switch, it is a process — which is exactly
+ * what you watch happen to a comet falling into Jupiter. So a body inside the
+ * limit does two things at once, both of them harder the deeper in it is:
+ *
+ *   1. It is STRIPPED. The tide lifts material off the side facing the primary
+ *      and off the far side too, and that material goes straight into orbit as
+ *      ring dust. The body genuinely loses the mass — it is handed to real
+ *      particles, so nothing is created or destroyed.
+ *
+ *   2. It HEATS UP inside. The tide kneads it, the flexing turns into heat, and
+ *      the inside gets hotter the whole time it stays there. This is why Io has
+ *      four hundred volcanoes and why Europa has an ocean under its ice.
+ *
+ * Only once it has lost most of itself — or falls right to the bottom of the
+ * limit — does it finally come apart into fragments.
+ */
+
+const STRIP_SHARE = 0.55;    // fraction of its own mass a body can shed before it breaks up
+const TIDE_T_MAX = 32000;    // K — how hot tidal kneading alone can drive a core
+const TIDE_COOL = 0.006;     // per day, how fast the extra heat leaks away again
+
+/** How deep inside the Roche limit a satellite is: 0 at the edge, 1 at the surface. */
+function tideStress(P, s, d, roche) {
+  const touch = visRadius(P) + visRadius(s);
+  if (d >= roche) return 0;
+  const span = Math.max(roche - touch, 1e-9);
+  return clamp((roche - d) / span, 0, 1);
+}
+
+function updateTides(dt) {
   const bs = sim.bodies;
+  let doomed = null, doomedP = null, doomedD = 0;
+
   for (let i = 0; i < bs.length; i++) {
     const s = bs[i];
-    if (!s.alive || s.disrupted || s.kind !== 'body') continue;
-    if (TYPES[s.type].star || s.m > 40) continue;          // too big / too hot to shred
+    if (!s.alive || s.kind !== 'body') continue;
+    const sdef = TYPES[s.type];
+    // Stars and anything genuinely massive hold themselves together by their
+    // own gravity far better than a moon does; rubble has already been shredded.
+    const immune = sdef.star || s.m > 40 || s.disrupted;
+
+    // Find the primary raising the biggest tide on this body.
+    let best = null, bestX = 0, bestD = 0;
     for (let j = 0; j < bs.length; j++) {
       const P = bs[j];
       if (P === s || !P.alive || P.m < s.m * 12) continue;
-      const roche = rocheLimit(P, s);
       const d = s.p.distanceTo(P.p);
-      if (d < roche && d > visRadius(P) + visRadius(s)) {
-        tidalDisrupt(s, P, d);
-        return;                                            // one per step is plenty
+      const roche = rocheLimit(P, s);
+      if (d >= roche) continue;
+      const x = tideStress(P, s, d, roche);
+      if (x > bestX) { bestX = x; best = P; bestD = d; }
+    }
+
+    s.tideX = bestX;
+    s.tidePrimary = best;
+
+    /* ---- heat. Applies to everything, immune or not: a star being squeezed by
+       a black hole is not exempt from being kneaded, it just does not crumble. */
+    if (settings.tideHeat && bestX > 0) {
+      const ceiling = Math.max(baseCoreT(sdef, s.m), TIDE_T_MAX * Math.pow(bestX, 1.4));
+      // Approach the ceiling rather than climbing forever — the hotter it gets,
+      // the faster it radiates the difference back out.
+      s.coreT += (ceiling - s.coreT) * clamp(0.05 * bestX * dt, 0, 0.6);
+    }
+
+    if (!best || immune || !settings.strip) continue;
+
+    /* ---- strip. Nothing at all right at the edge, everything at the bottom. */
+    const rate = 0.045 * settings.stripRate * Math.pow(bestX, 2.2);
+    const loss = Math.min(s.m * rate * dt, s.m * 0.4);
+    if (loss > 0) {
+      s.m -= loss;
+      s.stripped += loss;
+      s.stripPending += loss;
+      s.r = trueRadius(s.type, s.m);
+      scaleVisual(s);
+      // Release the dust in bursts rather than one grain per step, so a handful
+      // of particles carries a visible amount of matter instead of nothing.
+      if (s.stripPending > s.m0 * 0.02) {
+        const put = ringEjecta(s.p, s.v, best, 40, s.stripPending, 0.10,
+          [255, 228, 196], [150, 138, 128]);
+        s.stripPending -= put;
+        if (!s.stripToast) {
+          s.stripToast = 1;
+          toast(s.name + ' is being torn at by ' + best.name + '’s tides');
+        }
       }
     }
+
+    // Down to a stub, or right down on the primary: it finally comes apart.
+    if (s.stripped >= s.m0 * STRIP_SHARE || bestX > 0.97) {
+      if (!doomed) { doomed = s; doomedP = best; doomedD = bestD; }
+    }
   }
+
+  // One break-up per step is plenty — each one spends particles and body slots.
+  if (doomed) tidalDisrupt(doomed, doomedP, doomedD);
 }
 
 function tidalDisrupt(s, P, d) {
@@ -3551,7 +3883,9 @@ function tidalDisrupt(s, P, d) {
     const vel = P.v.clone()
       .addScaledVector(tang, speed * rnd(0.97, 1.03))
       .addScaledVector(radial, speed * rnd(-0.02, 0.02));
-    made.push(makeBody(each > 0.004 ? 'moon' : 'asteroid', pos, vel, { mass: Math.max(each, 1e-7), name: 'Ring frag', rubble: true }));
+    // Fragments carry the heat the parent body built up on its way in.
+    made.push(makeBody(each > 0.004 ? 'moon' : 'asteroid', pos, vel,
+      { mass: Math.max(each, 1e-7), name: 'Ring frag', rubble: true, coreT: s.coreT }));
   }
   // The ring should drift exactly as the moon did, not gain a net kick.
   let tot = 0;
@@ -3567,6 +3901,27 @@ function tidalDisrupt(s, P, d) {
 
 /* ========================================================== temperature     */
 
+/**
+ * Internal heat leaks away towards whatever the body's own size and make-up can
+ * hold — quickly for a pebble, hardly at all for a gas giant. Run on rendered
+ * frames rather than physics substeps: this is a slow process and does not need
+ * the accuracy.
+ */
+function coolCores(simDt) {
+  if (simDt <= 0) return;
+  for (let i = 0; i < sim.bodies.length; i++) {
+    const b = sim.bodies[i];
+    if (b.kind !== 'body' || b.coreT == null) continue;
+    const def = TYPES[b.type];
+    if (def.star) continue;                    // a star makes its own heat
+    const floor = baseCoreT(def, b.m);
+    if (b.coreT <= floor) { b.coreT = floor; continue; }
+    // Small bodies have far more surface per tonne, so they dump heat faster.
+    const k = TIDE_COOL / Math.pow(clamp(b.m, 1e-6, 1e5), 0.22);
+    b.coreT = floor + (b.coreT - floor) * Math.exp(-k * simDt);
+  }
+}
+
 function updateTemperatures() {
   const stars = sim.starCache;
   for (let i = 0; i < sim.bodies.length; i++) {
@@ -3580,8 +3935,15 @@ function updateTemperatures() {
     }
     // 278.6 K is the equilibrium temperature at 1 AU from a Sun-like star
     const eq = flux > 0 ? 278.6 * Math.pow(flux, 0.25) : 3;
-    const floor = TYPES[b.type].glowHot ? 1200 : 3;
-    b.temp = Math.max(eq, floor);
+    const def = TYPES[b.type];
+    // `floorT` is for worlds kept warm by something other than starlight — a
+    // greenhouse atmosphere on Venus, an open magma ocean on a lava world.
+    const floor = def.floorT != null ? def.floorT : def.glowHot ? 1200 : 3;
+    // Heat forced into the middle has to come back out through the surface, so
+    // a world being kneaded hard glows on its own even out in the dark.
+    const excess = Math.max(0, (b.coreT || 0) - baseCoreT(def, b.m));
+    const inner = excess > 0 ? Math.pow(excess, 0.75) * 1.1 : 0;
+    b.temp = Math.max(eq, floor, inner);
   }
 }
 
@@ -3648,6 +4010,7 @@ function initScene() {
   scene.add(new THREE.AmbientLight(0xffffff, 0.055));
 
   buildSky();
+  buildGrid();
   initParticles();
   initPost();
   resize();
@@ -3845,6 +4208,7 @@ function buildVisual(b) {
 
   if (b.kind === 'bh') buildHole(b, grp);
   else if (b.kind === 'wh') buildWhiteHole(b, grp);
+  else if (b.kind === 'gal') buildGalaxy(b, grp);
   else buildWorld(b, def, grp);
 
   // A pixel-floor marker so distant bodies never vanish entirely.
@@ -3964,15 +4328,7 @@ function buildWorld(b, def, grp) {
     b.parts.atmo = atmo;
   }
 
-  if (def.rings) {
-    const rt = cachedTexture('ring:' + b.type, () => ringTexture(hashStr(b.type + 'ring'), 512, def.rings.pal));
-    const rm = new THREE.MeshBasicMaterial({ map: rt, transparent: true, side: THREE.DoubleSide, depthWrite: false, opacity: 0.92 });
-    const ring = new THREE.Mesh(ringGeometry(def.rings.inner / def.rings.outer), rm);
-    ring.rotation.x = -Math.PI / 2;
-    grp.add(ring);
-    b.parts.ring = ring;
-    b.ringSpec = def.rings;
-  }
+  if (b.ringSpec) buildRing(b, grp);
 
   if (def.star) {
     const col = new THREE.Color().fromArray(kelvinToRGB(def.temp).map(c => c / 255));
@@ -4026,6 +4382,522 @@ function buildWhiteHole(b, grp) {
   b.lightColor = new THREE.Color(0xfff0c0);
 }
 
+/* ================================================================== rings   */
+/*
+ * Rings are per-body rather than per-type, so any world can be given a set and
+ * any set can be reshaped or recoloured from the inspector. A spec is:
+ *
+ *   { inner, outer   multiples of the body's own drawn radius
+ *     pal            two [r,g,b] stops the ringlets are painted between
+ *     tilt           radians the whole body (and so its rings) leans over
+ *     opacity }
+ */
+
+const DEFAULT_RINGS = () => ({
+  inner: 1.35, outer: 2.4, pal: [[228, 210, 176], [166, 142, 112]], tilt: 0.47, opacity: 0.9
+});
+
+const rgbHex = (c) => '#' + [0, 1, 2].map(i => clamp(Math.round(c[i]), 0, 255).toString(16).padStart(2, '0')).join('');
+const hexRgb = (h) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(h));
+  if (!m) return [255, 255, 255];
+  const v = parseInt(m[1], 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+};
+
+/* The edge ratio is quantised before it reaches ringGeometry's cache. Without
+   this, dragging an edge slider from end to end mints a few hundred distinct
+   annulus geometries and keeps every one of them forever. */
+const ringRatio = (s) => Math.round(clamp(s.inner / s.outer, 0.05, 0.97) * 50) / 50;
+
+/** Paint a ring texture for one body. NOT shared: the colours are per-body. */
+function ringTextureFor(b) {
+  if (b.ringTex) b.ringTex.dispose();
+  b.ringTex = new THREE.CanvasTexture(ringTexture(hashStr('ring' + b.seed), 512, b.ringSpec.pal));
+  return b.ringTex;
+}
+
+function buildRing(b, grp) {
+  const s = b.ringSpec;
+  const rm = new THREE.MeshBasicMaterial({
+    map: ringTextureFor(b), transparent: true, side: THREE.DoubleSide, depthWrite: false,
+    opacity: s.opacity != null ? s.opacity : 0.92
+  });
+  const ring = new THREE.Mesh(ringGeometry(ringRatio(s)), rm);
+  ring.rotation.x = -Math.PI / 2;
+  grp.add(ring);
+  b.parts.ring = ring;
+}
+
+/**
+ * Push the current spec onto the mesh. Shape and opacity are cheap and update
+ * live; `repaint` redraws the 512×512 texture and is only asked for when the
+ * colours have actually changed.
+ */
+function setRings(b, spec, repaint) {
+  const had = b.ringSpec;
+  b.ringSpec = spec ? Object.assign({}, spec) : null;
+
+  if (!b.ringSpec) {
+    if (b.parts && b.parts.ring) {
+      b.obj.remove(b.parts.ring);
+      b.parts.ring.material.dispose();
+      b.parts.ring = null;
+    }
+    if (b.ringTex) { b.ringTex.dispose(); b.ringTex = null; }
+    return;
+  }
+  if (!b.obj) return;
+
+  b.tilt = b.ringSpec.tilt;
+  if (!had || !b.parts.ring) { buildRing(b, b.obj); scaleVisual(b); return; }
+
+  const ring = b.parts.ring;
+  ring.geometry = ringGeometry(ringRatio(b.ringSpec));
+  ring.material.opacity = b.ringSpec.opacity != null ? b.ringSpec.opacity : 0.92;
+  if (repaint) ring.material.map = ringTextureFor(b);
+  scaleVisual(b);
+}
+
+/* ================================================================ galaxies  */
+/*
+ * A galaxy cannot be drawn to scale here and there is no point pretending
+ * otherwise: the Milky Way is about 9×10^17 Gm across, roughly a trillion times
+ * the width of the biggest thing this sandbox can hold. So a galaxy is drawn at
+ * a fixed *screen* size instead — never narrower than settings.galMinPx nor
+ * wider than settings.galMaxPx — and only its heavy middle actually gravitates.
+ * It is scenery with a mass, and it is labelled as such.
+ */
+
+const GAL_PTS = 5200;
+
+/**
+ * A barred spiral, built the way one actually looks: a fat central bulge, two
+ * or four logarithmic arms wound out of it, blue-white star formation strung
+ * along the arms with pink hydrogen knots, and a thin dusty disc between them.
+ */
+function galaxyGeometry(seed, arms) {
+  const key = 'gal:' + seed + ':' + arms;
+  if (geoCache.has(key)) return geoCache.get(key);
+  const rng = mulberry32(hashStr(key));
+  const gauss = () => (rng() + rng() + rng() + rng() - 2) * 0.5;
+
+  const pos = [], col = [], siz = [];
+  const WIND = 3.4;                       // how tightly the arms coil
+  const BULGE = [1.0, 0.86, 0.58];        // old, yellow core stars
+  const ARM = [0.74, 0.85, 1.0];          // young, blue arm stars
+  const HII = [1.0, 0.46, 0.62];          // pink hydrogen where stars are forming
+  const DUST = [0.30, 0.24, 0.30];
+
+  for (let i = 0; i < GAL_PTS; i++) {
+    const inBulge = i < GAL_PTS * 0.26;
+    let x, y, z, c, s;
+
+    if (inBulge) {
+      // A flattened ellipsoid, densest dead centre.
+      const r = Math.pow(rng(), 2.1) * 0.22;
+      const u = rng() * 2 - 1, th = rng() * TAU, sr = Math.sqrt(Math.max(0, 1 - u * u));
+      x = sr * Math.cos(th) * r; z = sr * Math.sin(th) * r; y = u * r * 0.42;
+      c = mix(BULGE, [1, 1, 1], Math.pow(1 - Math.min(r / 0.22, 1), 2) * 0.7);
+      s = 0.006 + Math.pow(rng(), 2) * 0.016;
+    } else {
+      // Area-weighted radius so the disc does not pile up in the middle.
+      const r = 0.18 + Math.sqrt(rng()) * 0.82;
+      const arm = (rng() * arms) | 0;
+      // Logarithmic spiral, with the scatter widening outwards as arms do.
+      const spread = (0.16 + r * 0.34) * gauss() * 2.2;
+      const th = Math.log(r / 0.10) * WIND + arm * (TAU / arms) + spread;
+      x = Math.cos(th) * r; z = Math.sin(th) * r;
+      y = gauss() * (0.012 + r * 0.020);
+
+      const onArm = clamp(1 - Math.abs(spread) / (0.2 + r * 0.4), 0, 1);
+      c = mix(mix(DUST, ARM, onArm), BULGE, clamp(1.15 - r * 1.7, 0, 1));
+      if (onArm > 0.55 && rng() < 0.16) c = mix(c, HII, 0.8);      // a nebula knot
+      const dim = 0.45 + onArm * 0.75;
+      c = [c[0] * dim, c[1] * dim, c[2] * dim];
+      s = 0.005 + Math.pow(rng(), 2.4) * 0.022;
+    }
+
+    pos.push(x, y, z);
+    col.push(c[0], c[1], c[2]);
+    siz.push(s);
+  }
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('aSize', new THREE.Float32BufferAttribute(siz, 1));
+  geoCache.set(key, g);
+  return g;
+}
+
+function buildGalaxy(b, grp) {
+  const rng = mulberry32(b.seed);
+  b.galArms = b.galArms || (rng() < 0.62 ? 2 : 4);
+  b.galR = b.galR || 1;
+  // How wide this one wants to be on screen, inside the allowed window.
+  b.galWide = b.galWide || lerp(settings.galMinPx, settings.galMaxPx, rng());
+
+  const spiral = new THREE.Points(galaxyGeometry(b.seed % 9973, b.galArms), new THREE.ShaderMaterial({
+    uniforms: { uMap: { value: TEX_PUFF }, uOp: { value: 0.9 }, uScale: { value: 1 }, uFocal: { value: 1 } },
+    vertexShader: NEB_VERT, fragmentShader: NEB_FRAG,
+    transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending
+  }));
+  spiral.frustumCulled = false;
+  spiral.renderOrder = -5;                  // behind every real body in the scene
+  // Every galaxy leans differently, so a screenful of them does not read as a
+  // stack of identical stickers.
+  spiral.rotation.set(rnd(-0.9, 0.9), rnd(0, TAU), rnd(-0.6, 0.6));
+  grp.add(spiral);
+  b.parts.spiral = spiral;
+
+  const core = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: TEX_HALO, color: new THREE.Color(0xfff0c4), opacity: 0.55,
+    blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, depthTest: false
+  }));
+  core.renderOrder = -4;
+  grp.add(core);
+  b.parts.galCore = core;
+  b.lightColor = new THREE.Color(0xffe6b8);
+}
+
+/**
+ * Hold every galaxy inside its screen-size window. This is the one thing in the
+ * whole simulation drawn at a size that is not physical, and it is deliberate —
+ * see the note above.
+ */
+function updateGalaxies() {
+  const lo = Math.min(settings.galMinPx, settings.galMaxPx);
+  const hi = Math.max(settings.galMinPx, settings.galMaxPx);
+  for (const b of sim.bodies) {
+    if (b.kind !== 'gal' || !b.parts) continue;
+    const dist = Math.max(camera.position.distanceTo(b.p), 1e-9);
+    const wpp = worldPerPixel(dist);
+    // The width it "wants" to be, then clamped into the window and turned back
+    // into a world radius.
+    const wantPx = clamp((b.galWide || 1600), lo, hi);
+    b.galR = wantPx * 0.5 * wpp;
+    const sp = b.parts.spiral;
+    if (sp) {
+      sp.scale.setScalar(b.galR);
+      sp.material.uniforms.uScale.value = b.galR;
+      sp.material.uniforms.uFocal.value = VIEW.h * VIEW.dpr / (2 * Math.tan(FOV * Math.PI / 360));
+      sp.rotation.y += 0.0006;
+    }
+    if (b.parts.galCore) b.parts.galCore.scale.setScalar(b.galR * 0.5);
+    if (b.parts.dot) b.parts.dot.visible = false;
+    b.obj.position.copy(b.p);
+  }
+}
+
+/* ================================================== protoplanetary discs   */
+/*
+ * Where planets come from. A young star is left over from a collapsing cloud
+ * with far too much spin to swallow everything at once, so what it cannot take
+ * settles into a flat disc around it — and the disc clumps, sticks and sweeps
+ * itself up into planets. Ours did this four and a half billion years ago; the
+ * order of the planets we ended up with is written into where the ice line sat.
+ *
+ * The mass here is real: every planet that condenses is taken out of the disc's
+ * budget, so a disc that has made a Jupiter has that much less left for
+ * everything further out.
+ */
+
+const discs = [];
+const _YAXIS = new THREE.Vector3(0, 1, 0);
+
+function makeDisc(host, o) {
+  o = o || {};
+  const rng = mulberry32(host.seed ^ 0x5eed);
+  // A pole for the disc, tipped a little off vertical so a sky full of them
+  // does not look stamped out.
+  const swing = rnd(0, TAU);
+  const axis = new THREE.Vector3(0, 1, 0)
+    .applyAxisAngle(new THREE.Vector3(Math.cos(swing), 0, Math.sin(swing)), rnd(-0.3, 0.3))
+    .normalize();
+  let u = new THREE.Vector3(1, 0, 0);
+  if (Math.abs(axis.dot(u)) > 0.9) u.set(0, 0, 1);
+  u.crossVectors(axis, u).normalize();
+  const w = new THREE.Vector3().crossVectors(axis, u).normalize();
+
+  const d = {
+    id: sim.nextId++,
+    host: host,
+    seed: (rng() * 1e6) | 0,
+    // Roughly a tenth of an AU in to forty AU out — the shape of the disc our
+    // own planets were built from.
+    rIn: o.rIn != null ? o.rIn : Math.max(visRadius(host) * 3, 0.35 * AU),
+    rOut: o.rOut != null ? o.rOut : 42 * AU,
+    // ~450 M⊕ of rock and ice: enough for a Jupiter and a family besides.
+    mass: o.mass != null ? o.mass : 450,
+    axis: axis, u: u, w: w,
+    age: 0, next: 0, made: 0,
+    fade: 1,
+    alive: true,
+    obj: null
+  };
+  d.m0 = d.mass;
+  buildDiscVisual(d);
+  discs.push(d);
+  host.disc = d;
+  return d;
+}
+
+/** A flared annulus of dust, hot and bright inside, cold and dark at the rim. */
+function discGeometry(seed, n) {
+  const key = 'disc:' + seed + ':' + n;
+  if (geoCache.has(key)) return geoCache.get(key);
+  const rng = mulberry32(hashStr(key));
+  const gauss = () => (rng() + rng() + rng() - 1.5) * 0.7;
+  const wave = fbm(hashStr('discwave' + seed), 5, 2, 3);
+
+  const pos = [], col = [], siz = [];
+  /* Deep and saturated on purpose. Additive blending climbs towards white
+     wherever puffs overlap, so a palette that starts out pale is bleached to
+     grey exactly where the disc is thickest — which is the interesting part.
+     A real disc genuinely does run this way too: white-hot where it is falling
+     onto the star, orange further out, and cold blue dust at the rim. */
+  const HOT = [1.00, 0.92, 0.70], WARM = [1.00, 0.52, 0.16];
+  const COOL = [0.62, 0.26, 0.42], RIM = [0.20, 0.34, 0.72];
+
+  for (let i = 0; i < n; i++) {
+    // Area-weighted between 0.16 and 1 of the outer radius.
+    const r = Math.sqrt(0.026 + rng() * 0.974);
+    const th = rng() * TAU;
+    // Faint spiral density waves — real discs are grooved with them, and it is
+    // the grooves that eventually become planets.
+    const dens = 0.45 + wave((th / TAU + r * 0.8) % 1, r) * 1.1;
+    if (rng() > dens) continue;
+    // Discs flare: they are thin at the middle and puff out towards the rim.
+    const h = (0.010 + r * 0.048) * gauss();
+    pos.push(Math.cos(th) * r, h, Math.sin(th) * r);
+
+    let c = r < 0.30 ? mix(HOT, WARM, r / 0.30)
+      : r < 0.66 ? mix(WARM, COOL, (r - 0.30) / 0.36)
+      : mix(COOL, RIM, (r - 0.66) / 0.34);
+    // The inside is being lit by the star it is falling onto, so it is far
+    // brighter than the rim as well as a different colour.
+    const lit = (0.35 + 1.5 * Math.pow(1 - r, 1.7)) * (0.75 + rng() * 0.5);
+    col.push(c[0] * lit, c[1] * lit, c[2] * lit);
+    // Wide enough that neighbours run into each other. Small separate dots read
+    // as scattered grit; only once they overlap do they become cloud.
+    siz.push(0.020 + Math.pow(rng(), 2) * 0.085);
+  }
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('aSize', new THREE.Float32BufferAttribute(siz, 1));
+  geoCache.set(key, g);
+  return g;
+}
+
+function buildDiscVisual(d) {
+  const g = new THREE.Group();
+  const pts = new THREE.Points(discGeometry(d.seed % 9973, 9000), new THREE.ShaderMaterial({
+    uniforms: { uMap: { value: TEX_PUFF }, uOp: { value: 0.5 }, uScale: { value: 1 }, uFocal: { value: 1 } },
+    vertexShader: NEB_VERT, fragmentShader: NEB_FRAG,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+  }));
+  pts.frustumCulled = false;
+  pts.renderOrder = 2;
+  g.add(pts);
+  g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.axis);
+  scene.add(g);
+  d.obj = g; d.pts = pts;
+}
+
+function disposeDisc(d) {
+  if (!d.obj) return;
+  scene.remove(d.obj);
+  d.obj.traverse(o => { if (o.material) o.material.dispose(); });
+  d.obj = null; d.pts = null;
+  if (d.host && d.host.disc === d) d.host.disc = null;
+}
+
+function clearDiscs() {
+  for (const d of discs) { d.alive = false; disposeDisc(d); }
+  discs.length = 0;
+}
+
+/** Where water freezes out. Everything past it can build with ice as well as
+ *  rock, which is why the giants are all on the outside. */
+const iceLineOf = (host) => 2.7 * AU * Math.sqrt(Math.max(host.lum, 1e-4));
+
+/** Condense one planet out of the disc and hand it its share of the mass. */
+function condenseFromDisc(d) {
+  const host = d.host;
+  if (freeSlots() < 1) return false;
+
+  // Log-uniform in radius, so the crowded inner disc still gets its planets.
+  const t = Math.random();
+  const r = d.rIn * Math.pow(d.rOut / d.rIn, t);
+  const ice = iceLineOf(host);
+  const inside = r < ice;
+
+  /* Inside the ice line only rock and metal can condense, and that is a tiny
+     fraction of what a disc is made of — which is why the whole of Mercury,
+     Venus, Earth and Mars together weigh about two Earths, while Jupiter alone
+     weighs three hundred. Just past the line, ice condenses too, there is
+     suddenly far more solid material to build with, and that is where the
+     giants get made. */
+  const bonus = (!inside && r < ice * 3.5) ? 2.4 : 1;
+  const share = inside ? rnd(0.0015, 0.010) : rnd(0.10, 0.30);
+  let chunk = Math.min(d.mass * share * bonus, d.mass * 0.55);
+  if (chunk < 1e-4) return false;
+
+  const type = discPlanetType(chunk, inside);
+  const ang = Math.random() * TAU;
+  const inc = rnd(-0.03, 0.03);
+  const dir = d.u.clone().multiplyScalar(Math.cos(ang)).addScaledVector(d.w, Math.sin(ang));
+  const tan = d.u.clone().multiplyScalar(-Math.sin(ang)).addScaledVector(d.w, Math.cos(ang));
+  tan.applyAxisAngle(dir, inc).normalize();
+
+  const speed = Math.sqrt(G * settings.gravity * (host.m + chunk) / r);
+  const b = makeBody(type,
+    host.p.clone().addScaledVector(dir, r),
+    host.v.clone().addScaledVector(tan, speed),
+    { mass: chunk });
+
+  d.mass -= chunk;
+  d.made++;
+  // A new planet sweeps its own lane clean, so the hole in the middle widens a
+  // little — but never so far that the disc stops making inner worlds at all.
+  if (r < d.rIn * 1.4) d.rIn = Math.min(r * 1.25, d.rOut * 0.05);
+  fx.flash(b.p, visRadius(b) * 10, [255, 214, 150], 0.7);
+  toast(b.name + ' condensed out of ' + host.name + '’s disc');
+  return true;
+}
+
+function updateDiscs(simDt) {
+  for (let i = discs.length - 1; i >= 0; i--) {
+    const d = discs[i];
+    const host = d.host;
+
+    // No star, no disc: it has nothing left to orbit.
+    if (!host || !host.alive || host.kind !== 'body') {
+      d.fade -= 0.03;
+      if (d.fade <= 0) { d.alive = false; disposeDisc(d); discs.splice(i, 1); continue; }
+    } else {
+      d.age += simDt;
+      d.next -= simDt;
+      const every = Math.max(settings.discYears, 0.02) * 365.25;
+      if (d.next <= 0) {
+        d.next = every * rnd(0.6, 1.4);
+        // Discs do not last forever — ours was gone inside about ten million
+        // years, blown off by the young Sun once the planets had taken their share.
+        if (d.mass > d.m0 * 0.04 && d.made < 12) condenseFromDisc(d);
+        else d.fade -= 0.18;
+      }
+      // What is left of the dust falls onto the star as the disc thins out.
+      if (d.fade < 1 && d.mass > 0) {
+        const drop = Math.min(d.mass, d.mass * 0.2);
+        host.m += drop; d.mass -= drop;
+      }
+      if (d.fade <= 0) {
+        toast(host.name + '’s disc has cleared');
+        d.alive = false; disposeDisc(d); discs.splice(i, 1); continue;
+      }
+    }
+
+    if (!d.obj) continue;
+    if (host && host.alive) d.obj.position.copy(host.p);
+    d.obj.rotateOnAxis(_YAXIS, Math.sqrt(G * Math.max(host ? host.m : 1, 1e-6) /
+      Math.pow(d.rOut * 0.5, 3)) * simDt);
+    d.obj.scale.setScalar(d.rOut);
+    const u = d.pts.material.uniforms;
+    u.uScale.value = d.rOut;
+    u.uFocal.value = VIEW.h * VIEW.dpr / (2 * Math.tan(FOV * Math.PI / 360));
+    // Thins out as its material is used up, and fades away at the end.
+    u.uOp.value = clamp(0.05 + 0.17 * (d.mass / d.m0), 0, 0.24) * clamp(d.fade, 0, 1);
+    d.pts.visible = u.uOp.value > 0.004 && d.rOut / worldPerPixel(
+      Math.max(camera.position.distanceTo(d.obj.position), 1e-9)) > 3;
+  }
+}
+
+/* =============================================================== drop grid  */
+/*
+ * A measuring grid on the plane you are about to drop something onto. It exists
+ * because "click here" in a 3D view is genuinely ambiguous — the grid says both
+ * where the plane is and how big the gaps are, and it can snap the drop point
+ * to its intersections so a system can be laid out neatly.
+ */
+
+const GRID_N = 40;               // cells across
+let gridObj = null, gridCell = 1, lastGridCell = 0;
+
+/** Round up to the nearest 1, 2 or 5 times a power of ten. */
+function niceStep(v) {
+  const e = Math.pow(10, Math.floor(Math.log10(Math.max(v, 1e-12))));
+  const m = v / e;
+  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * e;
+}
+
+function buildGrid() {
+  const pos = [], col = [];
+  const half = GRID_N / 2;
+  // Fade every line out towards the rim, so the grid dissolves instead of
+  // ending at a hard square.
+  const fade = (a, b) => Math.pow(clamp(1 - Math.hypot(a, b) / half, 0, 1), 0.9);
+  for (let i = 0; i <= GRID_N; i++) {
+    const t = i - half;
+    // A line is chopped into segments so its brightness can follow the fade.
+    for (let j = 0; j < GRID_N; j++) {
+      const a = j - half, b = a + 1;
+      const axis = (i === half) ? 1.9 : 1;      // the two centre lines run brighter
+      pos.push(t, 0, a, t, 0, b);
+      pos.push(a, 0, t, b, 0, t);
+      for (const [p, q] of [[t, a], [t, b], [a, t], [b, t]]) {
+        const f = fade(p, q) * 0.34 * axis;
+        col.push(0.42 * f, 0.55 * f, 0.95 * f);
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  gridObj = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending
+  }));
+  gridObj.frustumCulled = false;
+  gridObj.renderOrder = -3;
+  gridObj.visible = false;
+  scene.add(gridObj);
+}
+
+function updateGrid() {
+  if (!gridObj) return;
+  const on = !!input.armed && settings.grid && !document.body.classList.contains('modal-open');
+  gridObj.visible = on;
+  if (!on) { lastGridCell = 0; return; }
+  // Roughly 84 screen pixels a cell, rounded to a readable number.
+  gridCell = niceStep(84 * worldPerPixel(view.dist));
+  gridObj.scale.setScalar(gridCell);
+  // The hint line carries the cell size, so the grid is a ruler and not just
+  // decoration. Only touched when it actually changes.
+  if (gridCell !== lastGridCell) {
+    lastGridCell = gridCell;
+    for (const el of document.querySelectorAll('.an-cell')) el.textContent = fmtDist(gridCell);
+  }
+  // Slide with the view but stay locked to its own intersections, so the lines
+  // sit still rather than swimming under the camera.
+  gridObj.position.set(
+    Math.round(view.target.x / gridCell) * gridCell,
+    view.target.y,
+    Math.round(view.target.z / gridCell) * gridCell
+  );
+}
+
+/** Pull a drop point onto the nearest grid intersection. */
+function snapToGrid(p) {
+  if (!settings.gridSnap || !settings.grid || !gridObj || !gridObj.visible) return p;
+  p.x = Math.round(p.x / gridCell) * gridCell;
+  p.z = Math.round(p.z / gridCell) * gridCell;
+  p.y = view.target.y;
+  return p;
+}
+
 /** Push mesh scales to match the body's current (exaggerated) radius. */
 function scaleVisual(b) {
   const r = visRadius(b);
@@ -4066,11 +4938,15 @@ function disposeVisual(b, keepTrail) {
     b.parts.tail.material.dispose();
   }
   if (b.ownGeo) b.ownGeo.dispose();
-  b.obj = null; b.parts = null; b.ownGeo = null; b.light = null;
+  // The ring texture belongs to this body alone and went with the traverse above.
+  b.obj = null; b.parts = null; b.ownGeo = null; b.light = null; b.ringTex = null;
   if (!keepTrail) killTrail(b);
 }
 
 function cacheHasTexture(t) {
+  // The process-wide sprite atlases are shared by every body in the scene, so
+  // tearing one body down must never free them.
+  if (t === TEX_GLOW || t === TEX_HALO || t === TEX_TAIL || t === TEX_PHOTON || t === TEX_PUFF) return true;
   for (const v of texCache.values()) if (v === t) return true;
   return false;
 }
@@ -5013,14 +5889,21 @@ function updateVisuals(realDt, simDt) {
   // First, because an explosion can destroy bodies and is itself a light source
   // that the two passes below need to know about.
   updateSupernovae(simDt);
+  updateDiscs(simDt);
+  coolCores(simDt);
   refreshStarCache();
   updateTemperatures();
   updateLights();
+  updateGalaxies();
+  updateGrid();
 
   for (let i = 0; i < sim.bodies.length; i++) {
     const b = sim.bodies[i];
     const p = b.parts;
     if (!p) continue;
+    // Galaxies are sized and posed entirely by updateGalaxies, on screen terms
+    // that nothing in this loop applies to.
+    if (b.kind === 'gal') { b.obj.position.copy(b.p); continue; }
     const def = TYPES[b.type];
     const r = visRadius(b);
     const px = apparentPx(b);
@@ -5182,9 +6065,13 @@ function pickBody(sx, sy) {
     if (_lp.z < -1 || _lp.z > 1) continue;
     const x = (_lp.x + 1) * 0.5 * VIEW.w, y = (1 - _lp.y) * 0.5 * VIEW.h;
     const d = Math.hypot(x - sx, y - sy);
-    const reach = Math.max(apparentPx(b) + 10, 16);
+    // A galaxy is drawn thousands of pixels wide, so sizing its hit area to
+    // what you can see would let it swallow every click on screen. It is picked
+    // by its core, and only when nothing solid is closer.
+    const gal = b.kind === 'gal';
+    const reach = gal ? 34 : Math.max(apparentPx(b) + 10, 16);
     if (d > reach) continue;
-    const score = d - apparentPx(b) * 0.25;
+    const score = gal ? d + 400 : d - apparentPx(b) * 0.25;
     if (score < bestScore) { bestScore = score; best = b; }
   }
   if (best) return best;
@@ -5254,7 +6141,7 @@ function bindInput() {
 
     if (input.armed && e.button === 0 && !e.shiftKey) {
       input.mode = 'place';
-      input.placePos = screenToWorld(e.clientX, e.clientY);
+      input.placePos = snapToGrid(screenToWorld(e.clientX, e.clientY));
     } else if (e.button === 2 || e.button === 1 || e.shiftKey) {
       input.mode = 'pan';
     } else {
@@ -5425,7 +6312,8 @@ function buildPalette() {
     for (const key in TYPES) {
       if (TYPES[key].group !== g) continue;
       const t = TYPES[key];
-      const cls = t.kind === 'bh' ? ' hole' : t.rings ? ' ring' : '';
+      const cls = t.kind === 'bh' ? ' hole' : t.kind === 'gal' ? ' gal'
+        : t.disc ? ' disc' : t.rings ? ' ring' : '';
       html += '<button class="an-item" data-type="' + key + '" title="' + t.blurb.replace(/"/g, '&quot;') + '">' +
         '<span class="an-dot' + cls + '" style="background:' + SWATCH[key] + ';color:' + SWATCH[key] + '"></span>' +
         '<span>' + t.label + '</span></button>';
@@ -5451,6 +6339,7 @@ function updateHint() {
   let s;
   if (input.armed) {
     s = 'Click empty space to drop <b>' + TYPES[input.armed].label + '</b> &middot; <b>drag</b> to aim its speed';
+    if (settings.grid) s += ' &middot; grid square <b class="an-cell">—</b>';
   } else if (sim.selected) {
     s = '<kbd>F</kbd> follow &middot; <kbd>Del</kbd> remove &middot; drag to orbit &middot; scroll to zoom';
   } else {
@@ -5560,6 +6449,324 @@ function renderCloudInspector(e) {
   updateInspectorStats();
 }
 
+/* --------------------------------------------------------- customise block */
+/*
+ * Everything about a body that is a number can be dialled here: how big it is,
+ * how fast and which way it spins, how far over it leans, how hot its middle
+ * is, what colour it is, and what its rings look like. Mass has its own slider
+ * further up because changing mass can change what the body *is*.
+ */
+
+const DEG = 180 / Math.PI;
+
+function customiseHTML(b) {
+  const def = TYPES[b.type];
+  const hole = b.kind === 'bh' || b.kind === 'wh';
+  const nat = trueRadius(b.type, b.m);
+  const lr = Math.log10(Math.max(b.r, 1e-12));
+  const spinAbs = Math.max(Math.abs(b.spin || 1), 1e-4);
+  const rings = b.ringSpec;
+
+  let h = '<details class="an-more"><summary>CUSTOMISE</summary>';
+
+  if (!hole) {
+    h += '<div class="an-field"><label>Radius <b id="is-rv"></b></label>' +
+      '<input type="range" id="is-rad-s" step="0.001" min="' +
+      Math.min(Math.log10(nat * 0.05), lr).toFixed(3) + '" max="' +
+      Math.max(Math.log10(nat * 20), lr).toFixed(3) + '" value="' + lr.toFixed(3) + '"></div>' +
+      '<p class="an-note">Mass stays put, so widening a body makes it less dense — and past a point it would float in water, like Saturn.</p>';
+  }
+
+  h += '<div class="an-field"><label>Spin (one turn) <b id="is-spv"></b></label>' +
+    '<input type="range" id="is-spin-s" min="-4" max="4" step="0.01" value="' +
+    Math.log10(spinAbs).toFixed(3) + '"></div>' +
+    tgl('is-retro', 'Spins backwards', 'Like Venus, Uranus and Pluto really do.') +
+    '<div class="an-field"><label>Axial tilt <b id="is-tiv"></b></label>' +
+    '<input type="range" id="is-tilt-s" min="-180" max="180" step="1" value="' +
+    Math.round(b.tilt * DEG) + '"></div>';
+
+  if (!hole) {
+    h += '<div class="an-field"><label>' + (def.star ? 'Surface temperature' : 'Internal temperature') +
+      ' <b id="is-ctv2"></b></label>' +
+      '<input type="range" id="is-core-s" min="1" max="7.3" step="0.01" value="' +
+      Math.log10(clamp(def.star ? b.temp : (b.coreT || 300), 10, 2e7)).toFixed(3) + '"></div>' +
+      '<p class="an-note">' + (def.star
+        ? 'The colour of a star is its temperature and nothing else — cool is red, hot is blue.'
+        : 'How hot it is deep down. Earth\'s core is about 5,700 K. Push it far enough and the surface glows.') +
+      '</p>';
+  }
+
+  if (!hole && !def.star) {
+    h += '<div class="an-sub">Colour tint</div><div class="an-swatches">' +
+      '<input type="color" id="is-tint" value="' + bodyTintHex(b) + '"></div>' +
+      '<p class="an-note">Washes a colour over the whole surface. White leaves it exactly as it was.</p>';
+  }
+
+  /* ---- rings ------------------------------------------------------------ */
+  h += '<div class="an-sub">Rings</div>' +
+    tgl('is-rings-on', 'Has rings', '');
+  if (rings) {
+    h += '<div class="an-field"><label>Inner edge <b id="is-ri-v"></b></label>' +
+      '<input type="range" id="is-ri" min="1.02" max="6" step="0.01" value="' + rings.inner + '"></div>' +
+      '<div class="an-field"><label>Outer edge <b id="is-ro-v"></b></label>' +
+      '<input type="range" id="is-ro" min="1.1" max="9" step="0.01" value="' + rings.outer + '"></div>' +
+      '<div class="an-field"><label>How solid <b id="is-rop-v"></b></label>' +
+      '<input type="range" id="is-rop" min="0.05" max="1" step="0.01" value="' +
+      (rings.opacity != null ? rings.opacity : 0.92) + '"></div>' +
+      '<div class="an-swatches">' +
+      '<input type="color" id="is-rc1" value="' + rgbHex(rings.pal[0]) + '">' +
+      '<input type="color" id="is-rc2" value="' + rgbHex(rings.pal[1]) + '"></div>' +
+      '<p class="an-note">Edges are measured in the body\'s own widths. Real rings sit inside the Roche limit, which is why they never clump into a moon.</p>';
+  }
+
+  h += '<div class="an-row"><button id="is-reset">RESET TO ' + def.label.toUpperCase() + '</button></div>' +
+    '</details>';
+  return h;
+}
+
+/** The body's current tint as a hex string, for the colour input. */
+function bodyTintHex(b) {
+  const c = b.baseColor;
+  if (!c) return '#ffffff';
+  return rgbHex([c.r * 255, c.g * 255, c.b * 255]);
+}
+
+function bindCustomise(b) {
+  const show = {};
+  const on = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
+
+  /* ---- radius ---- */
+  const rs = $('is-rad-s');
+  if (rs) {
+    show.rad = () => $('is-rv').textContent = fmtRadius(b.r);
+    show.rad();
+    rs.addEventListener('input', () => {
+      b.r = Math.pow(10, parseFloat(rs.value));
+      updateLuminosity(b);
+      scaleVisual(b);
+      show.rad();
+      updateInspectorStats();
+    });
+  }
+
+  /* ---- spin ---- */
+  const sp = $('is-spin-s');
+  const showSpin = () => {
+    const p = Math.abs(b.spin);
+    $('is-spv').textContent = (p >= 1 ? p.toPrecision(3) + ' days' : (p * 24).toPrecision(3) + ' hours') +
+      (b.spin < 0 ? ' ↺' : '');
+  };
+  if (sp) {
+    showSpin();
+    sp.addEventListener('input', () => {
+      b.spin = Math.pow(10, parseFloat(sp.value)) * (b.spin < 0 ? -1 : 1);
+      showSpin();
+    });
+  }
+  const retro = $('is-retro');
+  if (retro) {
+    retro.classList.toggle('on', b.spin < 0);
+    retro.addEventListener('click', () => {
+      b.spin = -b.spin;
+      retro.classList.toggle('on', b.spin < 0);
+      showSpin();
+    });
+  }
+
+  /* ---- tilt ---- */
+  const ti = $('is-tilt-s');
+  if (ti) {
+    const showTilt = () => $('is-tiv').textContent = Math.round(b.tilt * DEG) + '°';
+    showTilt();
+    ti.addEventListener('input', () => {
+      b.tilt = parseFloat(ti.value) / DEG;
+      if (b.ringSpec) b.ringSpec.tilt = b.tilt;
+      showTilt();
+    });
+  }
+
+  /* ---- temperature ---- */
+  const ct = $('is-core-s');
+  if (ct) {
+    const star = TYPES[b.type].star;
+    const showT = () => {
+      const t = star ? b.temp : b.coreT;
+      $('is-ctv2').textContent = t >= 1e6 ? (t / 1e6).toPrecision(3) + ' million K'
+        : Math.round(t).toLocaleString() + ' K';
+    };
+    showT();
+    ct.addEventListener('input', () => {
+      const t = Math.pow(10, parseFloat(ct.value));
+      if (star) {
+        b.temp = t;
+        updateLuminosity(b);
+        // A star's colour *is* its temperature, so recolour its light and glare
+        // to match rather than leaving them on the type's original value.
+        const c = kelvinToRGB(t);
+        if (b.lightColor) b.lightColor.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+        const p = b.parts;
+        if (p && p.glow) p.glow.material.color.copy(b.lightColor);
+        if (p && p.halo) p.halo.material.color.copy(b.lightColor);
+      } else {
+        b.coreT = t;
+      }
+      showT();
+      updateInspectorStats();
+    });
+  }
+
+  /* ---- surface tint ---- */
+  on('is-tint', 'input', () => {
+    const c = hexRgb($('is-tint').value);
+    if (!b.baseColor) b.baseColor = new THREE.Color();
+    b.baseColor.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+    b.tint = $('is-tint').value;
+    const p = b.parts;
+    if (p && p.surf && p.surf.material.color) p.surf.material.color.copy(b.baseColor);
+  });
+
+  /* ---- rings ---- */
+  const rOn = $('is-rings-on');
+  if (rOn) {
+    rOn.classList.toggle('on', !!b.ringSpec);
+    rOn.addEventListener('click', () => {
+      setRings(b, b.ringSpec ? null : (TYPES[b.type].rings || DEFAULT_RINGS()));
+      renderInspector();
+    });
+  }
+  // A colour picker fires continuously while it is dragged, and each repaint
+  // redraws 190 arcs into a 512×512 canvas — so repaints are rate-limited and
+  // one final one is always guaranteed on release.
+  let lastPaint = 0, paintTimer = 0;
+  const reRing = (repaint) => {
+    const s = b.ringSpec;
+    // Keep the edges from crossing over, whichever one is being dragged.
+    s.outer = Math.max(s.outer, s.inner + 0.08);
+    let paint = false;
+    if (repaint) {
+      const now = performance.now();
+      if (now - lastPaint > 110) { lastPaint = now; paint = true; }
+      else {
+        clearTimeout(paintTimer);
+        paintTimer = setTimeout(() => { if (b.alive && b.ringSpec) setRings(b, b.ringSpec, true); }, 130);
+      }
+    }
+    setRings(b, s, paint);
+    if ($('is-ri-v')) $('is-ri-v').textContent = s.inner.toFixed(2) + '× radius';
+    if ($('is-ro-v')) $('is-ro-v').textContent = s.outer.toFixed(2) + '× radius';
+    if ($('is-rop-v')) $('is-rop-v').textContent = Math.round((s.opacity != null ? s.opacity : 0.92) * 100) + '%';
+  };
+  if (b.ringSpec && $('is-ri')) {
+    on('is-ri', 'input', () => { b.ringSpec.inner = parseFloat($('is-ri').value); reRing(); });
+    on('is-ro', 'input', () => { b.ringSpec.outer = parseFloat($('is-ro').value); reRing(); });
+    on('is-rop', 'input', () => { b.ringSpec.opacity = parseFloat($('is-rop').value); reRing(); });
+    on('is-rc1', 'input', () => { b.ringSpec.pal[0] = hexRgb($('is-rc1').value); reRing(true); });
+    on('is-rc2', 'input', () => { b.ringSpec.pal[1] = hexRgb($('is-rc2').value); reRing(true); });
+    reRing();
+  }
+
+  /* ---- back to factory ---- */
+  on('is-reset', 'click', () => {
+    const def = TYPES[b.type];
+    b.r = trueRadius(b.type, b.m);
+    b.spin = def.spin || 1;
+    b.tilt = def.tilt != null ? def.tilt : def.rings ? def.rings.tilt : 0;
+    b.temp = def.temp || b.temp;
+    b.coreT = baseCoreT(def, b.m);
+    b.tint = null;
+    b.ringSpec = def.rings ? Object.assign({}, def.rings) : null;
+    updateLuminosity(b);
+    refreshVisual(b);
+    renderInspector();
+    toast(b.name + ' is back to a standard ' + def.label);
+  });
+}
+
+/* ------------------------------------------------------- galaxies & discs  */
+
+function renderGalaxyInspector(b) {
+  const host = $('an-insp-body');
+  $('an-insp-h').textContent = 'SELECTED';
+  const lm = Math.log10(Math.max(b.m, 1));
+
+  host.innerHTML =
+    '<input class="an-name-in" id="is-name" maxlength="24" spellcheck="false" value="' + escAttr(b.name) + '">' +
+    '<div class="an-type">GALAXY</div>' +
+    '<dl class="an-stats">' +
+    '<dt>Core mass</dt><dd id="is-mass"></dd>' +
+    '<dt>Drawn width</dt><dd id="is-gw"></dd>' +
+    '<dt>Spiral arms</dt><dd>' + b.galArms + '</dd>' +
+    '<dt id="is-orb-l">Orbiting</dt><dd id="is-orb"></dd>' +
+    '</dl>' +
+    '<div class="an-field"><label>Core mass <b id="is-mval"></b></label>' +
+    '<input type="range" id="is-mslider" min="3" max="' + Math.log10(1e12 * M_SUN).toFixed(2) +
+    '" step="0.01" value="' + lm.toFixed(3) + '"></div>' +
+    '<p class="an-note">Only the bulge in the middle pulls on anything. A real galaxy weighs about a trillion Suns — drag it all the way up and see what that does.</p>' +
+    '<div class="an-field"><label>Drawn width <b id="is-gwv"></b></label>' +
+    '<input type="range" id="is-gwide" min="' + settings.galMinPx + '" max="' + settings.galMaxPx +
+    '" step="10" value="' + Math.round(clamp(b.galWide, settings.galMinPx, settings.galMaxPx)) + '"></div>' +
+    '<p class="an-note">A galaxy is far too big to draw to scale — the Milky Way is a hundred thousand light-years across — so it is drawn at a fixed size on your screen instead, between ' +
+    settings.galMinPx + ' and ' + settings.galMaxPx + ' pixels. Zooming does not change it.</p>' +
+    '<div class="an-row"><button id="is-follow">' + (sim.follow === b ? 'UNFOLLOW' : 'FOLLOW') + '</button><button id="is-zoom">ZOOM TO</button></div>' +
+    '<div class="an-row"><button id="is-del" class="an-danger">REMOVE</button></div>' +
+    '<p style="font-size:11px;line-height:1.55;color:var(--ink-dim);margin-top:13px">' + TYPES.galaxy.blurb + '</p>';
+
+  inspRefs = { mass: $('is-mass'), gw: $('is-gw'), mval: $('is-mval'), orb: $('is-orb'), orbL: $('is-orb-l') };
+
+  const nameIn = $('is-name');
+  nameIn.addEventListener('change', () => { nameIn.value = renameBody(b, nameIn.value); });
+  nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameIn.blur(); });
+
+  const ms = $('is-mslider');
+  ms.addEventListener('input', () => {
+    b.m = Math.pow(10, parseFloat(ms.value));
+    computeAccel();
+    updateInspectorStats();
+  });
+  const gw = $('is-gwide');
+  const showGw = () => $('is-gwv').textContent = Math.round(b.galWide) + ' px';
+  showGw();
+  gw.addEventListener('input', () => { b.galWide = parseFloat(gw.value); showGw(); updateInspectorStats(); });
+
+  $('is-follow').addEventListener('click', () => { sim.follow = sim.follow === b ? null : b; renderInspector(); });
+  $('is-zoom').addEventListener('click', () => { frameOn(b, 9); sim.follow = b; renderInspector(); });
+  $('is-del').addEventListener('click', () => { select(null); removeBody(b); compact(); });
+
+  updateInspectorStats();
+}
+
+/** The panel block for a star that still has a disc around it. */
+function discHTML(d) {
+  return '<div class="an-sec">PROTOPLANETARY DISC</div>' +
+    '<dl class="an-stats">' +
+    '<dt>Material left</dt><dd id="is-dm"></dd>' +
+    '<dt>Planets made</dt><dd id="is-dn"></dd>' +
+    '<dt>Outer edge</dt><dd id="is-dr"></dd>' +
+    '</dl>' +
+    '<p class="an-note">Every planet is built out of this, and takes its mass with it. Where the ice line falls decides what gets made: rock on the warm side, giants just beyond it.</p>' +
+    '<div class="an-row"><button id="is-dnow">MAKE A PLANET NOW</button></div>' +
+    '<div class="an-row"><button id="is-dblow" class="an-danger">BLOW THE DISC AWAY</button></div>';
+}
+
+function bindDisc(b, d) {
+  const now = $('is-dnow');
+  if (now) {
+    now.addEventListener('click', () => {
+      if (!d.alive) return;
+      if (d.mass <= d.m0 * 0.04) { toast('The disc is spent — there is nothing left to build with'); return; }
+      if (condenseFromDisc(d)) { d.next = Math.max(settings.discYears, 0.02) * 365.25; renderInspector(); }
+    });
+  }
+  const blow = $('is-dblow');
+  if (blow) {
+    blow.addEventListener('click', () => {
+      d.fade = 0.001;
+      toast(b.name + ' blew its disc away');
+      renderInspector();
+    });
+  }
+}
+
 function renderInspector() {
   const host = $('an-insp-body');
   const b = sim.selected;
@@ -5570,6 +6777,7 @@ function renderInspector() {
     return;
   }
   if (b.kind === 'snr') { renderCloudInspector(b); return; }
+  if (b.kind === 'gal') { renderGalaxyInspector(b); return; }
   const def = TYPES[b.type];
   $('an-insp-h').textContent = 'SELECTED';
   // A rocky world's range has to reach past the gas-giant threshold, or the
@@ -5596,13 +6804,17 @@ function renderInspector() {
     '<dt>Density</dt><dd id="is-den"></dd>' +
     '<dt>Speed</dt><dd id="is-spd"></dd>' +
     '<dt>Surface temp</dt><dd id="is-tmp"></dd>' +
+    (b.kind === 'body' ? '<dt>Inside temp</dt><dd id="is-core"></dd>' : '') +
     (isStar ? '<dt>Luminosity</dt><dd id="is-lum"></dd>' : '') +
     (isStar && snSet.aging ? '<dt>Fuel burned</dt><dd id="is-age"></dd>' : '') +
+    (b.stripped > 0 ? '<dt>Torn away</dt><dd id="is-strip"></dd>' : '') +
     '<dt id="is-orb-l">Orbiting</dt><dd id="is-orb"></dd>' +
     '</dl>' +
     '<div class="an-field"><label>Mass <b id="is-mval"></b></label>' +
     '<input type="range" id="is-mslider" min="' + massMin.toFixed(3) + '" max="' + massMax.toFixed(3) + '" step="0.001" value="' + Math.log10(b.m).toFixed(3) + '"></div>' +
     (isStar && snSet.on ? snPanelHTML(plan) : '') +
+    (b.disc && b.disc.alive ? discHTML(b.disc) : '') +
+    customiseHTML(b) +
     '<div class="an-row"><button id="is-follow">' + (sim.follow === b ? 'UNFOLLOW' : 'FOLLOW') + '</button><button id="is-zoom">ZOOM TO</button></div>' +
     '<div class="an-row"><button id="is-shatter" class="an-danger">SHATTER</button><button id="is-del" class="an-danger">REMOVE</button></div>' +
     '<p style="font-size:11px;line-height:1.55;color:var(--ink-dim);margin-top:13px">' + def.blurb + '</p>';
@@ -5610,8 +6822,12 @@ function renderInspector() {
   inspRefs = {
     mass: $('is-mass'), rad: $('is-rad'), den: $('is-den'), spd: $('is-spd'),
     tmp: $('is-tmp'), orb: $('is-orb'), orbL: $('is-orb-l'), mval: $('is-mval'),
-    lum: $('is-lum'), age: $('is-age')
+    lum: $('is-lum'), age: $('is-age'), core: $('is-core'), strip: $('is-strip'),
+    dm: $('is-dm'), dn: $('is-dn'), dr: $('is-dr')
   };
+
+  if (b.disc && b.disc.alive) bindDisc(b, b.disc);
+  bindCustomise(b);
 
   const snBtn = $('is-sn');
   if (snBtn) {
@@ -5682,12 +6898,42 @@ function updateInspectorStats() {
     return;
   }
 
+  if (b.kind === 'gal') {
+    inspRefs.mass.textContent = fmtMass(b.m);
+    if (inspRefs.gw) inspRefs.gw.textContent = Math.round(b.galWide) + ' px on screen';
+    inspRefs.mval.textContent = fmtMass(b.m);
+    const gp = dominantAt(b.p, b);
+    if (gp && gp.m > b.m * 3) {
+      inspRefs.orbL.textContent = 'Distance to ' + gp.name;
+      inspRefs.orb.textContent = fmtDist(b.p.distanceTo(gp.p));
+    } else {
+      inspRefs.orbL.textContent = 'Orbiting';
+      inspRefs.orb.textContent = '—';
+    }
+    return;
+  }
+
   inspRefs.mass.textContent = fmtMass(b.m);
   inspRefs.rad.textContent = b.kind === 'bh' ? fmtRadius(b.r) + ' (horizon)' : fmtRadius(b.r);
   inspRefs.den.textContent = b.kind === 'bh' ? '—' : fmtDensity(b.m, b.r);
   inspRefs.spd.textContent = fmtSpeed(b.v.length());
   inspRefs.tmp.textContent = b.kind === 'bh' ? '—' : Math.round(b.temp).toLocaleString() + ' K';
   inspRefs.mval.textContent = fmtMass(b.m);
+  if (inspRefs.core) {
+    const t = b.coreT || 0;
+    // Flagged when the tide is actively kneading it, because that is the moment
+    // the number means something.
+    const hot = b.tideX > 0.02 ? ' ▲' : '';
+    inspRefs.core.textContent = (t >= 1e6 ? (t / 1e6).toPrecision(3) + ' M' : Math.round(t).toLocaleString() + ' ') + 'K' + hot;
+  }
+  if (inspRefs.strip) {
+    inspRefs.strip.textContent = Math.round(clamp(b.stripped / Math.max(b.m0, 1e-12), 0, 1) * 100) + '% of it';
+  }
+  if (inspRefs.dm && b.disc) {
+    inspRefs.dm.textContent = fmtMass(b.disc.mass);
+    inspRefs.dn.textContent = b.disc.made;
+    inspRefs.dr.textContent = (b.disc.rOut / AU).toPrecision(3) + ' AU';
+  }
   if (inspRefs.lum) inspRefs.lum.textContent = fmtLum(b.lum);
   if (inspRefs.age) {
     const life = msLifetime(b.m / M_SUN);
@@ -5745,11 +6991,31 @@ function openSettings() {
     '<input type="range" id="st-grav" min="0" max="300" step="1" value="' + Math.round(settings.gravity * 100) + '"></div>' +
     '<div class="an-toggle"><div>Collisions<small id="st-col-d"></small></div><div class="an-row" style="margin:0;flex:none">' +
     '<button id="st-col-merge" style="padding:6px 8px">MERGE</button><button id="st-col-bounce" style="padding:6px 8px">BOUNCE</button><button id="st-col-off" style="padding:6px 8px">OFF</button></div></div>' +
-    tgl('st-tidal', 'Tidal forces', 'Moons that stray inside the Roche limit break into rings.') +
     tgl('st-auto', 'Auto-orbit', 'A body placed with a plain click gets a circular orbit for free.') +
     tgl('st-trails', 'Orbit trails', 'Trace the paths of the 28 most massive bodies.') +
     tgl('st-labels', 'Name labels', '') +
     tgl('st-lens', 'Gravitational lensing', 'Bend light around black holes. Costs a little performance.') +
+    tgl('st-grid', 'Placement grid', 'Show a measuring grid on the drop plane whenever something is armed.') +
+    tgl('st-snap', 'Snap to the grid', 'Drop points land exactly on grid intersections, for laying things out neatly.') +
+
+    '<div class="an-sec">TIDES</div>' +
+    '<p class="an-note">Inside the <b>Roche limit</b> a body cannot hold itself together against the pull of whatever it is orbiting. It does not simply pop: it is shaved away and squeezed hot first, and only then comes apart.</p>' +
+    tgl('st-tidal', 'Tidal forces', 'Off, and nothing is ever torn at, however close it gets.') +
+    tgl('st-strip', 'Strip material away', 'Matter is lifted off a body inside the Roche limit and laid into a ring. It really loses the mass.') +
+    sld('st-striprate', 'Stripping speed', 0.1, 6, 0.1, settings.stripRate) +
+    '<p class="an-note">Real stripping takes years to millennia. This is how much faster than that it happens here.</p>' +
+    tgl('st-tideheat', 'Tidal heating', 'Being kneaded by a tide turns motion into heat. This is why Io has volcanoes and Europa has an ocean under its ice.') +
+
+    '<div class="an-sec">GROWING UP</div>' +
+    sld('st-bd', 'Brown dwarf ignition', 1, 1000, 1, settings.bdYears) +
+    '<p class="an-note" id="st-bd-note"></p>' +
+    sld('st-disc', 'Planet every', 0.25, 60, 0.25, settings.discYears) +
+    '<p class="an-note">How long a protoplanetary disc takes to condense each new planet out of itself. Ours took tens of millions of years to build all eight.</p>' +
+
+    '<div class="an-sec">GALAXIES</div>' +
+    '<p class="an-note">A galaxy is millions of times wider than anything else here, so it cannot be drawn to scale. It is drawn at a fixed size on your screen instead, and these are the limits of that.</p>' +
+    sld('st-galmin', 'Smallest a galaxy is drawn', 200, 3000, 50, settings.galMinPx) +
+    sld('st-galmax', 'Largest a galaxy is drawn', 400, 5000, 50, settings.galMaxPx) +
 
     '<div class="an-sec">SUPERNOVAE</div>' +
     '<p class="an-note">Every number below starts at its real measured value. Change whatever you like — <b>RESET</b> puts the universe back the way it actually is.</p>' +
@@ -5817,10 +7083,36 @@ function openSettings() {
   syncCol();
 
   bindTgl('st-tidal', 'tidal');
+  bindTgl('st-strip', 'strip');
+  bindTgl('st-tideheat', 'tideHeat');
   bindTgl('st-auto', 'autoOrbit');
   bindTgl('st-trails', 'trails', clearTrails);
   bindTgl('st-labels', 'labels');
   bindTgl('st-lens', 'lensing');
+  bindTgl('st-grid', 'grid');
+  bindTgl('st-snap', 'gridSnap');
+
+  bindSld('st-striprate', (v) => v.toFixed(1) + '×', (v) => { settings.stripRate = v; });
+
+  const bdNote = () => $('st-bd-note').textContent =
+    'A brown dwarf here contracts until it lights up as a red dwarf after ' +
+    Math.round(settings.bdYears).toLocaleString() + ' years. A real one never does — it is too light to ' +
+    'ever fuse hydrogen, and it just fades away for trillions of years. This one is for fun.';
+  bindSld('st-bd', (v) => Math.round(v).toLocaleString() + ' years', (v) => { settings.bdYears = v; bdNote(); });
+  bdNote();
+
+  bindSld('st-disc', (v) => v < 1 ? Math.round(v * 365.25) + ' days' : v.toFixed(2) + ' years',
+    (v) => { settings.discYears = v; });
+
+  // The two galaxy limits must not be able to cross each other.
+  const galLo = bindSld('st-galmin', (v) => Math.round(v) + ' px', (v) => {
+    settings.galMinPx = v;
+    if (settings.galMaxPx < v) { settings.galMaxPx = v; galHi.set(v); }
+  });
+  const galHi = bindSld('st-galmax', (v) => Math.round(v) + ' px', (v) => {
+    settings.galMaxPx = v;
+    if (settings.galMinPx > v) { settings.galMinPx = v; galLo.set(v); }
+  });
 
   /* ------------------------------------------------------------ supernovae */
 
@@ -5987,7 +7279,11 @@ function fmtYears(days) {
 }
 
 function syncSettings() {
-  const map = { 'st-tidal': 'tidal', 'st-auto': 'autoOrbit', 'st-trails': 'trails', 'st-labels': 'labels', 'st-lens': 'lensing' };
+  const map = {
+    'st-tidal': 'tidal', 'st-strip': 'strip', 'st-tideheat': 'tideHeat',
+    'st-auto': 'autoOrbit', 'st-trails': 'trails', 'st-labels': 'labels',
+    'st-lens': 'lensing', 'st-grid': 'grid', 'st-snap': 'gridSnap'
+  };
   for (const id in map) { const el = $(id); if (el) el.classList.toggle('on', !!settings[map[id]]); }
 }
 
@@ -6042,29 +7338,28 @@ const rE = (radiiEarth) => radiiEarth * R_EARTH;
 
 const PRESETS = [
   {
-    name: 'The Solar System', desc: 'Our own eight planets at their real distances, on real orbital periods.',
+    name: 'The Solar System', desc: 'Our own eight planets at their real distances, on real orbital periods — plus Pluto, because it counts.',
     dist: 3400,
     build() {
-      const sun = makeBody('sun_like', new V3(), new V3(), { name: 'Sol' });
+      const sun = makeBody('sol_sun', new V3(), new V3());
+      // Semi-major axis in Gm and eccentricity, both as measured.
       const data = [
-        ['moon', 0.0553, 0.383, 57.9, 'Mercury'],
-        ['desert_world', 0.815, 0.949, 108.2, 'Venus'],
-        ['terrestrial', 1, 1, 149.6, 'Earth'],
-        ['desert_world', 0.107, 0.532, 227.9, 'Mars'],
-        ['gas_giant', 317.8, 11.21, 778.6, 'Jupiter'],
-        ['ringed_giant', 95.2, 9.45, 1433.5, 'Saturn'],
-        ['ice_giant', 14.5, 4.01, 2872.5, 'Uranus'],
-        ['ice_giant', 17.1, 3.88, 4495.1, 'Neptune']
+        ['sol_mercury', 57.91, 0.2056],
+        ['sol_venus', 108.21, 0.0068],
+        ['sol_earth', 149.60, 0.0167],
+        ['sol_mars', 227.94, 0.0934],
+        ['sol_jupiter', 778.48, 0.0489],
+        ['sol_saturn', 1432.0, 0.0565],
+        ['sol_uranus', 2867.0, 0.0457],
+        ['sol_neptune', 4515.0, 0.0113],
+        ['sol_pluto', 5906.4, 0.2488]
       ];
       let earth = null;
       data.forEach((d, i) => {
-        const b = orbitBody(d[0], sun, d[3], {
-          ang: i * 0.83 + 0.4,
-          over: { mass: d[1], r: rE(d[2]), name: d[4] }
-        });
-        if (d[4] === 'Earth') earth = b;
+        const b = orbitBody(d[0], sun, d[1], { ang: i * 0.83 + 0.4, ecc: d[2] });
+        if (d[0] === 'sol_earth') earth = b;
       });
-      if (earth) orbitBody('moon', earth, 0.3844, { ang: 1.1, over: { name: 'Luna' } });
+      if (earth) orbitBody('sol_luna', earth, 0.3844, { ang: 1.1 });
     }
   },
   {
@@ -6246,6 +7541,66 @@ const PRESETS = [
     }
   },
   {
+    name: 'A Solar System Being Born', desc: 'A young star inside the disc of gas and dust it is still feeding from. Start time and watch planets condense out of it, one at a time.',
+    dist: 9000,
+    build() {
+      const s = makeBody('protostar', new V3(), new V3(), { name: 'Sol' });
+      sim.running = true;
+      return s;
+    }
+  },
+  {
+    name: 'Ring Workshop', desc: 'One giant, no rings — yet. Open CUSTOMISE on it and build a set: pick the edges, how solid they are, and two colours.',
+    dist: 3,
+    build() {
+      const s = makeBody('sun_like', new V3(-AU * 6, 0, 0), new V3(), { name: 'Sol' });
+      const g = makeBody('gas_giant', new V3(), new V3(), { name: 'Workshop', rings: null });
+      g.v.copy(circularVelocity(s, g.p));
+      orbitBody('moon', g, 1.9, { ang: 0.7 });
+      return g;
+    }
+  },
+  {
+    name: 'Roche Grinder', desc: 'Three moons spiralling into a giant\'s Roche limit. They are shaved away and cooked from the inside before they finally come apart.',
+    dist: 4,
+    build() {
+      const s = makeBody('ringed_giant', new V3(), new V3(), { name: 'Grinder' });
+      const probe = makeBody('moon', new V3(1e4, 0, 0), new V3(), { mass: 0.004, name: 'probe' });
+      const limit = rocheLimit(s, probe);
+      removeBody(probe); compact();
+      [0.72, 0.86, 0.99].forEach((f, i) => {
+        orbitBody('moon', s, limit * f, { ang: i * 2.1, over: { mass: 0.006 } });
+      });
+      orbitBody('moon', s, limit * 3.4, { ang: 3.1, over: { name: 'Safe' } });
+      sim.running = true;
+      return s;
+    }
+  },
+  {
+    name: 'Failed Stars', desc: 'Four brown dwarfs — too light to ever burn hydrogen. Wind time forward a hundred years and watch them light up anyway.',
+    dist: 2600,
+    build() {
+      for (let i = 0; i < 4; i++) {
+        const a = i * (TAU / 4) + 0.3;
+        makeBody('brown_dwarf', new V3(Math.cos(a) * 700, rnd(-90, 90), Math.sin(a) * 700),
+          new V3(rnd(-0.05, 0.05), 0, rnd(-0.05, 0.05)), { mass: rnd(14, 70) * 317.8 });
+      }
+      sim.running = true;
+    }
+  },
+  {
+    name: 'Galaxy', desc: 'A spiral galaxy, drawn thousands of pixels across because the real thing would never fit. Its heavy middle still pulls on everything nearby.',
+    dist: 2000,
+    build() {
+      const g = makeBody('galaxy', new V3(), new V3(), { name: 'Andromeda' });
+      const s = orbitBody('sun_like', g, 900, { ang: 0.6 });
+      orbitBody('terrestrial', s, 149.6, { ang: 1.2 });
+      orbitBody('gas_giant', s, 620, { ang: 3.4 });
+      sim.running = true;
+      return g;
+    }
+  },
+  {
     name: 'Empty Space', desc: 'A clean slate. Build whatever you like.',
     dist: 500,
     build() { }
@@ -6271,6 +7626,7 @@ function clearAll() {
   sim.bodies.length = 0;
   clearParticles();
   clearSupernovae();
+  clearDiscs();
   grewBodies.clear();
   pSources = [];
   usedNames.clear();
@@ -6309,7 +7665,15 @@ function saveUniverse() {
       cam: { t: view.target.toArray(), d: view.dist, y: view.yaw, p: view.pitch },
       bodies: sim.bodies.map(b => ({
         ty: b.type, n: b.name, m: b.m, r: b.r, s: b.seed, sp: b.spin, ti: b.tilt, ag: b.age,
-        p: [b.p.x, b.p.y, b.p.z], v: [b.v.x, b.v.y, b.v.z]
+        p: [b.p.x, b.p.y, b.p.z], v: [b.v.x, b.v.y, b.v.z],
+        // Everything the customise panel can change, so a rebuilt body comes
+        // back exactly as it was left rather than as a factory one.
+        ct: b.coreT, tp: b.temp, rg: b.ringSpec, tn: b.tint, gw: b.galWide,
+        st: b.stripped, m0: b.m0,
+        // A protoplanetary disc is saved with its star, not on its own.
+        dc: b.disc && b.disc.alive
+          ? { rIn: b.disc.rIn, rOut: b.disc.rOut, mass: b.disc.mass, m0: b.disc.m0, made: b.disc.made }
+          : null
       }))
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -6335,8 +7699,28 @@ function loadUniverse() {
   sim.time = data.t || 0;
   for (const s of data.bodies || []) {
     if (!TYPES[s.ty]) continue;
-    makeBody(s.ty, new V3().fromArray(s.p), new V3().fromArray(s.v),
-      { mass: s.m, r: s.r, name: s.n, seed: s.s, spin: s.sp, tilt: s.ti, age: s.ag });
+    const b = makeBody(s.ty, new V3().fromArray(s.p), new V3().fromArray(s.v), {
+      mass: s.m, r: s.r, name: s.n, seed: s.s, spin: s.sp, tilt: s.ti, age: s.ag,
+      coreT: s.ct, rings: s.rg !== undefined ? s.rg : undefined,
+      // The disc is restored below with its saved budget, not a fresh one.
+      noDisc: true
+    });
+    if (s.tp != null) { b.temp = s.tp; updateLuminosity(b); }
+    if (s.gw != null) b.galWide = s.gw;
+    if (s.st != null) b.stripped = s.st;
+    if (s.m0 != null) b.m0 = s.m0;
+    if (s.tn) {
+      const c = hexRgb(s.tn);
+      b.tint = s.tn;
+      if (!b.baseColor) b.baseColor = new THREE.Color();
+      b.baseColor.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+      if (b.parts && b.parts.surf && b.parts.surf.material.color) b.parts.surf.material.color.copy(b.baseColor);
+    }
+    if (s.dc) {
+      const d = makeDisc(b, s.dc);
+      d.m0 = s.dc.m0 || d.mass;
+      d.made = s.dc.made || 0;
+    }
   }
   if (data.cam) {
     view.target.fromArray(data.cam.t);
@@ -6362,6 +7746,27 @@ function openHelp() {
     '<li>Just click without dragging and <b>Auto-orbit</b> gives it a clean circular orbit around whatever dominates nearby.</li>' +
     '<li><b>Click a body</b> to select it. The panel on the right shows its real mass, density, speed and temperature, and lets you resize it.</li>' +
     '<li><b>Click its name</b> in that panel to rename it — type anything and press Enter.</li>' +
+    '<li>While something is armed a <b>measuring grid</b> appears on the plane you are dropping onto. The hint at the bottom says how wide one square is, so you can space a system out on purpose. Turn on <b>Snap to the grid</b> in Settings and drops land exactly on the crossings.</li>' +
+    '<li>The <b>Solar System</b> group at the bottom of the list holds all eight real planets — plus the Sun, the Moon and Pluto — with their real masses, widths, spin periods and axial tilts. Uranus really is tipped over on its side, and Venus really does spin backwards.</li>' +
+    '</ul>' +
+    '<h3>CUSTOMISE — CHANGING ANYTHING YOU LIKE</h3>' +
+    '<ul>' +
+    '<li>Every selected body has a <b>CUSTOMISE</b> section. Open it and you can change its <b>radius</b> (mass stays put, so it gets denser or lighter), how fast it <b>spins</b> and which way round, how far over it <b>leans</b>, how hot it is <b>inside</b>, and what <b>colour</b> it is.</li>' +
+    '<li>Switch on <b>Has rings</b> and any world at all gets a set. Then drag the <b>inner and outer edges</b>, how <b>solid</b> they are, and pick <b>two colours</b> for the ringlets to be painted between.</li>' +
+    '<li><b>RESET TO …</b> at the bottom puts everything back the way that kind of body normally is.</li>' +
+    '</ul>' +
+    '<h3>TIDES: BEING TORN APART SLOWLY</h3>' +
+    '<ul>' +
+    '<li>Inside the <b>Roche limit</b> a body cannot hold itself together against the pull of what it orbits. It does not simply pop. It is <b>shaved away</b> — matter is lifted off it and laid straight into a ring, and it genuinely loses that mass — and at the same time the tide <b>kneads it hot inside</b>.</li>' +
+    '<li>Watch <b>Inside temp</b> in the panel climb while it happens. A ▲ next to it means the tide has hold of it right now. Push it far enough and the heat comes out through the surface and the whole world starts to glow.</li>' +
+    '<li>That heating is real: it is why <b>Io</b> has four hundred volcanoes and why <b>Europa</b> has a liquid ocean under its ice, hundreds of millions of kilometres from the Sun.</li>' +
+    '<li>Only once it has lost more than half of itself, or falls right to the bottom of the limit, does it finally come apart into fragments. <b>Settings ▸ Tides</b> controls all of it.</li>' +
+    '</ul>' +
+    '<h3>DISCS, BROWN DWARFS AND GALAXIES</h3>' +
+    '<ul>' +
+    '<li>A <b>Protostar + Disc</b> is a star still being born, wrapped in the flat disc of gas and dust it is feeding from. Start time and the disc <b>condenses into planets</b>, one at a time — rock and small worlds on the warm side of the <b>ice line</b>, giants just beyond it, exactly the order our own Solar System came out in. Every planet takes its mass out of the disc, so once the disc is spent, that is that.</li>' +
+    '<li>A <b>brown dwarf</b> is a failed star: heavier than any planet, too light to fuse hydrogen. Here one keeps contracting until it <b>lights up as a red dwarf</b> after a hundred years (change that in Settings). A real one never manages it — it just fades for trillions of years — so this one is for fun.</li>' +
+    '<li>A <b>galaxy</b> is a hundred billion stars in a spiral. A real one is a hundred thousand light-years across, millions of times wider than anything else here, so it is the one thing not drawn to scale: it holds a <b>fixed size on your screen</b>, between 1,000 and 3,000 pixels, however far you zoom. Only its heavy middle actually pulls on anything — and you can wind that up to a trillion Suns and see what happens.</li>' +
     '</ul>' +
     '<h3>MOVING AROUND</h3>' +
     '<div class="an-keys">' +
@@ -6383,7 +7788,7 @@ function openHelp() {
     '<li>The debris thrown out by an impact is <b>real matter, not sparks</b>. Every grain carries mass and is pulled along by the same gravity as the planets, so it orbits, rains back down, settles into rings, or is swallowed by a black hole — and whatever eats it genuinely gets heavier. The counter at the bottom left shows bodies plus live debris.</li>' +
     '<li>Feed a <b>rocky</b> world past <b>60.1 Earth masses</b> and its gravity can finally hold onto hydrogen: it flares up and swells into a <b>gas giant</b>, roughly doubling in width as dense rock gives way to light gas. Worlds that are already gassy skip this and just keep growing.</li>' +
     '<li>Pile up more than 8% of the Sun\'s mass and the body <b>ignites into a star</b>. The full ladder is rock → gas giant → star → supernova → neutron star or black hole.</li>' +
-    '<li>Stray inside a planet\'s <b>Roche limit</b> and tides tear the moon into a ring, exactly as they did at Saturn.</li>' +
+    '<li>Stray inside a planet\'s <b>Roche limit</b> and tides shave the moon away into a ring while cooking it from the inside, exactly as they did at Saturn.</li>' +
     '<li>Surface temperatures come from the real starlight falling on each world, so worlds glow when they roast and frost over when they don\'t.</li>' +
     '</ul>' +
     '<h3>SUPERNOVAE</h3>' +
