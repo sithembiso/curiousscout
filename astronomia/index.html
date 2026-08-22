@@ -2520,7 +2520,20 @@ function merge(a, b, vImp, vEsc) {
   // merged body's surface rather than inside it.
   a.p.copy(com);
   a.v.copy(vel);
-  a.r = gasMix ? trueRadius(a.type, mTot) : Math.cbrt(a.r * a.r * a.r + b.r * b.r * b.r);
+  /* Swallowing gas, the survivor keeps its OWN density rather than adding the
+     two volumes — a planet that eats a cloud does not balloon to the size of the
+     cloud. "Its own" means the density it actually has, not the one its type
+     says it should have: natRadius, not trueRadius. Getting that wrong turned a
+     wide, loose rubble pile into a dense speck the instant it met a wisp of gas,
+     which is what was quietly shrinking every asteroid in a solid ring. */
+  const grown = a.m;
+  a.m = mTot;
+  a.r = gasMix ? natRadius(a) : Math.cbrt(a.r * a.r * a.r + b.r * b.r * b.r);
+  a.m = grown;
+  // Adding volumes moves how far off natural density the survivor sits, so the
+  // factor is brought up to date here or the next mass change would undo it.
+  const natA = trueRadius(a.type, mTot);
+  a.rFactor = natA > 0 ? a.r / natA : 1;
 
   const thrown = ejectMass > 0
     ? ejecta(com, vel, count, ejectMass, vEsc, [255, 190, 110], [96, 84, 76], visRadius(a), { speed: 1 })
@@ -2531,7 +2544,7 @@ function merge(a, b, vImp, vEsc) {
     ? gasEjecta(com, vel, Math.round(count * 1.6), ejectMass * 2.4, vEsc, visRadius(a), { speed: 1.1 })
     : 0;
   a.m = mTot - thrown - gas;
-  if (gasMix) a.r = trueRadius(a.type, a.m);
+  if (gasMix) a.r = natRadius(a);
 
   // A real hit throws off knots you can go and look at — mostly vapour, some of
   // it solid. Only worth doing when something substantial actually landed.
@@ -2587,7 +2600,7 @@ function shatter(a, b, vImp) {
   a.m = remnantM;
   a.p.copy(com);
   a.v.copy(vel);
-  a.r = trueRadius(a.type, remnantM);
+  a.r = natRadius(a);
   updateLuminosity(a);
   refreshVisual(a);
   // The survivor wears the hit. This one is a big mark — it was nearly destroyed.
@@ -2605,10 +2618,10 @@ function shatter(a, b, vImp) {
   // Recount the slots: the knots above have taken some of them.
   const nFrags = Math.min(bigFrags, freeSlots());
   if (nFrags > 0 && rest > 0) {
-    spawnDebris(com, vel, rest / nFrags, nFrags, vImp * 0.45, visRadius(a) * 1.2);
+    spawnDebris(com, vel, rest / nFrags, nFrags, vImp * 0.45, visRadius(a) * 1.2, a.rFactor);
   } else if (rest > 0) {
     a.m += rest;                       // nowhere to put it: the survivor keeps it
-    a.r = trueRadius(a.type, a.m);
+    a.r = natRadius(a);
     scaleVisual(a);
   }
   fx.flash(com, ra0 * 7, [255, 240, 200], 1);
@@ -2633,8 +2646,14 @@ function conserveMomentum(frags, expectedP) {
   for (const f of frags) f.v.add(corr);
 }
 
-function spawnDebris(center, baseVel, massEach, count, spread, minDist) {
+/**
+ * `puff` is the parent's rFactor: how far off natural density it was. Passing it
+ * on keeps a chip off a low-density rubble pile as loose as the pile was, rather
+ * than having it appear as a dense speck a thousandth of the size.
+ */
+function spawnDebris(center, baseVel, massEach, count, spread, minDist, puff) {
   const made = [];
+  const blow = puff > 0 ? puff : 1;
   for (let i = 0; i < count; i++) {
     if (sim.bodies.length >= MAX_BODIES) break;
     const dir = new THREE.Vector3(rnd(-1, 1), rnd(-0.45, 0.45), rnd(-1, 1));
@@ -2643,7 +2662,9 @@ function spawnDebris(center, baseVel, massEach, count, spread, minDist) {
     const pos = center.clone().addScaledVector(dir, minDist * rnd(1.05, 2.2));
     const vel = baseVel.clone().addScaledVector(dir, spread * rnd(0.35, 1.15));
     const type = massEach > 0.004 ? 'moon' : 'asteroid';
-    made.push(makeBody(type, pos, vel, { mass: Math.max(massEach, 1e-7), name: 'Debris ' + (sim.nextId), rubble: true }));
+    const fm = Math.max(massEach, 1e-7);
+    made.push(makeBody(type, pos, vel, { mass: fm, r: trueRadius(type, fm) * blow,
+      name: 'Debris ' + (sim.nextId), rubble: true }));
   }
   let tot = 0;
   for (const f of made) tot += f.m;
@@ -2954,7 +2975,7 @@ function shatterBody(b) {
   }
   // Recount: the knots above have taken some of the body slots.
   const nFrags = Math.min(frags, freeSlots());
-  if (rubble > 0 && nFrags > 0) spawnDebris(b.p, b.v, rubble / nFrags, nFrags, vEsc * 0.9, rb);
+  if (rubble > 0 && nFrags > 0) spawnDebris(b.p, b.v, rubble / nFrags, nFrags, vEsc * 0.9, rb, b.rFactor);
 
   fx.flash(b.p, rb * 7, [255, 235, 190], 1);
   toast(b.name + ' was torn apart');
@@ -3186,6 +3207,7 @@ function goKilonova(a, b) {
   // same problem, a hot cloud thrown outwards.
   const pair = a.name + ' + ' + b.name;
   a.p.copy(com); a.v.copy(vel); a.m = mTot;
+  a.rFactor = 1;
   a.r = trueRadius('neutron_star', mTot);
   removeBody(b);
 
@@ -3293,7 +3315,7 @@ function goSupernova(b, plan) {
       b.type = 'neutron_star'; b.kind = 'body';
       b.temp = TYPES.neutron_star.temp;
       b.spin = TYPES.neutron_star.spin;
-      b.r = trueRadius('neutron_star', remM);
+      b.r = trueRadius('neutron_star', remM);   // rFactor was reset just above
       updateLuminosity(b);
     }
     refreshVisual(b);
@@ -3387,7 +3409,7 @@ function snSweep(e) {
         const v = Math.min(Math.sqrt(2 * eDep / Math.max(strip, 1e-12)), e.vBulk);
         blastShell(b.p, b.v, n, strip, { vMean: v, r0: visRadius(b) * 1.3, hot: [255, 220, 170], cool: [120, 96, 84], coolDays: 6 });
         b.m -= strip;
-        b.r = trueRadius(b.type, b.m);
+        b.r = natRadius(b);
         b.glowPulse = 1;
         scaleVisual(b);
         toast(b.name + ' was stripped bare by the blast wave');
@@ -4066,6 +4088,7 @@ function shedEnvelope(b) {
   // will spend the rest of the universe's life cooling off.
   b.temp = 60000;
   b.spin = TYPES.white_dwarf.spin;
+  b.rFactor = 1;
   b.r = trueRadius('white_dwarf', wd);
   updateLuminosity(b);
   refreshVisual(b);
@@ -4172,7 +4195,7 @@ function updateTides(dt) {
       s.m -= loss;
       s.stripped += loss;
       s.stripPending += loss;
-      s.r = trueRadius(s.type, s.m);
+      s.r = natRadius(s);
       scaleVisual(s);
       // Release the dust in bursts rather than one grain per step, so a handful
       // of particles carries a visible amount of matter instead of nothing.
@@ -4220,8 +4243,12 @@ function tidalDisrupt(s, P, d) {
       .addScaledVector(tang, speed * rnd(0.97, 1.03))
       .addScaledVector(radial, speed * rnd(-0.02, 0.02));
     // Fragments carry the heat the parent body built up on its way in.
-    made.push(makeBody(each > 0.004 ? 'moon' : 'asteroid', pos, vel,
-      { mass: Math.max(each, 1e-7), name: 'Ring frag', rubble: true, coreT: s.coreT }));
+    const fm = Math.max(each, 1e-7);
+    const ft = each > 0.004 ? 'moon' : 'asteroid';
+    made.push(makeBody(ft, pos, vel,
+      { mass: fm, name: 'Ring frag', rubble: true, coreT: s.coreT,
+        // Chips off a loose body are loose too — see spawnDebris.
+        r: trueRadius(ft, fm) * (s.rFactor > 0 ? s.rFactor : 1) }));
   }
   // The ring should drift exactly as the moon did, not gain a net kick.
   let tot = 0;
@@ -4315,7 +4342,7 @@ function updateSpin(dt) {
       if (put > 0) {
         b.spinPending -= put;
         b.m -= put;
-        b.r = trueRadius(b.type, b.m);
+        b.r = natRadius(b);
         scaleVisual(b);
       }
     }
@@ -4324,6 +4351,7 @@ function updateSpin(dt) {
       const core = bareCore(b);
       if (core && b.type !== core) {
         b.type = core;
+        b.rFactor = 1;
         b.r = trueRadius(core, b.m);
         b.coreT = Math.max(b.coreT, baseCoreT(TYPES[core], b.m));
         b.glowPulse = 1;
@@ -5214,6 +5242,7 @@ function collapseClump(b) {
   b.kind = 'body';
   b.temp = TYPES[type].temp || 300;
   b.coreT = baseCoreT(TYPES[type], b.m);
+  b.rFactor = 1;
   b.r = trueRadius(type, b.m);
   b.spin = TYPES[type].spin || 1;
   b.tilt = rnd(-0.42, 0.42);
@@ -5471,6 +5500,14 @@ function addSolidRing(b) {
     const vel = b.v.clone().addScaledVector(tan, vc * rnd(0.985, 1.015));
     const rock = makeBody('asteroid', pos, vel, { mass: each, r: rockR, spin: rnd(0.05, 0.6) });
     rock.tilt = rnd(-Math.PI, Math.PI);
+    /* Flagged as an already-loose rubble pile, which is what it is — and which
+       makes it immune to tidal stripping. That matters: a rock this wide is a
+       deliberate fudge, drawn big enough to actually hit its neighbours, so its
+       density comes out very low. Feed that density into a Roche limit and the
+       star shaves the whole band down to specks within the first few orbits,
+       which is the fudge eating its own tail. It can still be smashed by an
+       impact; it just cannot be quietly eroded. */
+    rock.disrupted = true;
     made++;
   }
   if (!made) { toast('No room left for a ring'); return 0; }
@@ -8311,6 +8348,7 @@ function bindCustomise(b) {
   /* ---- back to factory ---- */
   on('is-reset', 'click', () => {
     const def = TYPES[b.type];
+    b.rFactor = 1;
     b.r = trueRadius(b.type, b.m);
     b.spin = def.spin || 1;
     b.tilt = def.tilt != null ? def.tilt : def.rings ? def.rings.tilt : 0;
