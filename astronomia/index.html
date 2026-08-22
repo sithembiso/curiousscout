@@ -482,7 +482,7 @@
   <div class="an-top">
     <div class="an-brand">
       <a class="an-back" href="../" title="Back to CuriousScout" aria-label="Back to CuriousScout">&#9664;</a>
-      <div class="an-title">AstroNomia <span>1.0.4</span></div>
+      <div class="an-title">AstroNomia <span>1.0.5</span></div>
     </div>
 
     <div class="an-time panel">
@@ -543,14 +543,14 @@
 </div>
 
 <div class="an-boot" id="an-boot">
-  <div class="an-title">AstroNomia <span>1.0.4</span></div>
+  <div class="an-title">AstroNomia <span>1.0.5</span></div>
   <p id="an-boot-msg">FORMING THE UNIVERSE&hellip;</p>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ==========================================================================
-   AstroNomia 1.0.4 — a space sandbox
+   AstroNomia 1.0.5 — a space sandbox
    --------------------------------------------------------------------------
    Units used everywhere in the simulation:
      mass   = Earth masses      (M⊕ = 5.972e24 kg)
@@ -5995,10 +5995,50 @@ function scarredRadius(list, dir, ground) {
   return flat > 0 ? ground * (1 - flat) + flat + d : ground + d;
 }
 
+/* =========================================== rounding out under gravity  */
+/*
+ * A small body keeps whatever shape it was left in, because its own gravity is
+ * far too weak to do anything about it: rock has strength, and below a few
+ * hundred kilometres across that strength wins. Above it, gravity wins, and the
+ * thing pulls itself into a ball. That is the whole difference between Vesta,
+ * which is a battered lump, and Ceres just next door, which is round — and it is
+ * why every world big enough to be called a planet is a sphere.
+ *
+ * So an asteroid or a comet that keeps eating gets rounder as it goes. It is
+ * measured against the type's OWN mass rather than an absolute figure, because
+ * the drawn sizes here are exaggerated: a body starts as irregular as its type
+ * says, and is a smooth ball by about a hundred times that mass.
+ */
+const ROUND_DECADES = 2;        // powers of ten from lumpy to spherical
+
+function lumpAmount(b) {
+  const def = TYPES[b.type];
+  if (!def.lumpy) return 0;
+  const t = clamp(Math.log10(Math.max(b.m, 1e-30) / def.mass) / ROUND_DECADES, 0, 1);
+  return def.lumpy * (1 - smoothstep(t));
+}
+
+/** True when a body has rounded out enough to be worth rebuilding its mesh. */
+function lumpDrift(b) {
+  if (!TYPES[b.type].lumpy) return false;
+  const want = lumpAmount(b);
+  const had = b.lumpBuilt != null ? b.lumpBuilt : TYPES[b.type].lumpy;
+  // A twelfth of the way, so a body that is slowly accreting rebuilds a dozen
+  // times on its way to being a ball rather than on every mouthful.
+  return Math.abs(want - had) > TYPES[b.type].lumpy / 12;
+}
+
 /** The geometry a body would have with no craters in it at all. */
 function baseGeometryFor(b) {
   const def = TYPES[b.type];
-  if (def.lumpy) return lumpyGeometry(b.seed, def.lumpy);
+  if (def.lumpy) {
+    const amt = lumpAmount(b);
+    b.lumpBuilt = amt;
+    /* Once it is mostly round, the coarse sphere the irregular shapes are built
+       from starts to show as facets — so a body that has smoothed out gets a
+       finer one to be smooth ON. */
+    return lumpyGeometry(b.seed, amt, amt < def.lumpy * 0.45 ? SPHERE : SPHERE_LO);
+  }
   if (def.surf === 'star') return starGeometry(b.type, b.seed);
   return reliefGeometry(b.type, b.seed);
 }
@@ -8096,6 +8136,8 @@ function updateParticles(simDt) {
       // Enough swallowed debris can push a body over a threshold too.
       const ev = checkEvolution(b);
       if (ev) toast(b.name + EVOLVE_NOTE[ev]);
+      // Grown enough to have pulled itself rounder: it needs a new mesh.
+      else if (lumpDrift(b)) { updateLuminosity(b); refreshVisual(b); }
       else { updateLuminosity(b); scaleVisual(b); }
     }
     grewBodies.clear();
@@ -9730,6 +9772,9 @@ function renderInspector() {
       const lbl = $('is-typelbl');
       if (lbl) lbl.textContent = TYPES[nb.type].label;
       toast(nb.name + EVOLVE_NOTE[ev]);
+    } else if (lumpDrift(nb)) {
+      updateLuminosity(nb);
+      refreshVisual(nb);       // heavy enough now to have rounded itself out
     } else {
       updateLuminosity(nb);
       scaleVisual(nb);
