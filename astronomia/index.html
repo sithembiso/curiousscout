@@ -2432,6 +2432,10 @@ function impact(a, b) {
   // heavier body is A
   if (b.m > a.m) { const t = a; a = b; b = t; }
 
+  // Already sinking into one another: the engulfment owns this pair, and the
+  // collision test will go on reporting them every step until it is done.
+  if ((b.sink && b.sink.host === a) || (a.sink && a.sink.host === b)) return false;
+
   // White holes never merge — they shove things away instead.
   if (a.kind === 'wh' || b.kind === 'wh') {
     const wh = a.kind === 'wh' ? a : b, other = a.kind === 'wh' ? b : a;
@@ -2475,9 +2479,133 @@ function impact(a, b) {
   // pair of knots can shatter into more knots, and one collision runs away
   // into a hundred bodies.
   const soft = a.rubble || b.rubble || a.kind === 'gas' || b.kind === 'gas';
-  if (vImp < vEsc * 1.6 || ratio < 0.015 || soft) merge(a, b, vImp, vEsc);
+  if (vImp < vEsc * 1.6 || ratio < 0.015 || soft) {
+    /* Two solid worlds do not merge on contact — the smaller one starts sinking
+       in, and is only gone once it is buried. A knot of gas or a chip of rubble
+       has nothing to bury, so it lands at once as before. */
+    if (!soft && beginEngulf(a, b, vImp, vEsc)) return false;
+    merge(a, b, vImp, vEsc);
+  }
   else shatter(a, b, vImp);
   return true;
+}
+
+/* ==================================================== swallowing a world  */
+/*
+ * A planet hit by another planet does not blink out of existence on contact. It
+ * SINKS IN — and it is only gone once it is completely buried.
+ *
+ * From touching to buried is two impactor-radii of travel, and it makes that
+ * journey at the speed it arrived, so a fast hit is over in a moment and a slow
+ * one takes its time. Nothing about the physics is faked while it happens: the
+ * two are locked to one velocity the instant they touch, which is the same
+ * perfectly inelastic collision a merge always was, and their centre of mass is
+ * left exactly where the integrator puts it. Only the distance BETWEEN them is
+ * scripted, because that is the part that is being drawn rather than computed.
+ *
+ * The crater opens up as it goes down. The mark appears the moment the two touch
+ * and widens all the way in, so how big a hole is left is a record of how deep
+ * the thing that made it got.
+ */
+
+// Below this share of the target's drawn size an impactor is a pebble, and
+// pebbles just land — animating them would cost geometry rebuilds for nothing.
+const ENGULF_MIN_R = 0.11;
+/* How long burying one world in another takes, in SECONDS OF WALL CLOCK — not
+   simulated days. A real planetary impact is over in minutes: work it out from
+   the speed of arrival and the whole thing finishes inside a single frame at any
+   watchable time rate, which is exactly the "it vanished instantly" this is meant
+   to fix. So it runs on the same clock as the other things built to be looked
+   at, and a bigger impactor takes longer to go under than a smaller one. */
+const ENGULF_MIN_SEC = 0.40;
+const ENGULF_MAX_SEC = 1.90;
+const ENGULF_STEPS = 10;         // how many times the crater is re-cut on the way in
+
+function beginEngulf(a, b, vImp, vEsc) {
+  const ra = visRadius(a), rb = visRadius(b);
+  if (!(rb > ra * ENGULF_MIN_R)) return false;
+  const dir = b.p.clone().sub(a.p);
+  if (dir.lengthSq() < 1e-18) return false;
+  dir.normalize();
+
+  // Locked together on contact: one velocity, carrying exactly the momentum the
+  // pair had between them.
+  const mt = a.m + b.m;
+  const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mt);
+  a.v.copy(vel); b.v.copy(vel);
+
+  const T = clamp(0.40 + 1.30 * (rb / Math.max(ra, 1e-9)), ENGULF_MIN_SEC, ENGULF_MAX_SEC);
+  const hole = clamp(Math.cbrt(b.m / Math.max(a.m, 1e-12)) * 1.5, 0.14, 1.1);
+  b.sink = {
+    host: a, t: 0, T: T, vImp: vImp, vEsc: vEsc, dir: dir,
+    ra: ra, rb: rb, d0: ra + rb, d1: Math.max(ra - rb, 0),
+    hole: hole, step: 0, bore: 0,
+    // A mark from the very first moment of contact, barely open — the two
+    // surfaces are only touching at a point yet.
+    mark: addScar(a, dir, hole * 0.12)
+  };
+  fx.flash(b.p, rb * 2.4, [255, 200, 140], 0.45);
+  return true;
+}
+
+/** Advance every world currently sinking into another one. `dt` is in seconds. */
+function updateEngulf(dt) {
+  if (!(dt > 0)) return;
+  dt = Math.min(dt, 0.1);        // a stalled tab must not bury a world in one go
+  let done = null;
+  for (let i = 0; i < sim.bodies.length; i++) {
+    const b = sim.bodies[i];
+    const s = b.sink;
+    if (!s) continue;
+    const a = s.host;
+    // Whatever it was falling into is gone: it is a free body again.
+    if (!b.alive || !a.alive || a.kind !== 'body' || b.kind !== 'body') { b.sink = null; continue; }
+
+    s.t = Math.min(s.t + dt / s.T, 1);
+
+    /* Hold the pair to one velocity and put them either side of wherever the
+       integrator left their centre of mass — so external gravity still moves
+       them and the barycentre never jumps, but the gap closes on schedule. */
+    const mt = a.m + b.m;
+    const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mt);
+    a.v.copy(vel); b.v.copy(vel);
+    const com = a.p.clone().multiplyScalar(a.m).addScaledVector(b.p, b.m).divideScalar(mt);
+    const d = lerp(s.d0, s.d1, smoothstep(s.t));
+    a.p.copy(com).addScaledVector(s.dir, -d * b.m / mt);
+    b.p.copy(com).addScaledVector(s.dir, d * a.m / mt);
+
+    /* How wide the hole is right now. The honest measure is the circle where
+       the two surfaces actually cross: zero at first touch, widening fast as the
+       impactor drives in. Left to itself that circle would close again once the
+       thing is more than half under — but a bore does not un-drill itself, so
+       what counts is the widest it has ever been. Half of the growth comes from
+       that and half from how far in it has got, which keeps the hole opening
+       right up to the moment the last of the impactor disappears. */
+    const x = (d * d + s.ra * s.ra - s.rb * s.rb) / (2 * Math.max(d, 1e-12));
+    const cut = Math.sqrt(Math.max(s.ra * s.ra - x * x, 0)) / Math.max(s.rb, 1e-12);
+    s.bore = Math.max(s.bore, clamp(cut, 0, 1));
+    const grow = 0.5 * s.bore + 0.5 * s.t;
+
+    // Re-cut on a fixed number of steps, because each one rebuilds the mesh.
+    const step = Math.round(grow * ENGULF_STEPS);
+    if (step !== s.step && s.mark && a.scars && a.scars.indexOf(s.mark) >= 0) {
+      s.step = step;
+      s.mark.s = clamp(s.hole * (0.12 + 0.88 * grow), 0.10, 1.15);
+      s.mark.age = 0;                       // still being dug, so still molten
+      if (a.parts) buildScars(a);
+    }
+
+    if (s.t >= 1) (done || (done = [])).push(b);
+  }
+  if (!done) return;
+  // Finished outside the walk, because a merge removes a body and compacting
+  // the list underneath the loop would skip whatever came after it.
+  for (const b of done) {
+    const s = b.sink;
+    b.sink = null;
+    if (b.alive && s.host.alive) merge(s.host, b, s.vImp, s.vEsc, s.mark);
+  }
+  compact();
 }
 
 function absorb(hole, prey) {
@@ -2539,7 +2667,7 @@ function bounce(a, b) {
   }
 }
 
-function merge(a, b, vImp, vEsc) {
+function merge(a, b, vImp, vEsc, mark) {
   const mTot = a.m + b.m;
   // Where it was hit, captured before the survivor is moved to the barycentre.
   const hitDir = b.p.clone().sub(a.p);
@@ -2605,8 +2733,12 @@ function merge(a, b, vImp, vEsc) {
   if (ev) note = a.name + EVOLVE_NOTE[ev];
   else { updateLuminosity(a); refreshVisual(a); }
 
-  // …and it leaves a mark, sized by how big the thing that hit it was.
-  addScar(a, hitDir, clamp(Math.cbrt(b.m / Math.max(a.m, 1e-12)) * 1.5, 0.14, 1.1));
+  /* …and it leaves a mark, sized by how big the thing that hit it was. If the
+     impactor sank in rather than landing all at once, the hole has been opening
+     the whole way down and this only finishes it off. */
+  const hole = clamp(Math.cbrt(b.m / Math.max(a.m, 1e-12)) * 1.5, 0.14, 1.1);
+  if (mark && a.scars && a.scars.indexOf(mark) >= 0) { mark.s = hole; buildScars(a); }
+  else addScar(a, hitDir, hole);
 
   fx.flash(com, visRadius(a) * 4, [255, 210, 150], 0.7);
   toast(note + (clumped > 0 ? ' — knots of it flew off' : ''));
@@ -4203,7 +4335,7 @@ function updateTides(dt) {
     const sdef = TYPES[s.type];
     // Stars and anything genuinely massive hold themselves together by their
     // own gravity far better than a moon does; rubble has already been shredded.
-    const immune = sdef.star || s.m > 40 || s.disrupted;
+    const immune = sdef.star || s.m > 40 || s.disrupted || !!s.sink;
 
     // Find the primary raising the biggest tide on this body.
     let best = null, bestX = 0, bestD = 0;
@@ -5321,22 +5453,25 @@ function localOnBody(b, worldDir) {
  * radius. Held on the body, so it survives a rebuild and a save.
  */
 function addScar(b, worldDir, size) {
-  if (!b.alive || b.kind !== 'body') return;
+  if (!b.alive || b.kind !== 'body') return null;
   const def = TYPES[b.type];
   // Nothing that has no surface to scar: a star's photosphere heals in minutes
   // and a gas giant has no ground for a crater to be in.
-  if (def.star || GASSY_SURF.has(def.surf)) return;
+  if (def.star || GASSY_SURF.has(def.surf)) return null;
   const n = localOnBody(b, worldDir);
   b.scars = b.scars || [];
   // age 0: molten. It cools over SCAR_COOL days and the crater emerges from
   // underneath the fire as it goes.
-  b.scars.push({ n: [n.x, n.y, n.z], s: clamp(size, 0.10, 1.15), roll: Math.random() * TAU, age: 0 });
+  const mark = { n: [n.x, n.y, n.z], s: clamp(size, 0.10, 1.15), roll: Math.random() * TAU, age: 0 };
+  b.scars.push(mark);
   // Oldest marks are buried by later resurfacing; keep the panel honest by
   // counting every one, but only ever draw the most recent handful.
   b.scarCount = (b.scarCount || 0) + 1;
   b.scarsCold = false;                   // something on this body is glowing again
   while (b.scars.length > MAX_SCARS) b.scars.shift();
   if (b.parts) buildScars(b);
+  // Handed back so a crater that is still being dug can go on growing.
+  return b.scars.indexOf(mark) >= 0 ? mark : null;
 }
 
 /* How long a fresh impact scar takes to go from molten to cold rock, in days.
@@ -7934,7 +8069,10 @@ function nearestStar(b) {
 }
 
 function updateVisuals(realDt, simDt) {
-  // First, because an explosion can destroy bodies and is itself a light source
+  // Worlds part-way inside one another. On the wall clock, not the simulation
+  // clock, and first because finishing one removes a body.
+  updateEngulf(realDt);
+  // Then, because an explosion can destroy bodies and is itself a light source
   // that the two passes below need to know about.
   updateSupernovae(simDt);
   updateDiscs(simDt);
