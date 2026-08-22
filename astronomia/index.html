@@ -3456,14 +3456,16 @@ function cloudForecast(mass) {
     const mSun = mass / M_SUN;
     const kind = mSun > 8 ? 'blue giant' : mSun > 0.5 ? 'Sun-like star' : 'red dwarf';
     return fmtMass(mass) + ' is enough. Hydrogen ignites and it becomes a ' + kind +
-      ', with the leftover couple of percent flattening into a disc and accreting into planets.';
+      '. The leftover couple of percent flattens into a disc around it — no planets yet: ' +
+      'the disc has to build them, and it will, one at a time, for as long as it lasts.';
   }
   if (mass >= BROWN_DWARF_MIN) {
     return 'Only ' + fmtMass(mass) + '. Below 0.075 M☉ — about eighty Jupiters — hydrogen never ' +
       'catches, and you get a brown dwarf that shines on its own contraction and then slowly fades.';
   }
   return 'Only ' + fmtMass(mass) + ' left. Far too little to light anything; this would settle ' +
-    'into a family of worlds and rubble with nothing at the centre to warm them.';
+    'into a cold lump wrapped in a disc, which will still go on making worlds — with nothing ' +
+    'at the centre to warm them.';
 }
 
 function discPlanetType(mass, insideIce) {
@@ -3480,27 +3482,28 @@ function discPlanetType(mass, insideIce) {
 }
 
 /**
- * Collapse the cloud into a star and a family of planets.
+ * Collapse the cloud into a young star and the disc it was born inside.
  *
- * Mass and momentum both come straight out of the grains, so the system that
- * appears weighs exactly what the cloud weighed and drifts exactly as it was
- * drifting. The planets orbit in the plane the cloud was already rotating in —
+ * Mass and momentum both come straight out of the grains, so what appears
+ * weighs exactly what the cloud weighed and drifts exactly as it was drifting.
+ * Nothing arrives finished, though: a real collapse makes a star and a flat
+ * disc, and the planets are built out of that disc over the millions of years
+ * that follow. The disc turns in the plane the cloud was already rotating in —
  * that is why every planet in a real system goes round the same way, in nearly
- * the same plane: they inherit the collapsing cloud's angular momentum.
+ * the same plane. They inherit the collapsing cloud's angular momentum.
  */
 function condenseCloud(e) {
   const c = e.cloud;
   if (!c || c.mass <= 0 || c.n < 3) { toast('There is nothing left of this cloud to collapse'); return false; }
-  if (freeSlots() < 2) { toast('Universe is full — clear some bodies first'); return false; }
+  if (freeSlots() < 1) { toast('Universe is full — clear some bodies first'); return false; }
 
   const M = c.mass;
   const centre = new THREE.Vector3(c.cx, c.cy, c.cz);
   const drift = new THREE.Vector3(c.vx, c.vy, c.vz);
-  const totalP = drift.clone().multiplyScalar(M);
 
-  // A protoplanetary disc is only a percent or so of the star; ours ended up with
-  // 447 Earth masses of planets. Everything the disc does not use stays in the
-  // star, so this is a ceiling rather than an allowance to be spent.
+  // A protoplanetary disc is only a percent or so of the star; ours had a few
+  // hundred Earth masses of solid material in it. This is the most the cloud
+  // will let leave the star, and all of it goes into the disc.
   const discCap = Math.min(Math.max(M * 0.02, 0), 800);
   const guess = Math.max(M - discCap, 0);
   const canIgnite = guess >= IGNITE_MASS;
@@ -3509,87 +3512,42 @@ function condenseCloud(e) {
     ? (mSun > 8 ? 'blue_giant' : mSun > 0.5 ? 'sun_like' : 'red_dwarf')
     : discPlanetType(guess, true);
 
-  // The disc's layout depends on how bright the star will be, so work that out
-  // before anything is created. The guess is within a couple of percent of the
-  // final mass, which moves the snow line by far less than the jitter does.
+  // How wide the disc is depends on how bright the star will be, so work that
+  // out before anything is created. The guess is within a couple of percent of
+  // the final mass, which moves the snow line by far less than the jitter does.
   const L = Math.max(luminosityOf(coreType, trueRadius(coreType, guess)), 1e-4);
-  // Water ice only survives beyond the snow line — 2.7 AU in our own nebula,
-  // further out around a brighter star. Rock inside it, ice and giants outside.
-  const iceLine = 2.7 * AU * Math.sqrt(L);
-  let a = Math.max(0.35 * AU * Math.sqrt(Math.max(L, 0.02)),
-                   trueRadius(coreType, guess) * settings.bodyScale * 4);
 
-  const n = clamp(Math.round(3 + Math.random() * 4), 2, Math.min(8, freeSlots() - 1));
-  const rads = [], mass = [];
-  let used = 0;
-  for (let i = 0; i < n; i++) {
-    const rad = a * rnd(0.94, 1.06);
-    a *= rnd(1.5, 1.95);
-    // How much solid material sits at a radius is a LOCAL fact, so these are
-    // absolute masses, not shares of a budget. Inside the snow line only rock
-    // condenses and there is very little of it — our own four terrestrial
-    // planets together come to half a percent of the planetary mass. Just
-    // outside it, ice is abundant enough for a core to run away and swallow gas.
-    const x = rad / iceLine;
-    const m = x < 1
-      ? rnd(0.05, 3.2) * clamp(x * 2.2, 0.15, 1)
-      : rnd(12, 420) * Math.exp(-Math.pow(Math.log(x) / 1.1, 2));
-    rads.push(rad); mass.push(m); used += m;
-  }
+  // Never starve the star below the ignition mass its type was chosen for.
+  let discM = discCap;
+  if (canIgnite) discM = Math.min(discM, Math.max(0, M - IGNITE_MASS * 1.02));
 
-  // Trim if the disc came out heavier than the cloud can spare, and never let it
-  // starve the star below the ignition mass it was chosen for.
-  let allow = discCap;
-  if (canIgnite) allow = Math.min(allow, Math.max(0, M - IGNITE_MASS * 1.02));
-  if (used > allow && used > 0) {
-    const k = allow / used;
-    for (let i = 0; i < n; i++) mass[i] *= k;
-    used = allow;
-  }
+  const star = makeBody(coreType, centre, drift, { mass: M - discM, name: 'New ' + e.origin });
 
-  const coreM = M - used;
-  const star = makeBody(coreType, centre, drift, { mass: coreM, name: 'New ' + e.origin });
-  const made = [star];
-
-  // Orbital plane from the cloud's own spin. Without it there is no preferred
-  // direction and the disc has to fall back on the horizontal.
-  let normal = new THREE.Vector3(c.lx, c.ly, c.lz);
+  // The disc's pole is the cloud's own spin axis. Without one there is no
+  // preferred direction and it has to fall back on the horizontal.
+  const normal = new THREE.Vector3(c.lx, c.ly, c.lz);
   if (normal.lengthSq() < 1e-24) normal.set(0, 1, 0); else normal.normalize();
-  let u = new THREE.Vector3(1, 0, 0);
-  if (Math.abs(normal.dot(u)) > 0.9) u.set(0, 0, 1);
-  u.crossVectors(normal, u).normalize();
-  const w = new THREE.Vector3().crossVectors(normal, u).normalize();
 
-  let outermost = 0;
-  for (let i = 0; i < n; i++) {
-    if (mass[i] <= 0) continue;
-    const rad = rads[i], ang = rnd(0, TAU);
-    if (rad > outermost) outermost = rad;
-    const pos = centre.clone()
-      .addScaledVector(u, Math.cos(ang) * rad)
-      .addScaledVector(w, Math.sin(ang) * rad);
-    const vc = Math.sqrt(G * settings.gravity * star.m / rad);
-    const vel = drift.clone()
-      .addScaledVector(u, -Math.sin(ang) * vc)
-      .addScaledVector(w, Math.cos(ang) * vc);
-    made.push(makeBody(discPlanetType(mass[i], rad < iceLine), pos, vel, { mass: mass[i] }));
+  /* The disc: real material, in the real plane, and the only place this
+     system's planets are going to come from. Every world it condenses is paid
+     for out of it, so one that has made a Jupiter has that much less left for
+     everything further out. Ours reached from inside Mercury's orbit out past
+     where the Kuiper belt is now, and it is scaled off the star's brightness
+     because a hotter star pushes its snow line further out. */
+  if (discM > 0.02) {
+    const sq = Math.sqrt(Math.max(L, 0.02));
+    const rIn = Math.max(visRadius(star) * 3, 0.28 * AU * sq);
+    const rOut = Math.max(rIn * 6, 34 * AU * sq);
+    makeDisc(star, { rIn: rIn, rOut: rOut, mass: discM, axis: normal });
   }
-  const planets = made.length - 1;
 
-  // The grains are spent; the star and its planets are what they became.
+  // The grains are spent; the star and its disc are what they became.
   disperseCloud(e);
 
-  // Orbits are very nearly momentum-neutral but not exactly, so let the star
-  // soak up the difference — which is what sitting at the barycentre means.
-  let px = 0, py = 0, pz = 0;
-  for (const b of made) { px += b.v.x * b.m; py += b.v.y * b.m; pz += b.v.z * b.m; }
-  star.v.x += (totalP.x - px) / star.m;
-  star.v.y += (totalP.y - py) / star.m;
-  star.v.z += (totalP.z - pz) / star.m;
+  /* No momentum correction to make. The star was handed the cloud's own drift
+     and the disc rides along with it, so between them they carry exactly what
+     the cloud was carrying: drift x (M - discM) + drift x discM. */
 
-  // Planets first and only a couple of them: the pool is four deep, and the
-  // star being born is the one animation that must not get stolen.
-  for (let i = 0; i < Math.min(made.length, 2); i++) fx.form(made[i], false);
   fx.form(star, true);
   e.alive = false;
   disposeSN(e);
@@ -3600,14 +3558,17 @@ function condenseCloud(e) {
   refreshStarCache();
   updateTemperatures();
   // Pull back far enough to show what was just built. The camera was zoomed
-  // right in on a collapsing knot; the system it became is a thousand times wider.
+  // right in on a collapsing knot; the disc it became is a thousand times wider.
   view.target.copy(centre);
-  if (outermost > 0) view.dist = clamp(outermost * 2.6, MIN_DIST, MAX_DIST);
+  const span = star.disc ? star.disc.rOut * 2.2 : visRadius(star) * 12;
+  if (span > 0) view.dist = clamp(span, MIN_DIST, MAX_DIST);
   sim.follow = null;
   select(star);
   toast(canIgnite
-    ? star.name + ' ignited from the cloud, with ' + planets + (planets === 1 ? ' planet' : ' planets')
-    : star.name + ' collapsed but never lit — too little mass to start fusion');
+    ? star.name + ' ignited from the cloud' +
+      (star.disc ? ', wrapped in the disc its planets will come out of' : '')
+    : star.name + ' collapsed but never lit — too little mass to start fusion' +
+      (star.disc ? ', but its disc will still build worlds' : ''));
   return true;
 }
 
@@ -5613,12 +5574,20 @@ const _YAXIS = new THREE.Vector3(0, 1, 0);
 function makeDisc(host, o) {
   o = o || {};
   const rng = mulberry32(host.seed ^ 0x5eed);
-  // A pole for the disc, tipped a little off vertical so a sky full of them
-  // does not look stamped out.
-  const swing = rnd(0, TAU);
-  const axis = new THREE.Vector3(0, 1, 0)
-    .applyAxisAngle(new THREE.Vector3(Math.cos(swing), 0, Math.sin(swing)), rnd(-0.3, 0.3))
-    .normalize();
+  /* A pole for the disc. On its own it is tipped a little off vertical so a sky
+     full of them does not look stamped out — but a disc can be handed a pole to
+     use instead, and one left behind by a collapsing cloud always is: the
+     cloud's own spin axis is what set the plane in the first place. */
+  let axis;
+  if (o.axis) {
+    axis = (o.axis.isVector3 ? o.axis.clone() : new THREE.Vector3().fromArray(o.axis)).normalize();
+    if (axis.lengthSq() < 0.5) axis.set(0, 1, 0);
+  } else {
+    const swing = rnd(0, TAU);
+    axis = new THREE.Vector3(0, 1, 0)
+      .applyAxisAngle(new THREE.Vector3(Math.cos(swing), 0, Math.sin(swing)), rnd(-0.3, 0.3))
+      .normalize();
+  }
   let u = new THREE.Vector3(1, 0, 0);
   if (Math.abs(axis.dot(u)) > 0.9) u.set(0, 0, 1);
   u.crossVectors(axis, u).normalize();
@@ -5635,7 +5604,12 @@ function makeDisc(host, o) {
     // ~450 M⊕ of rock and ice: enough for a Jupiter and a family besides.
     mass: o.mass != null ? o.mass : 450,
     axis: axis, u: u, w: w,
-    age: 0, next: 0, made: 0,
+    // Wait a full interval before the first world: a disc that condensed a
+    // planet on the frame it appeared would be skipping the part that takes
+    // millions of years. Nothing has formed yet — that is the whole point of it.
+    age: 0, made: 0,
+    next: o.next != null ? o.next
+      : Math.max(settings.discYears, 0.02) * 365.25 * rnd(0.5, 1.1),
     fade: 1,
     alive: true,
     obj: null
@@ -7683,7 +7657,9 @@ function renderCloudInspector(e) {
     '<div class="an-row"><button id="is-cdisperse" class="an-danger">DISPERSE</button></div>' +
     '<p class="an-note" style="margin-top:13px">This is where the next generation of stars comes ' +
     'from. Our own Solar System is thought to have condensed out of a cloud like this one — the ' +
-    'oldest meteorites still carry the decay products of supernova iron.</p>';
+    'oldest meteorites still carry the decay products of supernova iron. What you get is a ' +
+    '<b>newborn</b> star and nothing else yet — just the disc it came out of. Let it run: the ' +
+    'planets condense out of that disc one at a time, which is how it really happened.</p>';
 
   inspRefs = {
     cmass: $('is-cmass'), cn: $('is-cn'), crad: $('is-crad'), cvel: $('is-cvel'),
@@ -9185,7 +9161,8 @@ function saveUniverse() {
         cl: b.kind === 'gas' ? { age: b.clumpAge, life: b.clumpLife } : null,
         // A protoplanetary disc is saved with its star, not on its own.
         dc: b.disc && b.disc.alive
-          ? { rIn: b.disc.rIn, rOut: b.disc.rOut, mass: b.disc.mass, m0: b.disc.m0, made: b.disc.made }
+          ? { rIn: b.disc.rIn, rOut: b.disc.rOut, mass: b.disc.mass, m0: b.disc.m0,
+              made: b.disc.made, axis: b.disc.axis.toArray() }
           : null
       }))
     };
