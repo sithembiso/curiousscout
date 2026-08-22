@@ -2177,6 +2177,10 @@ function makeBody(type, pos, vel, overrides) {
     // start dead and only change once you switch terraforming on for them.
     terra: o.terra != null ? o.terra : (isLivingSurf(def) ? 1 : 0),
     terraOn: !!o.terraOn,
+    /* How much surface water it has, 0 to 1. Nothing starts with any — the
+       worlds whose textures already paint their own seas keep them, and this is
+       water ON TOP of that, put there by an icy impact or by the slider. */
+    water: o.water != null ? clamp(o.water, 0, 1) : 0,
     // How much of its original mass the tides have already shaved off, and the
     // dust waiting to be released as a ring burst.
     stripped: 0,
@@ -2490,6 +2494,95 @@ function impact(a, b) {
   return true;
 }
 
+/* ================================================================= water  */
+/*
+ * Oceans, and where they come from.
+ *
+ * Now that a world's landscape is real geometry, water can be what it actually
+ * is: a level surface, filling whatever is below it. So an ocean here is a
+ * smooth sphere at sea level — ground above it is coast and mountain, ground
+ * below it is seabed, and craters fill up as lakes. Slide the level up and the
+ * continents drown one range at a time.
+ *
+ * Where the water comes from is the interesting part. Earth's oceans are widely
+ * thought to have been DELIVERED — brought in by icy bodies from further out,
+ * because so close to the Sun the Earth formed too dry to have them. So that is
+ * how it works here too: drop an ice world or an ocean world or a comet onto a
+ * barren rock and it arrives with its water, and the rock ends up with a sea.
+ */
+
+/** What fraction of a body is water or ice, by kind of surface. */
+const WATER_OF = {
+  ocean: 0.92, hycean: 0.85, ice: 0.88, comet: 0.70, terran: 0.35, eyeball: 0.30, rogue: 0.20
+};
+
+/** Can this thing hold an ocean at all? */
+function canHoldWater(b) {
+  const def = TYPES[b.type];
+  return b.kind === 'body' && !def.star && !GASSY_SURF.has(def.surf);
+}
+
+/** How much water arrives when `b` lands on `a`, as a share of a full ocean. */
+function waterDelivered(a, b) {
+  const share = WATER_OF[TYPES[b.type].surf] || 0;
+  if (share <= 0 || !canHoldWater(a)) return 0;
+  // Cube-rooted, so a small icy moon still makes a visible difference and a
+  // whole ocean world arriving very nearly fills the place up.
+  const byMass = 0.9 * share * Math.cbrt(b.m / Math.max(a.m, 1e-12));
+  /* …and a floor, because a real comet weighs about a hundred billion tonnes and
+     by mass alone would deliver nothing you could see. It genuinely takes an
+     unimaginable number of them to fill an ocean — but a comet you dropped on
+     purpose should leave a puddle, so every icy body counts for at least a
+     twentieth of its own water content. */
+  return clamp(Math.max(byMass, share * 0.05), 0, 1);
+}
+
+const WATER_LIQUID = new THREE.Color(0.07, 0.30, 0.60);
+const WATER_ICE = new THREE.Color(0.84, 0.91, 0.97);
+
+/**
+ * The radius the sea sits at, as a multiple of the body's mean radius: from the
+ * bottom of the deepest basin at a trickle to just over the highest peak when
+ * it is full.
+ */
+function seaRadius(b) {
+  const w = clamp(b.water || 0, 0, 1);
+  const amount = reliefOf(b.type);
+  const field = heightCache.get(b.type + ':' + (b.seed % 3));
+  if (!field || field.rlo == null || amount <= 1e-6 || Math.abs(field.rAmount - amount) > 1e-9) {
+    // Nothing to fill: a smooth world just gets a film of it.
+    return 1 + w * 0.008;
+  }
+  /* From a hair over the deepest ground at a trickle to a hair over the highest
+     peak when it is full, so the first drop and the last both show. */
+  const lo = field.rlo + (field.rhi - field.rlo) * 0.02;
+  const hi = field.rhi + (field.rhi - field.rlo) * 0.03;
+  return lerp(lo, hi, w);
+}
+
+/** Put the sea on, take it off, or move it — whichever the new level needs. */
+function setWater(b, w) {
+  b.water = clamp(w, 0, 1);
+  const p = b.parts;
+  if (!p) return;
+  if (b.water <= 1e-4 || !canHoldWater(b)) {
+    if (p.sea) { b.obj.remove(p.sea); p.sea.material.dispose(); p.sea = null; }
+    return;
+  }
+  if (!p.sea) {
+    const sea = new THREE.Mesh(SPHERE, new THREE.MeshStandardMaterial({
+      color: WATER_LIQUID.clone(), roughness: 0.22, metalness: 0.04,
+      // Shallow water lets a little of the seabed through, and it must not write
+      // depth or it would hide the land standing out of it.
+      transparent: true, opacity: 0.86, depthWrite: false
+    }));
+    sea.renderOrder = 1;
+    b.obj.add(sea);
+    p.sea = sea;
+  }
+  scaleVisual(b);
+}
+
 /* ==================================================== swallowing a world  */
 /*
  * A planet hit by another planet does not blink out of existence on contact. It
@@ -2727,6 +2820,13 @@ function merge(a, b, vImp, vEsc, mark) {
     a.m -= clumped;
   }
 
+  /* Water is delivered, not created. Whatever share of the impactor was ice or
+     ocean ends up as sea on the survivor — which is where Earth's own oceans are
+     thought to have come from, since this close to the Sun it formed too dry to
+     have made them itself. */
+  const brought = waterDelivered(a, b);
+  if (brought > 0) a.water = clamp((a.water || 0) + brought, 0, 1);
+
   // Enough mass in one place and the physics changes character.
   let note = a.name + ' absorbed ' + b.name;
   const ev = checkEvolution(a);
@@ -2740,8 +2840,11 @@ function merge(a, b, vImp, vEsc, mark) {
   if (mark && a.scars && a.scars.indexOf(mark) >= 0) { mark.s = hole; buildScars(a); }
   else addScar(a, hitDir, hole);
 
+  // refreshVisual above rebuilt the parts, so the sea goes on after it.
+  if (a.water > 0) setWater(a, a.water);
   fx.flash(com, visRadius(a) * 4, [255, 210, 150], 0.7);
-  toast(note + (clumped > 0 ? ' — knots of it flew off' : ''));
+  toast(note + (clumped > 0 ? ' — knots of it flew off' : '') +
+    (brought > 0.02 ? ' — and its water with it' : ''));
   removeBody(b);
 }
 
@@ -4907,6 +5010,10 @@ function displaceSphere(field, amount, base) {
     field.mean = m / d.length;
   }
   const mean = field.mean;
+  // Track the finished extremes rather than the field's own, because the pole
+  // fade below means the mesh never reaches as far as the raw numbers say. This
+  // is what a sea level is measured against, so it has to be the real thing.
+  let rlo = Infinity, rhi = -Infinity;
 
   const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
@@ -4917,8 +5024,13 @@ function displaceSphere(field, amount, base) {
     const y = clamp(Math.round(vv * H - 0.5), 0, H - 1);
     const fade = Math.sin(Math.PI * clamp(vv, 0, 1));
     const s = 1 + (d[y * W + x] - mean) * amount * fade;
+    if (s < rlo) rlo = s;
+    if (s > rhi) rhi = s;
     pos.setXYZ(i, v.x * s, v.y * s, v.z * s);
   }
+  // Keyed by amount, so changing the elevation setting does not leave a sea
+  // level measured against the old landscape.
+  field.rAmount = amount; field.rlo = rlo; field.rhi = rhi;
   g.computeVertexNormals();
   return g;
 }
@@ -5063,6 +5175,8 @@ function buildVisual(b) {
 
   scene.add(grp);
   buildTrail(b);
+  // The sea, if it has one. Last, because it needs b.obj and b.parts to exist.
+  if (b.water > 0) setWater(b, b.water);
   scaleVisual(b);
 }
 
@@ -6861,6 +6975,7 @@ function scaleVisual(b) {
   // torn hat. `lift` is 0 for anything with no relief, so nothing else moves.
   const lift = reliefTop(b.type);
   if (p.surf) p.surf.scale.setScalar(r);
+  if (p.sea) p.sea.scale.setScalar(r * seaRadius(b));
   if (p.cloud) p.cloud.scale.setScalar(r * (1.018 + lift));
   if (p.atmo) p.atmo.scale.setScalar(r * (1.09 + lift));
   if (p.puff) p.puff.scale.setScalar(r);
@@ -8128,6 +8243,16 @@ function updateVisuals(realDt, simDt) {
     // the moment it crosses a band — and only then. This runs every frame.
     if (def.star && starBand(b) !== b.band) applyStarBand(b);
 
+    /* Water is liquid or it is ice, and which one is simply how cold the world
+       is. The change happens over forty kelvin either side of freezing rather
+       than at a hard line, because a world is not all one temperature. */
+    if (p.sea) {
+      const frozen = clamp((273 - b.temp) / 40, 0, 1);
+      p.sea.material.color.copy(WATER_LIQUID).lerp(WATER_ICE, frozen);
+      p.sea.material.roughness = lerp(0.22, 0.78, frozen);
+      p.sea.rotation.y = b.rot;
+    }
+
     // ---- level of detail: below a couple of pixels, draw a dot instead
     const tiny = px < 1.7;
     if (p.surf) p.surf.visible = !tiny;
@@ -8825,6 +8950,16 @@ function customiseHTML(b) {
       '<p class="an-note">Edges are measured in the body\'s own widths. Real rings sit inside the Roche limit, which is why they never clump into a moon.</p>';
   }
 
+  if (canHoldWater(b)) {
+    h += '<div class="an-sub">Water</div>' +
+      '<div class="an-field"><label>Water amount <b id="is-wat-v"></b></label>' +
+      '<input type="range" id="is-wat" min="0" max="100" step="1" value="' +
+      Math.round((b.water || 0) * 100) + '"></div>' +
+      '<p class="an-note">A real sea, at a real level: it fills whatever ground is below it, so ' +
+      'craters become lakes and the low country floods first. Slide it up and the continents go ' +
+      'under one range at a time. It freezes over on its own if the world is cold enough.</p>';
+  }
+
   h += '<div class="an-row"><button id="is-solid">ADD SOLID RINGS</button></div>' +
     '<p class="an-note">Drops a <b>three-dimensional band of real asteroids</b> into orbit — actual ' +
     'bodies with mass, not a picture. They pull on each other, they shear, and they crash. Press it ' +
@@ -8942,6 +9077,19 @@ function bindCustomise(b) {
     const p = b.parts;
     if (p && p.surf && p.surf.material.color) p.surf.material.color.copy(b.baseColor);
   });
+
+  /* ---- water ---- */
+  const wat = $('is-wat');
+  if (wat) {
+    const showW = () => $('is-wat-v').textContent =
+      (b.water || 0) <= 0.001 ? 'none' : Math.round(b.water * 100) + '%';
+    showW();
+    wat.addEventListener('input', () => {
+      setWater(b, parseInt(wat.value, 10) / 100);
+      showW();
+      updateInspectorStats();
+    });
+  }
 
   /* ---- solid rings ---- */
   // Deliberately does NOT re-render the panel: rebuilding it would fold the
@@ -10190,7 +10338,7 @@ function saveUniverse() {
               ax: b.galAxis ? b.galAxis.toArray() : null }
           : null,
         st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount,
-        tf: b.terra, tfo: b.terraOn,
+        tf: b.terra, tfo: b.terraOn, wa: b.water,
         cl: b.kind === 'gas' ? { age: b.clumpAge, life: b.clumpLife } : null,
         // A protoplanetary disc is saved with its star, not on its own.
         dc: b.disc && b.disc.alive
@@ -10225,7 +10373,7 @@ function loadUniverse() {
     const b = makeBody(s.ty, new V3().fromArray(s.p), new V3().fromArray(s.v), {
       mass: s.m, r: s.r, name: s.n, seed: s.s, spin: s.sp, tilt: s.ti, age: s.ag,
       coreT: s.ct, rings: s.rg !== undefined ? s.rg : undefined,
-      terra: s.tf, terraOn: s.tfo,
+      terra: s.tf, terraOn: s.tfo, water: s.wa,
       // The disc is restored below with its saved budget, not a fresh one.
       noDisc: true
     });
