@@ -5364,6 +5364,126 @@ function setRings(b, spec, repaint) {
   scaleVisual(b);
 }
 
+
+/* ------------------------------------------------- rings you can crash into */
+/*
+ * The painted ring is scenery: one flat texture, and nothing can hit it. This
+ * builds the other kind — a three-dimensional band of real asteroids, each with
+ * its own mass and its own orbit, integrated by the same leapfrog step as
+ * everything else. They pull on one another, they shear, and they collide.
+ *
+ * Two compromises, both forced by scale, and both deliberate. A real ring
+ * particle is a few metres across; fifty of those spread round a band the width
+ * of a star would not meet in the lifetime of the universe. So the rocks are
+ * sized to the band instead — each about a third of the gap to its neighbour,
+ * which is close enough that a nudge in radius or tilt puts two of them in
+ * contact. And the whole band is capped at a small share of whatever it orbits,
+ * so it stays low-density rubble rather than outweighing its host and wrecking
+ * every orbit in the system.
+ *
+ * Each press lays a fresh band a little wider and a little more tilted than the
+ * last, so they cross rather than nest. Press it a few times and the crossings
+ * start grinding themselves apart.
+ */
+
+const SOLID_RING_N = 44;          // rocks per press, budget permitting
+const SOLID_RING_STEP = 2.5;      // each press starts this much further out
+const SOLID_RING_SPAN = 3.2;      // how wide one band is, inner edge to outer
+const SOLID_RING_SHARE = 2e-4;    // × the host's mass, per band
+
+/** Returns how many rocks actually went in. */
+function addSolidRing(b) {
+  if (!b || !b.alive || b.kind === 'gal' || b.kind === 'snr') {
+    toast('There is nothing here to put a ring around');
+    return 0;
+  }
+  const room = freeSlots();
+  if (room < 6) { toast('Universe is full — clear some bodies first'); return 0; }
+  const n = Math.min(SOLID_RING_N, room);
+
+  const rv = Math.max(visRadius(b), 1e-9);
+  const lap = b.solidRings || 0;
+
+  /* Where this band goes. The first press hugs the body, because that is where
+     rocks are a sane size and a ring really is packed shoulder to shoulder.
+     Each press after that starts SOLID_RING_STEP further out while being
+     SOLID_RING_SPAN wide, so consecutive bands overlap by about a third rather
+     than nesting — and after seven or eight presses the outermost one is as far
+     out as a protoplanetary disc reaches.
+     The ceiling is that disc: if the host already has one the rocks stop where
+     the dust does, so the two are the same disc seen twice. A star without one
+     gets a disc's own outer edge, forty-two AU, which is the shape ours was
+     built from. Anything smaller than a star is kept in proportion to its own
+     width, because forty AU around a planet is not a ring, it is a solar
+     system. Once a band is against the ceiling, further presses re-lay the
+     outer band at a new tilt. */
+  const disc = b.disc && b.disc.alive ? b.disc : null;
+  const reach = disc ? disc.rOut : TYPES[b.type].star ? 42 * AU : rv * 48;
+  const first = disc ? Math.max(disc.rIn, rv * 1.6) : rv * 1.6;
+  const inner = Math.min(first * Math.pow(SOLID_RING_STEP, lap),
+                         Math.max(reach / SOLID_RING_SPAN, first));
+  const outer = Math.min(inner * SOLID_RING_SPAN, Math.max(reach, inner * 1.2));
+
+  /* The plane of the band: the body's own tilted equator, turned further on
+     each press. Two orbits at nearly the same radius but different tilts cross
+     at two points, and that is where the crashes come from. */
+  const spec = b.ringSpec;
+  const lean = b.tilt + (spec ? spec.tilt * 0.35 : 0) + lap * 0.19;
+  const axis = new THREE.Vector3(-Math.sin(lean), Math.cos(lean), 0).normalize();
+  let u = new THREE.Vector3(1, 0, 0);
+  if (Math.abs(axis.dot(u)) > 0.9) u.set(0, 0, 1);
+  u.crossVectors(axis, u).normalize();
+  const w = new THREE.Vector3().crossVectors(axis, u).normalize();
+
+  /* Rock size is a share of its OWN orbital radius, not one figure for the
+     whole band — over two decades of radius a single size would be boulders at
+     the rim and dust in the middle. This is the gap between neighbours spread
+     evenly round a ring at that radius, so a rock is always about a third of
+     the way to touching the next one along. What collisions actually measure is
+     the DRAWN radius, so bodyScale is divided back out. */
+  const k = TAU * 0.30 / (n * Math.max(settings.bodyScale, 1e-6));
+  const natR = TYPES.asteroid.rad * R_EARTH;
+  // No band may weigh more than a whisker of what it orbits, or the first press
+  // wrecks every orbit in the system.
+  const cap = Math.max(b.m * SOLID_RING_SHARE / n, 1e-10);
+  const gm = G * settings.gravity;
+
+  let made = 0;
+  for (let i = 0; i < n; i++) {
+    if (freeSlots() <= 0) break;
+    // Log-uniform in radius, so the crowded inside of the band gets its share
+    // instead of every rock landing out near the rim.
+    const rad = inner * Math.pow(outer / inner, (i + rnd(-0.4, 0.4)) / Math.max(n - 1, 1));
+    const ang = Math.random() * TAU;
+    const rockR = clamp(rad * k, natR, rad * 0.08);
+    // What a rock that size would weigh if it were solid — and never more than
+    // its share of the cap. Small inner rocks stay properly dense; the giants
+    // further out come out as low-density rubble piles.
+    const each = Math.max(Math.min(TYPES.asteroid.mass * Math.pow(rockR / natR, 3), cap), 1e-11);
+
+    const dir = u.clone().multiplyScalar(Math.cos(ang)).addScaledVector(w, Math.sin(ang));
+    const tan = u.clone().multiplyScalar(-Math.sin(ang)).addScaledVector(w, Math.cos(ang));
+    const pos = b.p.clone().addScaledVector(dir, rad)
+      .addScaledVector(axis, (Math.random() - 0.5) * rad * 0.05);
+    // Circular at its own radius, off by a per cent or so — which is what makes
+    // the band shear and eventually bring pairs together.
+    const vc = Math.sqrt(gm * b.m / rad);
+    const vel = b.v.clone().addScaledVector(tan, vc * rnd(0.985, 1.015));
+    const rock = makeBody('asteroid', pos, vel, { mass: each, r: rockR, spin: rnd(0.05, 0.6) });
+    rock.tilt = rnd(-Math.PI, Math.PI);
+    made++;
+  }
+  if (!made) { toast('No room left for a ring'); return 0; }
+
+  b.solidRings = lap + 1;
+  computeAccel();
+  refreshStarCache();
+  updateTemperatures();
+  toast(made + ' asteroids now orbiting ' + b.name + ', out to ' + fmtDist(outer) +
+    (lap ? ' — band ' + (lap + 1) + ', crossing the ones already there' : ''));
+  return made;
+}
+
 /* ================================================================ galaxies  */
 /*
  * A galaxy is not a picture here. It is a few thousand individual stars, each
@@ -8025,6 +8145,14 @@ function customiseHTML(b) {
       '<p class="an-note">Edges are measured in the body\'s own widths. Real rings sit inside the Roche limit, which is why they never clump into a moon.</p>';
   }
 
+  h += '<div class="an-row"><button id="is-solid">ADD SOLID RINGS</button></div>' +
+    '<p class="an-note">Drops a <b>three-dimensional band of real asteroids</b> into orbit — actual ' +
+    'bodies with mass, not a picture. They pull on each other, they shear, and they crash. Press it ' +
+    'again and again: each band goes in a little wider and a little more tilted than the last, so ' +
+    'they <b>cross</b> instead of nesting, and the crossings grind each other up. Round a star the ' +
+    'band reaches as far out as a <b>protoplanetary disc</b> does — and if the star already has one, ' +
+    'the rocks fill exactly the same space as the dust.</p>';
+
   h += '<div class="an-row"><button id="is-reset">RESET TO ' + def.label.toUpperCase() + '</button></div>' +
     '</details>';
   return h;
@@ -8134,6 +8262,11 @@ function bindCustomise(b) {
     const p = b.parts;
     if (p && p.surf && p.surf.material.color) p.surf.material.color.copy(b.baseColor);
   });
+
+  /* ---- solid rings ---- */
+  // Deliberately does NOT re-render the panel: rebuilding it would fold the
+  // CUSTOMISE section shut, and the whole point is to press this repeatedly.
+  on('is-solid', 'click', () => { if (b.alive) addSolidRing(b); });
 
   /* ---- rings ---- */
   const rOn = $('is-rings-on');
