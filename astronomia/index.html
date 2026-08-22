@@ -4539,7 +4539,7 @@ function updateTemperatures() {
 /* ================================================================== renderer */
 
 let renderer, scene, camera, canvasEl;
-let SPHERE, SPHERE_LO, SPHERE_MID, SPHERE_HI, SCAR_GEO;
+let SPHERE, SPHERE_LO, SPHERE_MID, SPHERE_HI;
 const ringGeoCache = new Map();
 
 /**
@@ -4595,7 +4595,6 @@ function initScene() {
   SPHERE_HI = new THREE.SphereGeometry(1, 200, 130);
   // A unit square laid flat on the surface, used for impact scars. Kept small
   // enough that the gap between a flat decal and a curved world never shows.
-  SCAR_GEO = new THREE.PlaneGeometry(1, 1);
 
   TEX_GLOW = new THREE.CanvasTexture(glowTexture(256, 0.16, 0.85));
   TEX_HALO = new THREE.CanvasTexture(glowTexture(256, 0.04, 0.30));
@@ -4770,9 +4769,12 @@ function displaceSphere(field, amount, base) {
   const g = (base || SPHERE_HI).clone();
   const pos = g.attributes.position, uv = g.attributes.uv;
   const W = field.W, H = field.H, d = field.d;
-  let mean = 0;
-  for (let i = 0; i < d.length; i++) mean += d[i];
-  mean /= d.length;
+  if (field.mean == null) {
+    let m = 0;
+    for (let i = 0; i < d.length; i++) m += d[i];
+    field.mean = m / d.length;
+  }
+  const mean = field.mean;
 
   const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
@@ -4787,6 +4789,33 @@ function displaceSphere(field, amount, base) {
   }
   g.computeVertexNormals();
   return g;
+}
+
+/**
+ * How far out the ground actually is, in one direction, on a body with relief —
+ * as a multiple of its mean radius. Anything lying ON the surface has to know
+ * this, or the mountains stand in front of it: a crater decal pinned at a flat
+ * 1.006 disappears behind a ridge four per cent tall.
+ *
+ * The direction is turned back into the same (u, v) a THREE.SphereGeometry
+ * vertex would have carried, then the height field is read at that texel — so
+ * this returns exactly what displaceSphere() put there.
+ */
+function groundAt(b, n) {
+  const amount = reliefOf(b.type);
+  if (amount <= 1e-6) return 1;
+  const field = heightCache.get(b.type + ':' + (b.seed % 3));
+  if (!field || field.mean == null) return 1;
+  const W = field.W, H = field.H, d = field.d;
+  // three.js lays a sphere out as x = -cos(phi)sin(theta), y = cos(theta),
+  // z = sin(phi)sin(theta), with u = phi/2pi and v = theta/pi.
+  const vv = Math.acos(clamp(n.y, -1, 1)) / Math.PI;
+  let u = Math.atan2(n.z, -n.x) / TAU;
+  if (u < 0) u += 1;
+  const x = ((Math.round(u * W - 0.5) % W) + W) % W;
+  const y = clamp(Math.round(vv * H - 0.5), 0, H - 1);
+  const fade = Math.sin(Math.PI * clamp(vv, 0, 1));
+  return 1 + (d[y * W + x] - field.mean) * amount * fade;
 }
 
 /* ------------------------------------------------------------ real elevation */
@@ -4939,9 +4968,7 @@ function applyStarBand(b) {
 
 function buildWorld(b, def, grp) {
   const photo = def.surf === 'star';
-  const geo = def.lumpy ? lumpyGeometry(b.seed, def.lumpy)
-    : photo ? starGeometry(b.type, b.seed)
-    : reliefGeometry(b.type, b.seed);
+  const geo = baseGeometryFor(b);
   // Only the lumpy geometry is per-body; star geometry is shared from geoCache
   // and must never be disposed with the body that happened to build it.
   b.ownGeo = def.lumpy ? geo : null;
@@ -5170,20 +5197,28 @@ function scarTexture(seed, size) {
   const r = mulberry32(seed);
   const c = size / 2;
 
-  // Rays first, so the crater is painted over their inner ends.
-  const rays = 9 + (r() * 9) | 0;
+  /* Rays first, so the crater is painted over their inner ends. Each one
+     TAPERS TO A POINT: a ray that keeps its width to a blunt end reads as a
+     grey panel lying on the ground rather than as a streak of thrown-out dust,
+     and that shows badly while the crater is fading in from under the fire. */
+  const rays = 11 + (r() * 10) | 0;
   for (let i = 0; i < rays; i++) {
     const a = r() * TAU;
-    const len = c * (0.55 + r() * 0.42);
-    const wid = c * (0.02 + r() * 0.05);
+    const len = c * (0.52 + r() * 0.44);
+    const wid = c * (0.014 + r() * 0.034);
     const g = ctx.createLinearGradient(c, c, c + Math.cos(a) * len, c + Math.sin(a) * len);
-    g.addColorStop(0, 'rgba(238,230,220,0.42)');
+    g.addColorStop(0, 'rgba(238,230,220,0.30)');
+    g.addColorStop(0.42, 'rgba(238,230,220,0.13)');
     g.addColorStop(1, 'rgba(238,230,220,0)');
     ctx.save();
     ctx.translate(c, c); ctx.rotate(a);
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.moveTo(0, -wid); ctx.lineTo(len, -wid * 2.6); ctx.lineTo(len, wid * 2.6); ctx.lineTo(0, wid);
+    ctx.moveTo(0, -wid);
+    ctx.lineTo(len * 0.55, -wid * 0.55);
+    ctx.lineTo(len, 0);
+    ctx.lineTo(len * 0.55, wid * 0.55);
+    ctx.lineTo(0, wid);
     ctx.closePath();
     ctx.translate(-c, -c);
     ctx.fill();
@@ -5206,6 +5241,66 @@ function scarTexture(seed, size) {
 
   ctx.strokeStyle = 'rgba(226,214,200,0.5)';
   ctx.lineWidth = size / 90;
+  ctx.beginPath(); ctx.arc(c, c, c * 0.275, 0, TAU); ctx.stroke();
+
+  // Feather the whole decal out at its edge, so nothing on it ends on a hard
+  // line against the ground it is lying on.
+  ctx.globalCompositeOperation = 'destination-out';
+  const fade = ctx.createRadialGradient(c, c, c * 0.60, c, c, c);
+  fade.addColorStop(0, 'rgba(0,0,0,0)');
+  fade.addColorStop(1, 'rgba(0,0,0,1)');
+  ctx.fillStyle = fade;
+  ctx.fillRect(0, 0, size, size);
+  ctx.globalCompositeOperation = 'source-over';
+  return cv;
+}
+
+/**
+ * The same wound while it is still open: a ring of glowing melt. White-hot in
+ * the middle where the impactor's energy went, orange through the melt sheet,
+ * and cracks radiating out where the crust tore and the heat is showing
+ * through. Drawn additively, so this is pure light laid over the crater.
+ */
+function scarFireTexture(seed, size) {
+  const cv = newCanvas(size, size);
+  const ctx = cv.getContext('2d');
+  const r = mulberry32(seed);
+  const c = size / 2;
+
+  // Cracks first, reaching further out than the melt itself.
+  const cracks = 12 + (r() * 10) | 0;
+  for (let i = 0; i < cracks; i++) {
+    const a = r() * TAU;
+    const len = c * (0.42 + r() * 0.52);
+    ctx.save();
+    ctx.translate(c, c); ctx.rotate(a);
+    const g = ctx.createLinearGradient(0, 0, len, 0);
+    g.addColorStop(0, 'rgba(255,236,190,0.95)');
+    g.addColorStop(0.35, 'rgba(255,132,26,0.65)');
+    g.addColorStop(1, 'rgba(150,22,6,0)');
+    ctx.strokeStyle = g;
+    ctx.lineWidth = size * (0.004 + r() * 0.012);
+    ctx.beginPath();
+    ctx.moveTo(c * 0.10, 0);
+    // a couple of kinks, so a crack is not a drawn ruler line
+    ctx.quadraticCurveTo(len * 0.5, (r() - 0.5) * len * 0.28, len, (r() - 0.5) * len * 0.18);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // The melt sheet, then the molten floor on top of it.
+  let g = ctx.createRadialGradient(c, c, c * 0.05, c, c, c * 0.46);
+  g.addColorStop(0, 'rgba(255,246,224,0.98)');
+  g.addColorStop(0.22, 'rgba(255,196,86,0.92)');
+  g.addColorStop(0.46, 'rgba(255,108,20,0.66)');
+  g.addColorStop(0.74, 'rgba(176,32,8,0.30)');
+  g.addColorStop(1, 'rgba(90,10,4,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(c, c, c * 0.46, 0, TAU); ctx.fill();
+
+  // A brighter rim right at the lip of the bowl, where the melt pooled.
+  ctx.strokeStyle = 'rgba(255,222,150,0.85)';
+  ctx.lineWidth = size / 64;
   ctx.beginPath(); ctx.arc(c, c, c * 0.275, 0, TAU); ctx.stroke();
   return cv;
 }
@@ -5233,36 +5328,311 @@ function addScar(b, worldDir, size) {
   if (def.star || GASSY_SURF.has(def.surf)) return;
   const n = localOnBody(b, worldDir);
   b.scars = b.scars || [];
-  b.scars.push({ n: [n.x, n.y, n.z], s: clamp(size, 0.10, 1.15), roll: Math.random() * TAU });
+  // age 0: molten. It cools over SCAR_COOL days and the crater emerges from
+  // underneath the fire as it goes.
+  b.scars.push({ n: [n.x, n.y, n.z], s: clamp(size, 0.10, 1.15), roll: Math.random() * TAU, age: 0 });
   // Oldest marks are buried by later resurfacing; keep the panel honest by
   // counting every one, but only ever draw the most recent handful.
   b.scarCount = (b.scarCount || 0) + 1;
+  b.scarsCold = false;                   // something on this body is glowing again
   while (b.scars.length > MAX_SCARS) b.scars.shift();
   if (b.parts) buildScars(b);
+}
+
+/* How long a fresh impact scar takes to go from molten to cold rock, in days.
+   A real melt sheet takes thousands of years to solidify; this is short enough
+   to actually watch happen at a sensible time rate. */
+const SCAR_COOL = 90;
+
+/* A crater's shape, as fractions of its own radius. Real ones run about a fifth
+   of their diameter deep with a rim a little above the surrounding ground. */
+const SCAR_DEPTH = 0.16;
+const SCAR_RIM = 0.052;
+/* How far the painted decal reaches compared with the bowl itself: the rim ring
+   in scarTexture() sits at 0.275 of the half-width, and the ejecta rays run
+   nearly to the edge — so the picture is about three and a half bowl-radii
+   across. The cap that carries it has to cover the same ground. */
+const SCAR_TEX_R = 0.1375;
+const SCAR_TEX_SPAN = 3.4;
+
+/** The angular radius of a scar's bowl, in radians. */
+const scarAngle = (sc) => clamp(sc.s * 0.34, 0.02, 1.15);
+
+/**
+ * The crater itself, as a change in radius. `t` is the distance from the middle
+ * in units of the bowl's own radius, so t = 1 is the rim.
+ *
+ * A parabolic floor, and a raised rim centred on t = 1 that dies away outwards
+ * into the ejecta blanket — which is why a big crater sits in the middle of a
+ * low, wide mound rather than ending at a cliff.
+ */
+function craterProfile(t, depth, rim) {
+  if (t >= 1.42) return 0;
+  /* cos² rather than a parabola: it leaves the floor flat in the middle and the
+     walls steep, which is what a real crater of any size looks like — and, more
+     importantly here, its slope is zero at BOTH ends, so the bowl meets the rim
+     and the rim meets the plain without a crease. A crease shows up as a ring of
+     facets once the mesh has to draw it. */
+  let d = 0;
+  if (t < 1) {
+    const c = Math.cos(t * Math.PI / 2);
+    d -= depth * c * c;
+  }
+  // The rim only exists in a band around t = 1. Without the gate, cos² keeps
+  // oscillating and puts a phantom ridge in the middle of the bowl.
+  const x = (t - 1) / 0.42;
+  if (Math.abs(x) < 1) {
+    const c = Math.cos(x * Math.PI / 2);
+    d += rim * c * c;
+  }
+  return d;
+}
+
+/** Everything needed to evaluate one body's craters, worked out once. */
+function scarList(b) {
+  const list = [];
+  if (!b.scars) return list;
+  for (const sc of b.scars) {
+    const ang = scarAngle(sc);
+    list.push({
+      n: new THREE.Vector3(sc.n[0], sc.n[1], sc.n[2]).normalize(),
+      ang: ang,
+      depth: SCAR_DEPTH * Math.sin(ang),
+      rim: SCAR_RIM * Math.sin(ang),
+      // Everything beyond this is untouched, and testing the cosine lets the
+      // vast majority of vertices skip the arc-cosine entirely.
+      cosSpan: Math.cos(Math.min(1.42 * ang, Math.PI))
+    });
+  }
+  return list;
+}
+
+/**
+ * Where the surface of a cratered body actually is, in one direction.
+ *
+ * `ground` is what the radius would have been with no impact — the terrain.
+ * Inside a bowl that terrain is ERASED and replaced by the crater's own shape,
+ * because that is what an impact does: whatever mountains were standing there
+ * are not there any more. It also happens to be what makes the drawn crater and
+ * the carved mesh agree, since a smooth floor is the same smooth floor whichever
+ * of the two is asking.
+ */
+function scarredRadius(list, dir, ground) {
+  let flat = 0, d = 0;
+  for (let m = 0; m < list.length; m++) {
+    const s = list[m];
+    const cosA = dir.x * s.n.x + dir.y * s.n.y + dir.z * s.n.z;
+    if (cosA <= s.cosSpan) continue;
+    const t = Math.acos(clamp(cosA, -1, 1)) / s.ang;
+    d += craterProfile(t, s.depth, s.rim);
+    const f = smoothstep(clamp((1.15 - t) / 0.55, 0, 1));
+    if (f > flat) flat = f;
+  }
+  return flat > 0 ? ground * (1 - flat) + flat + d : ground + d;
+}
+
+/** The geometry a body would have with no craters in it at all. */
+function baseGeometryFor(b) {
+  const def = TYPES[b.type];
+  if (def.lumpy) return lumpyGeometry(b.seed, def.lumpy);
+  if (def.surf === 'star') return starGeometry(b.type, b.seed);
+  return reliefGeometry(b.type, b.seed);
+}
+
+/**
+ * Punch every one of a body's craters into its mesh.
+ *
+ * This is the difference between a mark ON a planet and a mark that IS part of
+ * it: the ground actually caves in, the rim actually stands up, and both of them
+ * catch the light and break the silhouette because they are geometry rather than
+ * a picture lying on a sphere.
+ *
+ * The result is unique to this body, so unlike relief geometry it CANNOT be
+ * shared or cached — it becomes b.ownGeo and dies with it.
+ */
+function carveScars(b, base, list) {
+  if (!list.length) return base;
+  const g = base.clone();
+  const pos = g.attributes.position;
+  const arr = pos.array;
+  const dir = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    const k = i * 3;
+    const x = arr[k], y = arr[k + 1], z = arr[k + 2];
+    const L = Math.sqrt(x * x + y * y + z * z);
+    if (L < 1e-9) continue;
+    dir.set(x / L, y / L, z / L);
+    const r = scarredRadius(list, dir, L);
+    if (r !== L) { arr[k] = dir.x * r; arr[k + 1] = dir.y * r; arr[k + 2] = dir.z * r; }
+  }
+  pos.needsUpdate = true;
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * A dish of triangles laid IN one crater, carrying its texture.
+ *
+ * The flat quad this replaces bridged straight over the bowl once the bowl was
+ * real, so the painted crater floated above the hole it was meant to be in.
+ * Every vertex here is put at the height the same craterProfile() puts the mesh,
+ * on top of whatever the terrain was already doing — so the picture and the
+ * ground are the same shape by construction.
+ */
+function scarCapGeometry(b, sc, lift, list) {
+  const RINGS = 22, SEGS = 40;
+  const n = new THREE.Vector3(sc.n[0], sc.n[1], sc.n[2]).normalize();
+  let u = new THREE.Vector3(0, 1, 0);
+  if (Math.abs(n.dot(u)) > 0.9) u.set(1, 0, 0);
+  u.crossVectors(n, u).normalize();
+  const w = new THREE.Vector3().crossVectors(n, u).normalize();
+  // Rolled about its own axis, so no two craters have their rays lined up.
+  const cr = Math.cos(sc.roll), sr = Math.sin(sc.roll);
+  const uu = u.clone().multiplyScalar(cr).addScaledVector(w, sr);
+  const ww = u.clone().multiplyScalar(-sr).addScaledVector(w, cr);
+
+  const ang = scarAngle(sc);
+  const amax = Math.min(ang * SCAR_TEX_SPAN, 1.32);
+
+  const pos = [], uvs = [], idx = [];
+  const dir = new THREE.Vector3();
+  for (let i = 0; i <= RINGS; i++) {
+    // Rings bunched towards the middle, where the shape actually changes.
+    const a = amax * Math.pow(i / RINGS, 1.3);
+    const t = a / ang;
+    const rt = Math.min(SCAR_TEX_R * t, 0.492);
+    const ca = Math.cos(a), sa = Math.sin(a);
+    for (let j = 0; j <= SEGS; j++) {
+      const th = (j / SEGS) * TAU, ct = Math.cos(th), st = Math.sin(th);
+      dir.copy(n).multiplyScalar(ca).addScaledVector(uu, sa * ct).addScaledVector(ww, sa * st).normalize();
+      // Every crater on the body, not just this one, so overlapping rims agree.
+      const rr = scarredRadius(list, dir, groundAt(b, dir)) + lift;
+      pos.push(dir.x * rr, dir.y * rr, dir.z * rr);
+      uvs.push(0.5 + rt * ct, 0.5 + rt * st);
+    }
+  }
+  for (let i = 0; i < RINGS; i++) {
+    for (let j = 0; j < SEGS; j++) {
+      const a0 = i * (SEGS + 1) + j, b0 = a0 + 1, c0 = a0 + SEGS + 1, d0 = c0 + 1;
+      idx.push(a0, c0, b0, b0, c0, d0);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  g.setIndex(idx);
+  return g;
 }
 
 function buildScars(b) {
   const p = b.parts;
   if (!p || !p.surf || !b.scars) return;
-  if (p.scars) for (const m of p.scars) { p.surf.remove(m); m.material.dispose(); }
+  if (p.scars) for (const sk of p.scars) {
+    p.surf.remove(sk.pit); sk.pit.material.dispose(); sk.pit.geometry.dispose();
+    p.surf.remove(sk.fire); sk.fire.material.dispose(); sk.fire.geometry.dispose();
+  }
   p.scars = [];
+  if (!b.scars.length) return;
+
+  /* Re-cut the body itself. Carved from the pristine geometry every time rather
+     than from what is already there, or each new impact would deepen every old
+     crater along with its own. */
+  const list = scarList(b);
+  const carved = carveScars(b, baseGeometryFor(b), list);
+  /* How far the caps stand off the ground. groundAt() reads the height field at
+     texel resolution while the mesh carries its own vertices, so the two differ
+     by a hair — and that hair is proportional to how much relief the world has.
+     Stand off by more than the disagreement or ridges show through the decal in
+     little dark flakes. */
+  const clear = 0.002 + reliefOf(b.type) * 0.020;
+  if (carved !== p.surf.geometry) {
+    if (b.ownGeo && b.ownGeo !== carved) b.ownGeo.dispose();
+    p.surf.geometry = carved;
+    b.ownGeo = carved;                 // unique to this body, so it owns it
+  }
 
   const tex = cachedTexture('scar', () => scarTexture(90210, 256));
+  const hot = cachedTexture('scarfire', () => scarFireTexture(4711, 256));
   for (const sc of b.scars) {
+    // The crater's own colouring — dark floor, bright rim, thrown-out rays —
+    // sitting in the hole rather than over it.
     const mat = new THREE.MeshBasicMaterial({
-      map: tex, transparent: true, depthWrite: false, opacity: 0.85,
-      // Held a hair off the surface; the offset keeps it from z-fighting with
-      // the sphere it is lying on.
+      map: tex, transparent: true, depthWrite: false, opacity: 0, side: THREE.DoubleSide,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
     });
-    const m = new THREE.Mesh(SCAR_GEO, mat);
-    const n = new THREE.Vector3(sc.n[0], sc.n[1], sc.n[2]).normalize();
-    m.position.copy(n).multiplyScalar(1.006);
-    m.quaternion.setFromUnitVectors(_ZAXIS, n)
-      .multiply(new THREE.Quaternion().setFromAxisAngle(_ZAXIS, sc.roll));
-    m.scale.setScalar(sc.s);
-    p.surf.add(m);          // a child of the mesh, so it turns with the world
-    p.scars.push(m);
+    const pit = new THREE.Mesh(scarCapGeometry(b, sc, clear, list), mat);
+    p.surf.add(pit);        // a child of the mesh, so it turns with the world
+
+    /* The fire, additive so it reads as light rather than paint, and standing a
+       shade further out so it glows over the crater instead of fighting it. */
+    const fmat = new THREE.MeshBasicMaterial({
+      map: hot, transparent: true, depthWrite: false, opacity: 0, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3
+    });
+    const fire = new THREE.Mesh(scarCapGeometry(b, sc, clear + 0.004, list), fmat);
+    p.surf.add(fire);
+
+    p.scars.push({ sc: sc, pit: pit, fire: fire });
+  }
+  paintScars(b);
+}
+
+/* The colour a cooling impact melt passes through: white-hot, then the orange
+   of flowing lava, then a dull red before it goes out altogether. */
+const SCAR_RAMP = [
+  [0.00, [255, 250, 235]],   // just hit: white-hot
+  [0.22, [255, 196,  92]],
+  [0.50, [255, 104,  22]],   // flowing lava
+  [0.78, [156,  26,   8]],   // dull red
+  [1.00, [ 70,  12,   6]]    // going out
+];
+
+/**
+ * Put every scar on this body at the temperature its age says it should be.
+ * Cheap, and skipped entirely once the last one has gone cold.
+ */
+function paintScars(b) {
+  const p = b.parts;
+  if (!p || !p.scars || !p.scars.length) return false;
+  let anyHot = false;
+  for (const sk of p.scars) {
+    // A scar restored from an old save has no age at all: treat it as cold.
+    const age = sk.sc.age != null ? sk.sc.age : SCAR_COOL;
+    const t = clamp(age / SCAR_COOL, 0, 1);
+    if (t < 1) anyHot = true;
+
+    // Glow: brightest the instant it forms, and gone by the time it is cold.
+    const lit = Math.pow(1 - t, 1.7);
+    const c = ramp(SCAR_RAMP, clamp(t * 1.05, 0, 1));
+    sk.fire.material.color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+    sk.fire.material.opacity = lit * 0.95;
+    sk.fire.visible = lit > 0.004;
+
+    // Crater: hidden under the fire at first, then emerging from under it.
+    sk.pit.material.opacity = 0.85 * smoothstep(clamp((t - 0.18) / 0.62, 0, 1));
+    sk.pit.visible = sk.pit.material.opacity > 0.004;
+  }
+  return anyHot;
+}
+
+/** Age every open wound, and stop touching a body once all of its are cold. */
+function coolScars(simDt) {
+  if (simDt <= 0) return;
+  for (let i = 0; i < sim.bodies.length; i++) {
+    const b = sim.bodies[i];
+    if (!b.alive || !b.scars || !b.scars.length || b.scarsCold) continue;
+    let hot = false;
+    for (const sc of b.scars) {
+      if (sc.age == null) { sc.age = SCAR_COOL; continue; }
+      if (sc.age < SCAR_COOL) sc.age = Math.min(sc.age + simDt, SCAR_COOL);
+      // Tested AFTER the step, so the frame that finishes the job is also the
+      // frame that stops the work rather than the one after it.
+      if (sc.age < SCAR_COOL) hot = true;
+    }
+    // One last repaint on the way past the finish line, then leave it alone.
+    paintScars(b);
+    b.scarsCold = !hot;
   }
 }
 
@@ -6392,6 +6762,10 @@ function disposeVisual(b, keepTrail) {
     scene.remove(b.parts.tail);
     b.parts.tail.geometry.dispose();
     b.parts.tail.material.dispose();
+  }
+  // Each crater cap is cut for this body's own surface, so it goes too.
+  if (b.parts && b.parts.scars) {
+    for (const sk of b.parts.scars) { sk.pit.geometry.dispose(); sk.fire.geometry.dispose(); }
   }
   if (b.ownGeo) b.ownGeo.dispose();
   // The ring texture belongs to this body alone and went with the traverse above.
@@ -7566,6 +7940,7 @@ function updateVisuals(realDt, simDt) {
   updateDiscs(simDt);
   updateClumps(simDt);
   coolCores(simDt);
+  coolScars(simDt);
   refreshStarCache();
   updateTemperatures();
   // After the temperatures, because whether a world can live is decided by the
