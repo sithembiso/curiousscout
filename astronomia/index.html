@@ -1570,20 +1570,24 @@ const SKY = [140, 190, 255], WARM = [255, 170, 110], PALE = [200, 225, 255];
 
 /* ========================================== star colour by mass          */
 /*
- * How heavy a star is decides what colour it is drawn, in five flat bands —
- * and past BLACK_DWARF_MASS it stops having a colour at all and burns out.
+ * How BIG a star is decides what colour it is drawn, in five flat bands — and
+ * grow one past BLACK_DWARF_R and it stops having a colour at all and burns
+ * out. Size, not mass: puff a star up in CUSTOMISE without touching its mass
+ * and it changes colour; make it heavier without making it wider and it does
+ * not. (Mass does move size when a body keeps its density, so a heavier star
+ * is usually a wider one — but it is the width that is being read.)
  *
  * This is a house rule, not stellar physics. A real star's colour comes from
- * its surface temperature, and mass runs the *other* way: the heaviest stars
- * are blue-white at forty thousand kelvin and the lightest are dim red. So
- * this is paint only. A star's temperature, its luminosity, the heat it gives
- * its planets and where its snow line falls are all still the real numbers.
+ * its surface temperature, and size runs the *other* way among main-sequence
+ * stars: the big ones are blue-white at forty thousand kelvin. So this is
+ * paint only. A star's temperature, its luminosity, the heat it gives its
+ * planets and where its snow line falls are all still the real numbers.
  *
  * Bands are read top-down, so each `min` is the floor of its band in solar
- * masses. The brief left a gap between 5.0 and 5.99; it is painted dark
+ * radii. The brief left a gap between 5.0 and 5.99; it is painted dark
  * yellow, so the bands meet without a seam.
  */
-const BLACK_DWARF_MASS = 20;          // M☉ — at or above this, a star dies
+const BLACK_DWARF_R = 20;             // R☉ — GROW past this and a star dies
 
 const STAR_BANDS = [
   { min: 10,   name: 'blood red',    rgb: [168,  18,  20] },
@@ -1602,8 +1606,8 @@ const STAR_BANDS = [
 function starBand(b) {
   const def = TYPES[b.type];
   if (!def.star || def.surf !== 'star' || def.dead || b.kind !== 'body') return null;
-  const mSun = b.m / M_SUN;
-  for (const s of STAR_BANDS) if (mSun >= s.min) return s;
+  const rSun = b.r / (R_SUN * R_EARTH);
+  for (const s of STAR_BANDS) if (rSun >= s.min) return s;
   return STAR_BANDS[STAR_BANDS.length - 1];
 }
 
@@ -1630,7 +1634,7 @@ const TYPES = {
     blurb: 'A dying titan. Drop it where the Sun is and it would swallow Jupiter whole. It is already almost out of fuel — switch on Stellar aging and watch.'
   },
   wolf_rayet: {
-    label: 'Wolf–Rayet Star', group: 'STARS', mass: 19.5 * M_SUN, rad: 3.1 * R_SUN,
+    label: 'Wolf–Rayet Star', group: 'STARS', mass: 20 * M_SUN, rad: 3.1 * R_SUN,
     surf: 'star', temp: 50000, star: true, stripped: true, spin: 3, spots: 4, aged: 0.995,
     blurb: 'A giant that has blown its own hydrogen away, leaving the bare helium core burning in the open. It has maybe a hundred thousand years left, and it ends as a Type Ib/c supernova.'
   },
@@ -1645,10 +1649,10 @@ const TYPES = {
     blurb: 'A city-sized stellar corpse spinning hundreds of times a second. One teaspoon weighs a billion tonnes.'
   },
   black_dwarf: {
-    label: 'Black Dwarf', group: 'STARS', mass: BLACK_DWARF_MASS * M_SUN, rad: 2.6,
+    label: 'Black Dwarf', group: 'STARS', mass: M_SUN, rad: 1.2,
     surf: 'dwarfstar', temp: 320, star: true, dead: true, spin: 1.4, lumCap: 0,
     opts: { temp: 2200, pale: 0.10, dim: 0.19 },
-    blurb: 'A star that has burnt out completely — no fusion, no light, just a cooling ember. Real ones take far longer to make than the universe has existed, so not one exists yet anywhere. Here, any star that reaches 20 solar masses ends up as one.'
+    blurb: 'A star that has burnt out completely — no fusion, no light, just a cooling ember about the size of Earth. Real ones take far longer to make than the universe has existed, so not one exists yet anywhere. Here, any star swollen past 20 times the Sun\'s width collapses into one.'
   },
   brown_dwarf: {
     label: 'Brown Dwarf', group: 'STARS', mass: 40 * 317.8, rad: 11.0,
@@ -2037,6 +2041,19 @@ const SN_REAL = Object.assign({}, snSet);
    is millions of times wider than this and is pure scenery (see GAL_PX). */
 const GAL_CORE_R = 6;            // Gm
 
+/**
+ * The radius a body should have at its current mass — keeping whatever width
+ * the player gave it in CUSTOMISE.
+ *
+ * Rebuilding a radius straight from trueRadius() whenever the mass moved was a
+ * real bug: puff a star up by hand, then nudge its mass, and it snapped back to
+ * its natural size. Scaling by the same cube root the natural radius moves by
+ * grows or shrinks the body without touching how dense the player made it.
+ */
+function natRadius(b) {
+  return trueRadius(b.type, b.m) * (b.rFactor > 0 ? b.rFactor : 1);
+}
+
 function trueRadius(type, mass) {
   const def = TYPES[type];
   if (def.kind === 'bh' || def.kind === 'wh') return schwarzschild(mass);
@@ -2087,6 +2104,14 @@ function makeBody(type, pos, vel, overrides) {
     name: o.name || makeName(type),
     m: mass,
     r: o.r != null ? o.r : trueRadius(type, mass),
+    /* How far the radius has been pushed off its natural value for this mass.
+       1 means "whatever constant density says". Kept so that changing a body's
+       MASS moves its radius without throwing away a width the player set by
+       hand — see natRadius(). */
+    rFactor: 1,
+    // Whether this star has ever been under the burn-out ceiling; see
+    // checkEvolution. Set properly just below, once the radius is known.
+    everSmall: false,
     p: pos.clone(),
     v: vel ? vel.clone() : new THREE.Vector3(),
     a: new THREE.Vector3(),
@@ -2126,6 +2151,11 @@ function makeBody(type, pos, vel, overrides) {
     age: o.age != null ? o.age : (def.aged ? msLifetime(mass / M_SUN) * def.aged : 0),
     obj: null
   };
+  // Both derived from the radius the body actually ended up with, so a body
+  // restored from a save or given an explicit width starts out honest.
+  const nat = trueRadius(type, mass);
+  if (nat > 0 && b.r > 0) b.rFactor = b.r / nat;
+  b.everSmall = b.r < BLACK_DWARF_R * R_SUN * R_EARTH;
   updateLuminosity(b);
   buildVisual(b);
   sim.bodies.push(b);
@@ -2752,13 +2782,14 @@ function checkEvolution(b) {
     }
     // An ember has nothing left to do. It cannot detonate, collapse or explode.
     if (def.dead) return null;
-    /* House rule (see STAR_BANDS): twenty solar masses is the ceiling for a
-       burning star. At or above it the star burns out rather than exploding,
-       and what is left is a black dwarf. This is checked before the supernova
-       machinery so it wins — which does mean a star can no longer be *grown*
-       into the heavy supernova regimes, only placed there or set off by hand. */
-    if (def.surf === 'star' && b.m >= BLACK_DWARF_MASS * M_SUN) {
-      becomeBlackDwarf(b); return 'bdwarf';
+    /* House rule (see STAR_BANDS): twenty solar radii is the ceiling for a
+       burning star. SWELL past it and the star burns out into a black dwarf.
+       It has to be a crossing, not just a reading — a red supergiant is 760 R☉
+       from the day it is placed and has plenty of life left in it, so what
+       burns out is a star that has GROWN into the ceiling from under it. */
+    if (def.surf === 'star') {
+      if (b.r < BLACK_DWARF_R * R_SUN * R_EARTH) b.everSmall = true;
+      else if (b.everSmall) { becomeBlackDwarf(b); return 'bdwarf'; }
     }
     if (snSet.on) {
       // A white dwarf crossing the Chandrasekhar limit is the one supernova that
@@ -2767,8 +2798,18 @@ function checkEvolution(b) {
       if (def.surf === 'dwarfstar' && b.m >= snSet.chandra * M_SUN) {
         return goSupernova(b) ? 'snIa' : null;
       }
-      if (b.m >= snSet.failMass * M_SUN) return goSupernova(b) ? 'sn' : null;
-      if (snSet.massTrigger && b.m >= snSet.ccMass * M_SUN) return goSupernova(b) ? 'sn' : null;
+      /* Growing a star must not set it off unless "Mass triggers" is on. That
+         switch is documented as "a star that GROWS past the core-collapse mass
+         explodes" — but the failMass check here used to fire whatever it was
+         set to, so simply dragging a star's mass past 40 M☉ collapsed it into
+         a black hole with the switch plainly turned off, and the star vanished
+         into a dot for no reason the player could see. The white dwarf above is
+         the one real exception: a Type Ia genuinely is triggered by mass and by
+         nothing else. Everything else waits to be set off by hand. */
+      if (snSet.massTrigger) {
+        if (b.m >= snSet.failMass * M_SUN) return goSupernova(b) ? 'sn' : null;
+        if (b.m >= snSet.ccMass * M_SUN) return goSupernova(b) ? 'sn' : null;
+      }
       return null;
     }
     if (b.m >= COLLAPSE_MASS) { becomeBlackHole(b); return 'bh'; }
@@ -2799,7 +2840,11 @@ function becomeGasGiant(b) {
   b.kind = 'body';
   b.spin = TYPES.gas_giant.spin;
   b.tilt = rnd(-0.42, 0.42);
+  // A transformation is a new object, so it gets the new type's own width
+  // rather than carrying over a factor the player set on the old one.
+  b.rFactor = 1;
   b.r = trueRadius('gas_giant', b.m);
+  b.everSmall = b.r < BLACK_DWARF_R * R_SUN * R_EARTH;
   b.glowPulse = 1;                       // a few seconds of heat from collapsing in
   updateLuminosity(b);
   refreshVisual(b);
@@ -2812,7 +2857,9 @@ function becomeStar(b) {
   b.kind = 'body';
   b.age = 0;
   b.temp = TYPES[b.type].temp;
+  b.rFactor = 1;
   b.r = trueRadius(b.type, b.m);
+  b.everSmall = b.r < BLACK_DWARF_R * R_SUN * R_EARTH;
   b.spin = TYPES[b.type].spin;
   b.coreT = baseCoreT(TYPES[b.type], b.m);
   updateLuminosity(b);
@@ -2841,7 +2888,9 @@ function ripenBrownDwarfs(dt) {
     b.bdAge = 0;
     b.temp = TYPES.red_dwarf.temp;
     b.spin = TYPES.red_dwarf.spin;
+    b.rFactor = 1;
     b.r = trueRadius('red_dwarf', b.m);
+    b.everSmall = b.r < BLACK_DWARF_R * R_SUN * R_EARTH;
     b.coreT = baseCoreT(TYPES.red_dwarf, b.m);
     b.glowPulse = 1;
     updateLuminosity(b);
@@ -2864,6 +2913,10 @@ function becomeBlackDwarf(b) {
   b.band = null;
   b.temp = TYPES.black_dwarf.temp;
   b.spin = TYPES.black_dwarf.spin;
+  // An ember collapses to its own size. Whatever the star was puffed out to on
+  // the way here is exactly what it has just stopped holding up.
+  b.rFactor = 1;
+  b.everSmall = true;
   b.r = trueRadius('black_dwarf', b.m);
   b.coreT = baseCoreT(TYPES.black_dwarf, b.m);
   b.lum = 0;
@@ -2875,6 +2928,8 @@ function becomeBlackHole(b) {
   b.kind = 'bh';
   b.temp = 0;
   b.lum = 0;
+  b.rFactor = 1;
+  b.everSmall = true;
   b.r = schwarzschild(b.m);
   refreshVisual(b);
 }
@@ -3228,6 +3283,8 @@ function goSupernova(b, plan) {
     b.rubble = false;
     b.disrupted = false;
     b.v.addScaledVector(kickDir, kickV);
+    b.rFactor = 1;
+    b.everSmall = true;
     if (kind === 'black') {
       b.type = 'black_hole'; b.kind = 'bh';
       b.temp = 0; b.lum = 0;
@@ -6809,7 +6866,7 @@ function updateParticles(simDt) {
     for (const b of grewBodies) {
       if (!b.alive) continue;
       if (b.kind === 'bh') b.r = schwarzschild(b.m);
-      else b.r = trueRadius(b.type, b.m);
+      else b.r = natRadius(b);
       // Enough swallowed debris can push a body over a threshold too.
       const ev = checkEvolution(b);
       if (ev) toast(b.name + EVOLVE_NOTE[ev]);
@@ -7991,6 +8048,10 @@ function bindCustomise(b) {
     show.rad();
     rs.addEventListener('input', () => {
       b.r = Math.pow(10, parseFloat(rs.value));
+      // Remember how far off its natural width this is, so changing the mass
+      // later moves the radius instead of resetting it.
+      const nat = trueRadius(b.type, b.m);
+      b.rFactor = nat > 0 ? b.r / nat : 1;
       updateLuminosity(b);
       scaleVisual(b);
       show.rad();
@@ -8382,7 +8443,7 @@ function renderInspector() {
     const nb = sim.selected;
     if (!nb) return;
     nb.m = Math.pow(10, parseFloat(slider.value));
-    nb.r = trueRadius(nb.type, nb.m);
+    nb.r = natRadius(nb);
     // Rebuilding the panel mid-drag would kill the drag, so on transformation
     // just patch the type label in place; the full refresh waits for release.
     inspectorLock++;
@@ -9485,19 +9546,24 @@ function openHelp() {
     '<li>So the full circle is: gas &rarr; star &rarr; supernova &rarr; gas &rarr; star. Each turn seeds the next one with heavier elements. Every atom of iron in your blood came through that loop.</li>' +
     '</ul>' +
     '<h3>WHAT COLOUR A STAR IS</h3>' +
-    '<p>In here, <b>how heavy a star is decides what colour it is</b>. Select any star and the ' +
-    'panel tells you which band it is in; feed it or drain it and it repaints the moment it ' +
-    'crosses into the next one.</p>' +
+    '<p>In here, <b>how big a star is decides what colour it is</b> — its width, not its weight. ' +
+    'Open <b>CUSTOMISE</b> and drag the <b>Radius</b> slider: the star repaints the moment it ' +
+    'crosses into the next band, and its mass never moves. The panel always tells you which band ' +
+    'it is in. Sizes are in <b>R☉</b>, times the width of the Sun.</p>' +
     '<ul>' +
-    '<li><b>20 M☉ and up</b> — it burns out. What is left is a <b>black dwarf</b>: a dead ember ' +
-    'with no fusion and no light at all. Anything it was keeping warm goes cold, and there is ' +
-    'nothing you can do to it after that — it cannot even be made to explode.</li>' +
-    '<li><b>10 to 19.9 M☉</b> — blood red</li>' +
-    '<li><b>5.99 to 9.99 M☉</b> — orange</li>' +
-    '<li><b>3 to 5.99 M☉</b> — dark yellow</li>' +
-    '<li><b>1 to 2.99 M☉</b> — yellow-white</li>' +
-    '<li><b>Under 1 M☉</b> — white</li>' +
+    '<li><b>Swell one past 20 R☉</b> and it burns out. What is left is a <b>black dwarf</b>: a ' +
+    'dead ember about the size of Earth, with no fusion and no light at all. Anything it was ' +
+    'keeping warm goes cold, and there is nothing you can do to it afterwards — it cannot even ' +
+    'be made to explode. A star that was <i>already</i> bigger than that when you placed it, like ' +
+    'the Red Supergiant at 760 R☉, is a giant rather than a corpse and goes on burning.</li>' +
+    '<li><b>10 to 19.9 R☉</b> — blood red</li>' +
+    '<li><b>5.99 to 9.99 R☉</b> — orange</li>' +
+    '<li><b>3 to 5.99 R☉</b> — dark yellow</li>' +
+    '<li><b>1 to 2.99 R☉</b> — yellow-white (the Sun is 1 R☉)</li>' +
+    '<li><b>Under 1 R☉</b> — white</li>' +
     '</ul>' +
+    '<p>Making a star heavier does make it wider, if it keeps its density — so mass can push it ' +
+    'into the next band that way. But mass is never what is read: it is always the width.</p>' +
     '<p>Only the burning stars are painted this way. A white dwarf, a neutron star, a brown dwarf ' +
     'and a black dwarf each keep their own look.</p>' +
 
@@ -9506,7 +9572,7 @@ function openHelp() {
     '<li>Planets are drawn <b>larger than life</b> (see Settings) because at true scale they would be invisible specks. They collide at the size you see.</li>' +
     '<li>Black holes are drawn far bigger than their real event horizons — a ten-solar-mass hole is only about 30 km across — and starlight does not dim with distance, or half your worlds would be pitch black.</li>' +
     '<li>Debris grains feel gravity from the heaviest bodies but not from <i>each other</i>. That is what makes thousands of them possible at once; it means a debris ring will not clump into moons on its own.</li>' +
-    '<li>A star\'s colour here comes from its <b>mass</b>. In real life it comes from its surface <b>temperature</b>, and the two run opposite ways round: the heaviest real stars are blue-white and blazing, and the lightest are dim red. So the paint is a house rule — but nothing else is. Each star\'s temperature, its brightness, the heat it gives its planets and where its snow line falls are all still the real numbers, which is why a 15 M☉ star painted blood red is still fierce enough to roast everything near it.</li>' +
+    '<li>A star\'s colour here comes from its <b>size</b>. In real life it comes from its surface <b>temperature</b>, and among ordinary stars the two run opposite ways round: the big ones are blue-white and blazing, and the small ones are dim red. So the paint is a house rule — but nothing else is. Each star\'s temperature, its brightness, the heat it gives its planets and where its snow line falls are all still the real numbers, which is why a 15 R☉ star painted blood red is still fierce enough to roast everything near it.</li>' +
     '</ul>' +
     '</div>';
   openModal();
