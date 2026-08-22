@@ -778,20 +778,31 @@ function newCanvas(w, h) {
   return c;
 }
 
-/** Walk every pixel of an equirectangular map. fn(u, v, lat) → [r,g,b] */
-function pixelPass(ctx, W, H, fn) {
+/**
+ * Walk every pixel of an equirectangular map. fn(u, v, lat) → [r,g,b]
+ *
+ * Pass `elev` — the same noise the painter is already colouring by — and the
+ * height at every pixel is recorded and handed back, so the identical landscape
+ * can be pushed into the mesh as real relief. See reliefGeometry(): a mountain
+ * range then breaks the horizon instead of only being painted on.
+ */
+function pixelPass(ctx, W, H, fn, elev) {
   const img = ctx.createImageData(W, H);
   const d = img.data;
-  let i = 0;
+  const hf = elev ? new Float32Array(W * H) : null;
+  let i = 0, k = 0;
   for (let y = 0; y < H; y++) {
     const v = (y + 0.5) / H;
     const lat = (0.5 - v) * Math.PI;         // +pi/2 north … -pi/2 south
     for (let x = 0; x < W; x++) {
-      const c = fn((x + 0.5) / W, v, lat);
+      const u = (x + 0.5) / W;
+      const c = fn(u, v, lat);
       d[i++] = c[0]; d[i++] = c[1]; d[i++] = c[2]; d[i++] = 255;
+      if (hf) hf[k++] = elev(u, v, lat);
     }
   }
   ctx.putImageData(img, 0, 0);
+  return hf;
 }
 
 /**
@@ -928,14 +939,17 @@ const SURFACE = {
     const base = o.dark
       ? [[0, [26, 22, 21]], [0.5, [52, 46, 44]], [1, [92, 84, 80]]]
       : [[0, [58, 54, 52]], [0.45, [104, 99, 95]], [0.75, [148, 143, 137]], [1, [196, 192, 186]]];
-    pixelPass(ctx, W, H, (u, v) => {
+    // The lava plains really are low ground — Mare Imbrium sits four kilometres
+    // below the highlands around it — so they are sunk in the relief too.
+    const hgt = pixelPass(ctx, W, H, (u, v) => {
       const e = elev(u, v);
       let c = ramp(base, e);
       const m = maria(u, v);
       if (m < 0.42) c = mix(c, o.dark ? [18, 16, 16] : [46, 44, 48], (0.42 - m) * 1.7);
       return c;
-    });
+    }, (u, v) => elev(u, v) - Math.max(0, 0.42 - maria(u, v)) * 0.5);
     craters(ctx, W, H, rng, o.craters || 130, 0.006, 0.075, o.dark ? [120, 110, 104] : [222, 218, 210]);
+    return hgt;
   },
 
   /* Continents, oceans, ice caps — a living world. */
@@ -946,7 +960,7 @@ const SURFACE = {
     const arid = fbm(seed + 3301, 3, 2, 3);
     const sea = o.sea != null ? o.sea : 0.5;
     const deep = [[0, [6, 22, 62]], [0.55, [12, 54, 116]], [1, [28, 104, 168]]];
-    pixelPass(ctx, W, H, (u, v, lat) => {
+    const hgtT = pixelPass(ctx, W, H, (u, v, lat) => {
       const e = elev(u, v);
       const cold = Math.pow(Math.abs(lat) / (Math.PI / 2), 1.6);
       if (e < sea) {
@@ -965,15 +979,25 @@ const SURFACE = {
       if (h > 0.62) c = mix(c, [244, 246, 252], clamp((h - 0.62) * 2.6, 0, 1));
       if (cold > 0.72) c = mix(c, [232, 238, 246], (cold - 0.72) * 2.4);
       return c;
+    },
+    /* Relief: the sea is flat at sea level rather than dipping — an ocean is
+       full of water, so what you see from space is one smooth surface — and the
+       ridged mountain noise is added on top of the land, so ranges stand above
+       the plains they run through. */
+    (u, v) => {
+      const e = elev(u, v);
+      if (e <= sea) return sea;
+      return e + Math.max(0, mount(u, v) - 0.62) * 0.55;
     });
     iceCaps(ctx, W, H, rng, o.caps != null ? o.caps : 0.14, [238, 244, 252]);
+    return hgtT;
   },
 
   /* A drowned world: shallow shelves, scattered archipelagos. */
   ocean(ctx, W, H, rng, o) {
     const seed = (rng() * 1e6) | 0;
     const elev = fbm(seed, 4, 2, 6);
-    pixelPass(ctx, W, H, (u, v, lat) => {
+    const hgtO = pixelPass(ctx, W, H, (u, v, lat) => {
       const e = elev(u, v);
       const cold = Math.pow(Math.abs(lat) / (Math.PI / 2), 1.8);
       if (e < 0.68) {
@@ -982,8 +1006,9 @@ const SURFACE = {
       }
       const h = (e - 0.68) / 0.32;
       return ramp([[0, [214, 202, 158]], [0.35, [120, 148, 92]], [1, [96, 104, 88]]], h);
-    });
+    }, (u, v) => Math.max(elev(u, v), 0.68));
     iceCaps(ctx, W, H, rng, 0.18, [230, 240, 250]);
+    return hgtO;
   },
 
   /* Dune seas and dust — Mars-like. */
@@ -991,14 +1016,15 @@ const SURFACE = {
     const seed = (rng() * 1e6) | 0;
     const base = fbm(seed, 5, 3, 5);
     const dunes = ridged(fbm(seed + 77, 26, 6, 3));
-    pixelPass(ctx, W, H, (u, v) => {
+    const hgtD = pixelPass(ctx, W, H, (u, v) => {
       const e = base(u, v);
       let c = ramp(o.pal || [[0, [96, 52, 34]], [0.35, [152, 88, 52]], [0.6, [188, 124, 76]], [0.85, [208, 158, 108]], [1, [226, 196, 156]]], e);
       c = mix(c, [232, 204, 164], dunes(u, v) * 0.22);
       return c;
-    });
+    }, (u, v) => base(u, v) + dunes(u, v) * 0.10);
     craters(ctx, W, H, rng, o.craters != null ? o.craters : 46, 0.006, 0.05, [226, 196, 158]);
     iceCaps(ctx, W, H, rng, o.caps != null ? o.caps : 0.09, [246, 240, 234]);
+    return hgtD;
   },
 
   /* Fractured ice shell — Europa, Enceladus. */
@@ -1006,16 +1032,17 @@ const SURFACE = {
     const seed = (rng() * 1e6) | 0;
     const base = fbm(seed, 5, 3, 5);
     const dirt = fbm(seed + 12, 3, 2, 3);
-    pixelPass(ctx, W, H, (u, v) => {
+    const hgtI = pixelPass(ctx, W, H, (u, v) => {
       const e = base(u, v);
       let c = ramp(o.pal || [[0, [176, 190, 208]], [0.5, [214, 228, 240]], [1, [246, 250, 255]]], e);
       const d = dirt(u, v);
       if (d < 0.4) c = mix(c, [148, 132, 118], (0.4 - d) * 1.1);
       return c;
-    });
+    }, (u, v) => base(u, v));
     cracks(ctx, W, H, rng, 34, [110, 140, 172], 1.6, false);
     cracks(ctx, W, H, rng, 12, [70, 96, 130], 2.6, false);
     craters(ctx, W, H, rng, 26, 0.005, 0.035, [252, 254, 255]);
+    return hgtI;
   },
 
   /* Cooling crust over an open magma ocean. */
@@ -1023,7 +1050,7 @@ const SURFACE = {
     const seed = (rng() * 1e6) | 0;
     const crust = fbm(seed, 6, 3, 5);
     const heat = ridged(fbm(seed + 404, 5, 3, 4));
-    pixelPass(ctx, W, H, (u, v) => {
+    const hgtL = pixelPass(ctx, W, H, (u, v) => {
       const e = crust(u, v);
       let c = ramp([[0, [16, 10, 10]], [0.45, [42, 26, 24]], [0.8, [72, 42, 34]], [1, [104, 62, 44]]], e);
       const h = heat(u, v);
@@ -1032,9 +1059,10 @@ const SURFACE = {
         c = mix(c, ramp([[0, [140, 40, 12]], [0.5, [232, 108, 18]], [1, [255, 226, 140]]], t), Math.pow(t, 0.7));
       }
       return c;
-    });
+    }, (u, v) => crust(u, v) - Math.max(0, heat(u, v) - 0.58) * 0.8);
     cracks(ctx, W, H, rng, 40, [255, 148, 40], 1.8, true);
     cracks(ctx, W, H, rng, 14, [255, 236, 170], 1.2, true);
+    return hgtL;
   },
 
   /* Banded, turbulent hydrogen envelope. */
@@ -1262,15 +1290,16 @@ const SURFACE = {
     const seed = (rng() * 1e6) | 0;
     const base = fbm(seed, 6, 3, 5);
     const facet = ridged(fbm(seed + 17, 30, 12, 3));
-    pixelPass(ctx, W, H, (u, v) => {
+    const hgtC = pixelPass(ctx, W, H, (u, v) => {
       const e = base(u, v);
       let c = ramp([[0, [14, 14, 18]], [0.5, [34, 34, 42]], [0.8, [58, 58, 70]], [1, [92, 94, 110]]], e);
       const f = facet(u, v);
       if (f > 0.72) c = mix(c, [214, 232, 255], (f - 0.72) * 2.6);
       return c;
-    });
+    }, (u, v) => base(u, v) + Math.max(0, facet(u, v) - 0.72) * 0.7);
     cracks(ctx, W, H, rng, 26, [190, 226, 255], 1.3, true);
     craters(ctx, W, H, rng, 34, 0.005, 0.04, [150, 170, 200]);
+    return hgtC;
   },
 
   /* A stripped metal core: streaked, oxidised, dense. */
@@ -1278,12 +1307,13 @@ const SURFACE = {
     const seed = (rng() * 1e6) | 0;
     const base = fbm(seed, 4, 8, 5);
     const streak = fbm(seed + 5, 40, 4, 3);
-    pixelPass(ctx, W, H, (u, v) => {
+    const hgtFe = pixelPass(ctx, W, H, (u, v) => {
       const e = clamp(base(u, v) * 0.75 + streak(u, v) * 0.25, 0, 1);
       let c = ramp([[0, [48, 40, 38]], [0.4, [102, 82, 72]], [0.65, [148, 116, 92]], [0.85, [176, 152, 132]], [1, [212, 198, 186]]], e);
       return c;
-    });
+    }, (u, v) => clamp(base(u, v) * 0.75 + streak(u, v) * 0.25, 0, 1));
     craters(ctx, W, H, rng, 70, 0.005, 0.05, [216, 200, 186]);
+    return hgtFe;
   },
 
   /* Cotton-candy super-puff: enormous, hazy, almost weightless. */
@@ -1304,7 +1334,7 @@ const SURFACE = {
     const seed = (rng() * 1e6) | 0;
     const n = fbm(seed, 6, 3, 5);
     const cloud = fbm(seed + 3, 10, 5, 4);
-    pixelPass(ctx, W, H, (u, v, lat) => {
+    const hgtE = pixelPass(ctx, W, H, (u, v, lat) => {
       // great-circle distance from the substellar point at (lon = pi, lat = 0)
       const d = Math.acos(clamp(Math.cos(lat) * Math.cos(u * TAU - Math.PI), -1, 1));
       const e = n(u, v);
@@ -1314,7 +1344,16 @@ const SURFACE = {
       else c = mix([202, 218, 236], [250, 253, 255], e);                            // frozen far side
       if (d > 1.1 && d < 1.7) c = mix(c, [244, 250, 255], (cloud(u, v) - 0.45) * 0.8);
       return c;
+    },
+    // The ring of meltwater is a genuine sea, so it is flat and low; the ice
+    // cap on the night side stands above it.
+    (u, v, lat) => {
+      const d = Math.acos(clamp(Math.cos(lat) * Math.cos(u * TAU - Math.PI), -1, 1));
+      const e = n(u, v);
+      if (d > 0.75 && d < 1.45) return 0.30;
+      return e * 0.7 + (d >= 1.45 ? 0.42 : 0.18);
     });
+    return hgtE;
   },
 
   /* Chthonian world — a gas giant's core after its atmosphere was boiled off. */
@@ -1322,28 +1361,30 @@ const SURFACE = {
     const seed = (rng() * 1e6) | 0;
     const base = fbm(seed, 5, 3, 5);
     const rift = ridged(fbm(seed + 13, 7, 4, 4));
-    pixelPass(ctx, W, H, (u, v) => {
+    const hgtCh = pixelPass(ctx, W, H, (u, v) => {
       const e = base(u, v);
       let c = ramp([[0, [22, 16, 18]], [0.45, [50, 34, 34]], [0.75, [80, 56, 50]], [1, [116, 88, 76]]], e);
       const r = rift(u, v);
       if (r > 0.68) c = mix(c, [216, 84, 30], (r - 0.68) * 2.4);
       return c;
-    });
+    }, (u, v) => base(u, v) - Math.max(0, rift(u, v) - 0.68) * 0.9);
     cracks(ctx, W, H, rng, 30, [255, 110, 40], 1.6, true);
     craters(ctx, W, H, rng, 44, 0.005, 0.045, [130, 104, 92]);
+    return hgtCh;
   },
 
   /* Comet nucleus: sooty, pitted, veined with exposed ice. */
   comet(ctx, W, H, rng, o) {
     const seed = (rng() * 1e6) | 0;
     const base = fbm(seed, 6, 4, 5);
-    pixelPass(ctx, W, H, (u, v) => {
+    const hgtK = pixelPass(ctx, W, H, (u, v) => {
       const e = base(u, v);
       let c = ramp([[0, [16, 14, 14]], [0.5, [34, 30, 28]], [0.85, [58, 54, 50]], [1, [86, 82, 78]]], e);
       if (e > 0.78) c = mix(c, [206, 220, 236], (e - 0.78) * 3.4);
       return c;
-    });
+    }, (u, v) => base(u, v));
     craters(ctx, W, H, rng, 60, 0.008, 0.09, [150, 160, 172]);
+    return hgtK;
   },
 
   /* A starless wanderer: frozen, dim, lightly cratered. */
@@ -1351,13 +1392,14 @@ const SURFACE = {
     const seed = (rng() * 1e6) | 0;
     const base = fbm(seed, 5, 3, 5);
     const frost = fbm(seed + 44, 9, 4, 4);
-    pixelPass(ctx, W, H, (u, v) => {
+    const hgtR = pixelPass(ctx, W, H, (u, v) => {
       const e = base(u, v);
       let c = ramp([[0, [20, 24, 34]], [0.45, [38, 46, 62]], [0.75, [60, 72, 92]], [1, [92, 106, 128]]], e);
       c = mix(c, [172, 192, 214], Math.pow(clamp(frost(u, v) * 1.3 - 0.5, 0, 1), 1.3) * 0.6);
       return c;
-    });
+    }, (u, v) => base(u, v));
     craters(ctx, W, H, rng, 40, 0.005, 0.05, [126, 144, 168]);
+    return hgtR;
   },
 
   /* Hycean: a hydrogen-blanketed ocean world under permanent overcast. */
@@ -1989,6 +2031,7 @@ const sim = {
 
 const settings = {
   bodyScale: 3,
+  relief: 1,             // × the exaggeration of surface elevation
   gravity: 1,
   collisions: 'merge',   // merge | bounce | off
   tidal: true,
@@ -4496,7 +4539,7 @@ function updateTemperatures() {
 /* ================================================================== renderer */
 
 let renderer, scene, camera, canvasEl;
-let SPHERE, SPHERE_LO, SPHERE_HI, SCAR_GEO;
+let SPHERE, SPHERE_LO, SPHERE_MID, SPHERE_HI, SCAR_GEO;
 const ringGeoCache = new Map();
 
 /**
@@ -4545,6 +4588,10 @@ function initScene() {
   // Stars need far more vertices than a planet: at 44 segments the mesh is
   // coarser than the granulation itself, so the displacement would alias into
   // a few random dents instead of resolving individual cells.
+  /* For relief worlds. Half the triangles of SPHERE_HI and no visible loss —
+     the height field is only sampled at 512×256, and a scene can hold dozens of
+     planets where it rarely holds more than a couple of stars. */
+  SPHERE_MID = new THREE.SphereGeometry(1, 144, 96);
   SPHERE_HI = new THREE.SphereGeometry(1, 200, 130);
   // A unit square laid flat on the surface, used for impact scars. Kept small
   // enough that the gap between a flat decal and a curved world never shows.
@@ -4703,8 +4750,24 @@ function starGeometry(type, seed) {
   surfaceTexture(type, seed);                       // fills heightCache
   const field = heightCache.get(key);
   if (!field) return SPHERE;
+  const g = displaceSphere(field, STAR_RELIEF);
+  geoCache.set(key, g);
+  return g;
+}
 
-  const g = SPHERE_HI.clone();
+/**
+ * Push a painter's height field into a sphere, so the landscape it drew is
+ * actually THERE — a mountain range breaks the horizon instead of only being
+ * shaded on, and it throws a real shadow along the terminator because the mesh
+ * normals follow the ground.
+ *
+ * Heights are measured against the field's own mean, so the average radius does
+ * not move: what changes is the shape, not the size. The displacement eases out
+ * at the poles, where every vertex of a UV sphere is coincident and pulling them
+ * different distances would tear the cap open.
+ */
+function displaceSphere(field, amount, base) {
+  const g = (base || SPHERE_HI).clone();
   const pos = g.attributes.position, uv = g.attributes.uv;
   const W = field.W, H = field.H, d = field.d;
   let mean = 0;
@@ -4718,12 +4781,72 @@ function starGeometry(type, seed) {
     // wrap in u so the vertices on the seam sample the same texel and stay put
     const x = ((Math.round(u * W - 0.5) % W) + W) % W;
     const y = clamp(Math.round(vv * H - 0.5), 0, H - 1);
-    // ease the displacement out at the poles, where every vertex is coincident
     const fade = Math.sin(Math.PI * clamp(vv, 0, 1));
-    const s = 1 + (d[y * W + x] - mean) * STAR_RELIEF * fade;
+    const s = 1 + (d[y * W + x] - mean) * amount * fade;
     pos.setXYZ(i, v.x * s, v.y * s, v.z * s);
   }
   g.computeVertexNormals();
+  return g;
+}
+
+/* ------------------------------------------------------------ real elevation */
+/*
+ * How much relief each kind of surface gets, as a fraction of the body's radius
+ * per unit of the painter's height field.
+ *
+ * These are exaggerated, and they have to be. Real planets are astonishingly
+ * smooth: Everest is a seven-hundredth of Earth's radius, and if you shrank the
+ * Earth to the size of a billiard ball it would be smoother than the ball. At
+ * true scale you would see nothing at all. So the ordering is real even though
+ * the size is not — airless, unweathered worlds are the roughest, Mars carries
+ * the biggest relief in the Solar System, and a world with an ocean or a thick
+ * atmosphere is the smoothest, because water and wind grind everything flat.
+ */
+const RELIEF = {
+  comet: 0.24,        // barely held together at all
+  rock: 0.20,         // the Moon, Mercury: nothing has ever worn them down
+  chthonian: 0.19,    // a gas giant's flayed core
+  carbon: 0.18,
+  desert: 0.17,       // Mars: Olympus Mons stands 22 km over Amazonis
+  iron: 0.16,
+  rogue: 0.16,
+  lava: 0.14,         // crust plates riding on an open magma ocean
+  ice: 0.13,          // Europa's ridges and chaos terrain
+  terran: 0.115,      // rain and rivers file mountains down
+  eyeball: 0.10,
+  // Nearly all of an ocean world is under water and water is flat, so its own
+  // height field barely moves. Pushed hard anyway, or the islands that do break
+  // the surface would not read as anything at all.
+  ocean: 0.16
+};
+
+/** The relief a type actually gets, after the Settings exaggeration. */
+function reliefOf(type) {
+  const def = TYPES[type];
+  const base = RELIEF[def.surf];
+  if (!base || def.star) return 0;
+  return base * clamp(settings.relief, 0, 4) * (def.relief != null ? def.relief : 1);
+}
+
+/** Roughly how far the tallest peak stands above the mean radius. */
+const reliefTop = (type) => reliefOf(type) * 0.40;
+
+/**
+ * A world with its landscape pushed into the mesh. Cached per type, variant and
+ * relief setting — a hundred identical moons share one geometry, so this is
+ * deliberately NOT assigned to b.ownGeo, which would dispose it out from under
+ * all the others.
+ */
+function reliefGeometry(type, seed) {
+  const amount = reliefOf(type);
+  if (amount <= 1e-6) return SPHERE;
+  const tk = type + ':' + (seed % 3);
+  const key = 'relief:' + tk + ':' + amount.toFixed(4);
+  if (geoCache.has(key)) return geoCache.get(key);
+  surfaceTexture(type, seed);                       // fills heightCache
+  const field = heightCache.get(tk);
+  if (!field) return SPHERE;                        // this surface has no ground
+  const g = displaceSphere(field, amount, SPHERE_MID);
   geoCache.set(key, g);
   return g;
 }
@@ -4818,7 +4941,7 @@ function buildWorld(b, def, grp) {
   const photo = def.surf === 'star';
   const geo = def.lumpy ? lumpyGeometry(b.seed, def.lumpy)
     : photo ? starGeometry(b.type, b.seed)
-    : SPHERE;
+    : reliefGeometry(b.type, b.seed);
   // Only the lumpy geometry is per-body; star geometry is shared from geoCache
   // and must never be disposed with the body that happened to build it.
   b.ownGeo = def.lumpy ? geo : null;
@@ -4959,7 +5082,10 @@ function buildWorld(b, def, grp) {
  * a terraformed Mars is still Mars, and it is still there when it dies back.
  */
 function buildTerraLayer(b, grp) {
-  const skin = new THREE.Mesh(SPHERE, new THREE.MeshStandardMaterial({
+  /* Built on the body's OWN relief geometry, not a plain sphere: the greenery
+     has to follow the mountains it is growing on, or a terraformed Mars ends up
+     with Olympus Mons sticking out through its new biosphere. */
+  const skin = new THREE.Mesh(reliefGeometry(b.type, b.seed), new THREE.MeshStandardMaterial({
     map: surfaceTexture('terrestrial', b.seed),
     transparent: true, opacity: 0, roughness: 0.8, metalness: 0.02
   }));
@@ -6225,13 +6351,17 @@ function scaleVisual(b) {
   const r = visRadius(b);
   const p = b.parts;
   if (!p) return;
+  // Every shell standing off the surface has to clear the tallest mountain, or
+  // the peaks poke through the clouds and the world looks like it is wearing a
+  // torn hat. `lift` is 0 for anything with no relief, so nothing else moves.
+  const lift = reliefTop(b.type);
   if (p.surf) p.surf.scale.setScalar(r);
-  if (p.cloud) p.cloud.scale.setScalar(r * 1.018);
-  if (p.atmo) p.atmo.scale.setScalar(r * 1.09);
+  if (p.cloud) p.cloud.scale.setScalar(r * (1.018 + lift));
+  if (p.atmo) p.atmo.scale.setScalar(r * (1.09 + lift));
   if (p.puff) p.puff.scale.setScalar(r);
   if (p.terraSkin) p.terraSkin.scale.setScalar(r * 1.004);
-  if (p.terraCloud) p.terraCloud.scale.setScalar(r * 1.024);
-  if (p.terraAtmo) p.terraAtmo.scale.setScalar(r * 1.09);
+  if (p.terraCloud) p.terraCloud.scale.setScalar(r * (1.024 + lift));
+  if (p.terraAtmo) p.terraAtmo.scale.setScalar(r * (1.09 + lift));
   if (p.ring && b.ringSpec) p.ring.scale.setScalar(r * b.ringSpec.outer);
   if (p.disk) p.disk.scale.setScalar(r * 7);
   if (p.photon) p.photon.scale.setScalar(r * 5.6);
@@ -8781,6 +8911,9 @@ function openSettings() {
     '<div class="an-field"><label>Body size on screen <b id="st-scale-v"></b></label>' +
     '<input type="range" id="st-scale" min="1" max="40" step="1" value="' + settings.bodyScale + '"></div>' +
     '<p style="font-size:11px;color:var(--ink-dim);line-height:1.5;margin:-2px 0 6px">Planets are tiny next to the gaps between them. This draws them larger (and makes them collide at that larger size) so you can actually aim.</p>' +
+    '<div class="an-field"><label>Surface elevation <b id="st-rel-v"></b></label>' +
+    '<input type="range" id="st-rel" min="0" max="300" step="5" value="' + Math.round(settings.relief * 100) + '"></div>' +
+    '<p style="font-size:11px;color:var(--ink-dim);line-height:1.5;margin:-2px 0 6px">Mountains, basins and dune fields are pushed into the mesh, so they break the horizon and cast real shadows along the terminator. Exaggerated on purpose — a true-scale Earth is smoother than a billiard ball. Airless worlds are the roughest; oceans are the flattest.</p>' +
     '<div class="an-field"><label>Gravity strength <b id="st-grav-v"></b></label>' +
     '<input type="range" id="st-grav" min="0" max="300" step="1" value="' + Math.round(settings.gravity * 100) + '"></div>' +
     '<div class="an-toggle"><div>Collisions<small id="st-col-d"></small></div><div class="an-row" style="margin:0;flex:none">' +
@@ -8853,6 +8986,17 @@ function openSettings() {
     '<div class="an-row" style="margin-top:16px"><button id="st-save">SAVE UNIVERSE</button><button id="st-load">LOAD</button><button id="st-clear" class="an-danger">CLEAR ALL</button></div>';
 
   const scale = $('st-scale'), grav = $('st-grav');
+  const rel = $('st-rel');
+  const showRel = () => $('st-rel-v').textContent =
+    settings.relief <= 0 ? 'smooth' : Math.round(settings.relief * 100) + '%';
+  showRel();
+  rel.addEventListener('input', () => {
+    settings.relief = parseInt(rel.value, 10) / 100;
+    showRel();
+    // Relief is baked into the mesh, so the geometry has to be rebuilt. Cached
+    // by amount, so dragging back to a value already seen is instant.
+    for (const b of sim.bodies) if (b.alive && b.kind === 'body') refreshVisual(b);
+  });
   const showScale = () => $('st-scale-v').textContent = settings.bodyScale + '×';
   const showGrav = () => $('st-grav-v').textContent = Math.round(settings.gravity * 100) + '%';
   showScale(); showGrav();
