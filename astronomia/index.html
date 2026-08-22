@@ -1214,7 +1214,11 @@ const SURFACE = {
     const n = fbm(seed, 10, 5, 4);
     const fleck = worley(seed + 3, 26, 11);
     const hot = kelvinToRGB(o.temp || 12000);
-    const pale = mix(hot, [255, 255, 255], 0.55);
+    // `pale` is how far towards white the bright side goes and `dim` scales the
+    // whole thing down. A white dwarf is blazing; a black dwarf is an ember
+    // with the same mottled degenerate surface and nothing coming off it.
+    const pale = mix(hot, [255, 255, 255], o.pale != null ? o.pale : 0.55);
+    const dim = o.dim != null ? o.dim : 1;
 
     const h = new Float32Array(W * H);
     for (let y = 0, i = 0; y < H; y++) {
@@ -1233,9 +1237,9 @@ const SURFACE = {
         const gy = h[rowD + x] - h[rowU + x];
         const shade = clamp(1 - (gx + gy) * 1.9, 0.68, 1.34);
         const c = mix(pale, hot, h[i] * 0.5);
-        d[p] = clamp(c[0] * shade, 0, 255);
-        d[p + 1] = clamp(c[1] * shade, 0, 255);
-        d[p + 2] = clamp(c[2] * shade, 0, 255);
+        d[p] = clamp(c[0] * shade * dim, 0, 255);
+        d[p + 1] = clamp(c[1] * shade * dim, 0, 255);
+        d[p + 2] = clamp(c[2] * shade * dim, 0, 255);
         d[p + 3] = 255;
       }
     }
@@ -1564,6 +1568,45 @@ function tailTexture(size) {
 
 const SKY = [140, 190, 255], WARM = [255, 170, 110], PALE = [200, 225, 255];
 
+/* ========================================== star colour by mass          */
+/*
+ * How heavy a star is decides what colour it is drawn, in five flat bands —
+ * and past BLACK_DWARF_MASS it stops having a colour at all and burns out.
+ *
+ * This is a house rule, not stellar physics. A real star's colour comes from
+ * its surface temperature, and mass runs the *other* way: the heaviest stars
+ * are blue-white at forty thousand kelvin and the lightest are dim red. So
+ * this is paint only. A star's temperature, its luminosity, the heat it gives
+ * its planets and where its snow line falls are all still the real numbers.
+ *
+ * Bands are read top-down, so each `min` is the floor of its band in solar
+ * masses. The brief left a gap between 5.0 and 5.99; it is painted dark
+ * yellow, so the bands meet without a seam.
+ */
+const BLACK_DWARF_MASS = 20;          // M☉ — at or above this, a star dies
+
+const STAR_BANDS = [
+  { min: 10,   name: 'blood red',    rgb: [168,  18,  20] },
+  { min: 5.99, name: 'orange',       rgb: [255, 140,  36] },
+  { min: 3,    name: 'dark yellow',  rgb: [212, 176,  40] },
+  { min: 1,    name: 'yellow-white', rgb: [255, 244, 206] },
+  { min: 0,    name: 'white',        rgb: [255, 255, 255] }
+];
+
+/**
+ * The band a body's mass puts it in, or null for anything the bands do not
+ * paint. Only the photosphere stars are banded — the main-sequence and giant
+ * family. A white dwarf, a neutron star and a brown dwarf are each a specific
+ * object with a colour of its own, and a black dwarf has none.
+ */
+function starBand(b) {
+  const def = TYPES[b.type];
+  if (!def.star || def.surf !== 'star' || def.dead || b.kind !== 'body') return null;
+  const mSun = b.m / M_SUN;
+  for (const s of STAR_BANDS) if (mSun >= s.min) return s;
+  return STAR_BANDS[STAR_BANDS.length - 1];
+}
+
 const TYPES = {
   /* ---- stars ------------------------------------------------------------ */
   red_dwarf: {
@@ -1587,7 +1630,7 @@ const TYPES = {
     blurb: 'A dying titan. Drop it where the Sun is and it would swallow Jupiter whole. It is already almost out of fuel — switch on Stellar aging and watch.'
   },
   wolf_rayet: {
-    label: 'Wolf–Rayet Star', group: 'STARS', mass: 20 * M_SUN, rad: 3.1 * R_SUN,
+    label: 'Wolf–Rayet Star', group: 'STARS', mass: 19.5 * M_SUN, rad: 3.1 * R_SUN,
     surf: 'star', temp: 50000, star: true, stripped: true, spin: 3, spots: 4, aged: 0.995,
     blurb: 'A giant that has blown its own hydrogen away, leaving the bare helium core burning in the open. It has maybe a hundred thousand years left, and it ends as a Type Ib/c supernova.'
   },
@@ -1600,6 +1643,12 @@ const TYPES = {
     label: 'Neutron Star', group: 'STARS', mass: 1.4 * M_SUN, rad: 10 / 6371,
     surf: 'neutron', temp: 600000, star: true, spin: 1 / 86400, lumCap: 0.02,
     blurb: 'A city-sized stellar corpse spinning hundreds of times a second. One teaspoon weighs a billion tonnes.'
+  },
+  black_dwarf: {
+    label: 'Black Dwarf', group: 'STARS', mass: BLACK_DWARF_MASS * M_SUN, rad: 2.6,
+    surf: 'dwarfstar', temp: 320, star: true, dead: true, spin: 1.4, lumCap: 0,
+    opts: { temp: 2200, pale: 0.10, dim: 0.19 },
+    blurb: 'A star that has burnt out completely — no fusion, no light, just a cooling ember. Real ones take far longer to make than the universe has existed, so not one exists yet anywhere. Here, any star that reaches 20 solar masses ends up as one.'
   },
   brown_dwarf: {
     label: 'Brown Dwarf', group: 'STARS', mass: 40 * 317.8, rad: 11.0,
@@ -1858,6 +1907,7 @@ const SWATCH = {
   chthonian: '#a35434', carbon_world: '#8fa8c8', iron_world: '#b08a6e',
   super_puff: '#f2c8d8', eyeball_world: '#7fb8d8', hycean_world: '#3f9fd8',
   theia: '#9a8f84', planet_nine: '#3a5a92',
+  black_dwarf: '#6b6165',
   protostar: '#ffb46a', galaxy: '#c8a2ff',
   sol_sun: '#ffe08a', sol_mercury: '#9c948c', sol_venus: '#e8c98a', sol_earth: '#3f7fd6',
   sol_luna: '#c9c4bc', sol_mars: '#c1502a', sol_jupiter: '#d6a870', sol_saturn: '#e8d3a0',
@@ -2006,6 +2056,9 @@ function baseCoreT(def, mass) {
     // Measured values, not a formula: the inside of a star has almost nothing
     // to do with the temperature of its surface. The Sun's photosphere is
     // 5,778 K and its core is 15.7 million.
+    // A black dwarf has stopped fusing. What is left is a crystallised core
+    // giving up the last of its heat, not a furnace.
+    if (def.dead) return 4000;
     if (def.brown) return 3e6;
     if (def.surf === 'neutron') return 5e8;
     if (def.surf === 'dwarfstar') return 1e7;
@@ -2697,6 +2750,16 @@ function checkEvolution(b) {
       if (b.m >= TOV_LIMIT * M_SUN) { becomeBlackHole(b); return 'tov'; }
       return null;
     }
+    // An ember has nothing left to do. It cannot detonate, collapse or explode.
+    if (def.dead) return null;
+    /* House rule (see STAR_BANDS): twenty solar masses is the ceiling for a
+       burning star. At or above it the star burns out rather than exploding,
+       and what is left is a black dwarf. This is checked before the supernova
+       machinery so it wins — which does mean a star can no longer be *grown*
+       into the heavy supernova regimes, only placed there or set off by hand. */
+    if (def.surf === 'star' && b.m >= BLACK_DWARF_MASS * M_SUN) {
+      becomeBlackDwarf(b); return 'bdwarf';
+    }
     if (snSet.on) {
       // A white dwarf crossing the Chandrasekhar limit is the one supernova that
       // genuinely is triggered by mass rather than by running out of fuel — and
@@ -2722,7 +2785,8 @@ const EVOLVE_NOTE = {
   bh: ' collapsed into a black hole!',
   sn: ' went supernova!',
   snIa: ' detonated as a Type Ia supernova!',
-  tov: ' passed the neutron-star limit and collapsed into a black hole!'
+  tov: ' passed the neutron-star limit and collapsed into a black hole!',
+  bdwarf: ' burnt out into a black dwarf.'
 };
 
 /**
@@ -2785,6 +2849,25 @@ function ripenBrownDwarfs(dt) {
     fx.form(b, true);
     toast(name + ' finally caught fire — it is a red dwarf now!');
   }
+}
+
+/**
+ * A star burns out. Twenty solar masses is the house ceiling (see STAR_BANDS);
+ * at or above it fusion stops for good and what is left is a black dwarf. It
+ * keeps its mass and its orbit and gives out nothing at all from here on, so
+ * anything that was warmed by it goes cold.
+ */
+function becomeBlackDwarf(b) {
+  b.type = 'black_dwarf';
+  b.kind = 'body';
+  b.age = 0;
+  b.band = null;
+  b.temp = TYPES.black_dwarf.temp;
+  b.spin = TYPES.black_dwarf.spin;
+  b.r = trueRadius('black_dwarf', b.m);
+  b.coreT = baseCoreT(TYPES.black_dwarf, b.m);
+  b.lum = 0;
+  refreshVisual(b);
 }
 
 function becomeBlackHole(b) {
@@ -2902,6 +2985,10 @@ function snPlan(b) {
   if (!b || !b.alive || b.kind !== 'body') return no('Only a star has a core that can collapse.');
   const def = TYPES[b.type];
   if (!def.star) return no(b.name + ' is not a star — there is no core here to collapse.');
+  if (def.dead) {
+    return no(b.name + ' is a black dwarf — a star that has already burnt out completely. There is ' +
+      'no fuel left in it and nothing left to collapse. This is the end of the line.');
+  }
   if (def.brown) {
     return no(b.name + ' is a brown dwarf: it has never managed to fuse hydrogen at all, so there ' +
       'is nothing here to run out of. Wait for it to light up, or feed it past ' +
@@ -4461,6 +4548,7 @@ const STAR_VERT = `
 const STAR_FRAG = `
   uniform sampler2D uMap;
   uniform vec3 uTint;
+  uniform float uGrey;
   uniform vec3 uEdge;
   uniform vec3 uLimb;
   varying vec2 vUv;
@@ -4473,7 +4561,12 @@ const STAR_FRAG = `
     // Quadratic limb-darkening law. The solar coefficients put the very edge
     // at about 30% of central brightness — this is not a subtle effect.
     float d = uLimb.x + uLimb.y * mu + uLimb.z * mu * mu;
-    vec3 c = texture2D(uMap, vUv).rgb * uTint;
+    vec3 t = texture2D(uMap, vUv).rgb;
+    // A banded star is painted its band colour outright rather than tinted, so
+    // the photosphere is flattened to its own relief first and uTint supplies
+    // every bit of the hue. All the granulation survives; only the colour goes.
+    t = mix(t, vec3(dot(t, vec3(0.299, 0.587, 0.114))), uGrey);
+    vec3 c = t * uTint;
     c *= mix(uEdge, vec3(1.0), smoothstep(0.0, 0.6, mu));
     gl_FragColor = vec4(c * max(d, 0.0), 1.0);
   }`;
@@ -4604,6 +4697,38 @@ function buildVisual(b) {
   scaleVisual(b);
 }
 
+/**
+ * Paint a star the colour its mass says it should be — photosphere, rim,
+ * corona, glare and the light it casts, so the whole thing reads as one colour
+ * instead of a tinted ball sitting inside somebody else's glow.
+ *
+ * Cheap enough to call whenever the band changes and no more often than that;
+ * see the check in updateVisuals.
+ */
+function applyStarBand(b) {
+  const band = starBand(b);
+  b.band = band;
+  const p = b.parts;
+  if (!band || !p) return;
+  const c = new THREE.Color(band.rgb[0] / 255, band.rgb[1] / 255, band.rgb[2] / 255);
+  const u = p.surf && p.surf.material.uniforms;
+  if (u && u.uGrey) {
+    // Keep the per-body brightness jitter that uTint was carrying, so two stars
+    // in the same band still are not identical — but capped at 1, so a band
+    // colour is only ever hit exactly or dimmed, never clipped past white.
+    const g = 0.90 + mulberry32(b.seed)() * 0.10;
+    u.uTint.value.set(c.r * g, c.g * g, c.b * g);
+    u.uGrey.value = 1;
+  }
+  // The shells and sprites are multiplied, not replaced: their own texture
+  // supplies the shape and the band supplies the colour.
+  if (p.chromo) p.chromo.material.color.copy(c);
+  if (p.corona) p.corona.material.color.copy(c);
+  if (p.glow) p.glow.material.color.copy(c);
+  if (p.halo) p.halo.material.color.copy(c);
+  if (b.lightColor) b.lightColor.copy(c);
+}
+
 function buildWorld(b, def, grp) {
   const photo = def.surf === 'star';
   const geo = def.lumpy ? lumpyGeometry(b.seed, def.lumpy)
@@ -4622,6 +4747,7 @@ function buildWorld(b, def, grp) {
       uniforms: {
         uMap: { value: tex },
         uTint: { value: new THREE.Vector3(g, g, g) },
+        uGrey: { value: 0 },
         uEdge: { value: new THREE.Vector3(1.0, 0.80, 0.58) },
         uLimb: { value: new THREE.Vector3(0.30, 0.93, -0.23) }
       },
@@ -4715,13 +4841,17 @@ function buildWorld(b, def, grp) {
     buildTerraLayer(b, grp);
   }
 
-  if (def.star) {
+  if (def.dead) {
+    // A black dwarf gives out nothing: no glare, no halo, no light of its own.
+    b.lightColor = new THREE.Color(0, 0, 0);
+  } else if (def.star) {
     const col = new THREE.Color().fromArray(kelvinToRGB(def.temp).map(c => c / 255));
     const g1 = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_GLOW, color: col, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
     const g2 = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_HALO, color: col, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
     grp.add(g1); grp.add(g2);
     b.parts.glow = g1; b.parts.halo = g2;
     b.lightColor = col;
+    applyStarBand(b);
   }
 
   if (def.tail) {
@@ -7063,7 +7193,11 @@ const DEAD = new THREE.Color(0.60, 0.53, 0.44);
 function refreshStarCache() {
   sim.starCache.length = 0;
   for (const b of sim.bodies) {
-    if (b.lum > 0 || (TYPES[b.type].star && b.kind === 'body')) sim.starCache.push(b);
+    const d = TYPES[b.type];
+    // A black dwarf is not a light source, so it neither warms anything nor
+    // takes up one of the scene's light slots.
+    if (d.dead) continue;
+    if (b.lum > 0 || (d.star && b.kind === 'body')) sim.starCache.push(b);
   }
   // A supernova is a light source like any other — briefly the brightest in the
   // sky by a factor of billions. It carries .p, .lum and .lightColor, which is
@@ -7132,6 +7266,10 @@ function updateVisuals(realDt, simDt) {
 
     b.obj.position.copy(b.p);
     b.obj.rotation.z = b.tilt;
+
+    // Colour follows mass, so a star that has been fed or drained is repainted
+    // the moment it crosses a band — and only then. This runs every frame.
+    if (def.star && starBand(b) !== b.band) applyStarBand(b);
 
     // ---- level of detail: below a couple of pixels, draw a dot instead
     const tiny = px < 1.7;
@@ -8196,6 +8334,7 @@ function renderInspector() {
     '<dt>Surface temp</dt><dd id="is-tmp"></dd>' +
     (b.kind === 'body' ? '<dt>Inside temp</dt><dd id="is-core"></dd>' : '') +
     (isStar ? '<dt>Luminosity</dt><dd id="is-lum"></dd>' : '') +
+    (starBand(b) ? '<dt>Colour</dt><dd id="is-band"></dd>' : '') +
     (isStar && snSet.aging ? '<dt>Fuel burned</dt><dd id="is-age"></dd>' : '') +
     (b.stripped > 0 ? '<dt>Torn away</dt><dd id="is-strip"></dd>' : '') +
     (b.scarCount > 0 ? '<dt>Impact scars</dt><dd id="is-scars"></dd>' : '') +
@@ -8216,6 +8355,7 @@ function renderInspector() {
     mass: $('is-mass'), rad: $('is-rad'), den: $('is-den'), spd: $('is-spd'),
     tmp: $('is-tmp'), orb: $('is-orb'), orbL: $('is-orb-l'), mval: $('is-mval'),
     lum: $('is-lum'), age: $('is-age'), core: $('is-core'), strip: $('is-strip'),
+    band: $('is-band'),
     scars: $('is-scars'), dm: $('is-dm'), dn: $('is-dn'), dr: $('is-dr'),
     tfbar: $('is-tfbar'), tfnote: $('is-tfnote'), life: $('is-life')
   };
@@ -8313,6 +8453,10 @@ function updateInspectorStats() {
   inspRefs.den.textContent = b.kind === 'bh' ? '—' : fmtDensity(b.m, b.r);
   inspRefs.spd.textContent = fmtSpeed(b.v.length());
   inspRefs.tmp.textContent = b.kind === 'bh' ? '—' : Math.round(b.temp).toLocaleString() + ' K';
+  if (inspRefs.band) {
+    const bd = starBand(b);
+    inspRefs.band.textContent = bd ? bd.name : '—';
+  }
   inspRefs.mval.textContent = fmtMass(b.m);
   if (inspRefs.core) {
     const t = b.coreT || 0;
@@ -9340,11 +9484,29 @@ function openHelp() {
     '<li>Not every cloud makes a star. Under <b>0.075 solar masses</b> — about eighty Jupiters — hydrogen never catches and you get a brown dwarf instead, glowing on its own contraction and slowly fading. The panel tells you which you are about to get before you commit.</li>' +
     '<li>So the full circle is: gas &rarr; star &rarr; supernova &rarr; gas &rarr; star. Each turn seeds the next one with heavier elements. Every atom of iron in your blood came through that loop.</li>' +
     '</ul>' +
+    '<h3>WHAT COLOUR A STAR IS</h3>' +
+    '<p>In here, <b>how heavy a star is decides what colour it is</b>. Select any star and the ' +
+    'panel tells you which band it is in; feed it or drain it and it repaints the moment it ' +
+    'crosses into the next one.</p>' +
+    '<ul>' +
+    '<li><b>20 M☉ and up</b> — it burns out. What is left is a <b>black dwarf</b>: a dead ember ' +
+    'with no fusion and no light at all. Anything it was keeping warm goes cold, and there is ' +
+    'nothing you can do to it after that — it cannot even be made to explode.</li>' +
+    '<li><b>10 to 19.9 M☉</b> — blood red</li>' +
+    '<li><b>5.99 to 9.99 M☉</b> — orange</li>' +
+    '<li><b>3 to 5.99 M☉</b> — dark yellow</li>' +
+    '<li><b>1 to 2.99 M☉</b> — yellow-white</li>' +
+    '<li><b>Under 1 M☉</b> — white</li>' +
+    '</ul>' +
+    '<p>Only the burning stars are painted this way. A white dwarf, a neutron star, a brown dwarf ' +
+    'and a black dwarf each keep their own look.</p>' +
+
     '<h3>TWO HONEST FUDGES</h3>' +
     '<ul>' +
     '<li>Planets are drawn <b>larger than life</b> (see Settings) because at true scale they would be invisible specks. They collide at the size you see.</li>' +
     '<li>Black holes are drawn far bigger than their real event horizons — a ten-solar-mass hole is only about 30 km across — and starlight does not dim with distance, or half your worlds would be pitch black.</li>' +
     '<li>Debris grains feel gravity from the heaviest bodies but not from <i>each other</i>. That is what makes thousands of them possible at once; it means a debris ring will not clump into moons on its own.</li>' +
+    '<li>A star\'s colour here comes from its <b>mass</b>. In real life it comes from its surface <b>temperature</b>, and the two run opposite ways round: the heaviest real stars are blue-white and blazing, and the lightest are dim red. So the paint is a house rule — but nothing else is. Each star\'s temperature, its brightness, the heat it gives its planets and where its snow line falls are all still the real numbers, which is why a 15 M☉ star painted blood red is still fierce enough to roast everything near it.</li>' +
     '</ul>' +
     '</div>';
   openModal();
