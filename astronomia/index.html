@@ -626,6 +626,16 @@ function fmtDist(gm) {
   return Math.round(gm * 1e6).toLocaleString() + ' km';
 }
 
+/** A distance given as log10(Gm), for scales no number can hold. */
+function fmtFar(lgGm) {
+  const lgLy = lgGm - Math.log10(LY_GM);
+  if (lgLy < 6) return fmtDist(Math.pow(10, lgGm));
+  let e = Math.floor(lgLy), m = Math.pow(10, lgLy - e);
+  if (m >= 9.995) { m = 1; e++; }
+  return m.toFixed(2) + 'e+' + e + ' ly';
+}
+const LY_GM = 9460.73;             // one light-year in Gm
+
 function fmtSpeed(gmPerDay) {
   const kms = gmPerDay * 1e9 / 86400 / 1000;
   if (kms >= 1000) return (kms / 299792.458 * 100).toPrecision(3) + '% c';
@@ -6807,9 +6817,43 @@ const GAL_FRAG = `
   }`;
 const GAL_GAIN = 0.03;
 
+/* ...and the stars inside the clouds. The same orbiting points drawn a second
+   time as crisp, screen-sized stars, so the gas has stars in it at every zoom:
+   fly into a galaxy and the clouds open out around thousands of separate suns.
+   The brightest few carry a four-point diffraction glint. */
+const GAL_STAR_VERT = `
+  attribute vec3 aCol;
+  attribute float aSize;
+  attribute float aStar;
+  uniform float uDpr;
+  varying vec3 vCol;
+  varying float vSpike;
+  void main() {
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mv;
+    vCol = aCol;
+    vSpike = step(2.65, aStar);
+    float s = aStar * (1.0 + vSpike * 2.2);
+    gl_PointSize = aSize > 0.0 ? s * uDpr : 0.0;
+  }`;
+
+const GAL_STAR_FRAG = `
+  varying vec3 vCol;
+  varying float vSpike;
+  void main() {
+    vec2 q = gl_PointCoord * 2.0 - 1.0;
+    float d2 = dot(q, q);
+    float a = exp(-d2 * (vSpike > 0.5 ? 14.0 : 4.5));
+    // thin cross through the middle, fading out to the tips
+    float cross = max(exp(-q.x * q.x * 260.0), exp(-q.y * q.y * 260.0)) * (1.0 - sqrt(d2));
+    a = max(a, cross * vSpike * 0.8);
+    if (a < 0.01) discard;
+    gl_FragColor = vec4(min(vCol * 1.35, vec3(1.0)), a);
+  }`;
+
 const galx = {
   pos: null, vel: null, col: null, siz: null, own: null,
-  free: [], live: 0, geo: null, pts: null, dirty: false
+  free: [], live: 0, geo: null, pts: null, stars: null, ssz: null, dirty: false
 };
 
 function initGalaxyStars() {
@@ -6817,6 +6861,7 @@ function initGalaxyStars() {
   galx.vel = new Float32Array(GAL_MAX * 3);
   galx.col = new Float32Array(GAL_MAX * 3);
   galx.siz = new Float32Array(GAL_MAX);
+  galx.ssz = new Float32Array(GAL_MAX);
   galx.own = new Int32Array(GAL_MAX);
   galx.free.length = 0;
   for (let i = GAL_MAX - 1; i >= 0; i--) { galx.free.push(i); galx.own[i] = -1; }
@@ -6826,6 +6871,7 @@ function initGalaxyStars() {
   geo.setAttribute('position', new THREE.BufferAttribute(galx.pos, 3));
   geo.setAttribute('aCol', new THREE.BufferAttribute(galx.col, 3));
   geo.setAttribute('aSize', new THREE.BufferAttribute(galx.siz, 1));
+  geo.setAttribute('aStar', new THREE.BufferAttribute(galx.ssz, 1));
   galx.geo = geo;
   // Each test particle is drawn as a soft puff of glowing gas sized in WORLD
   // units, not as a speck: thousands of them overlap into continuous clouds —
@@ -6839,6 +6885,14 @@ function initGalaxyStars() {
   galx.pts.frustumCulled = false;
   galx.pts.renderOrder = -5;             // behind every solid body in the scene
   scene.add(galx.pts);
+  galx.stars = new THREE.Points(geo, new THREE.ShaderMaterial({
+    uniforms: { uDpr: { value: VIEW.dpr } },
+    vertexShader: GAL_STAR_VERT, fragmentShader: GAL_STAR_FRAG,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+  }));
+  galx.stars.frustumCulled = false;
+  galx.stars.renderOrder = -4;
+  scene.add(galx.stars);
 }
 
 /**
@@ -6950,6 +7004,8 @@ function seedGalaxyStars(b) {
 
     galx.col[k3] = c[0]; galx.col[k3 + 1] = c[1]; galx.col[k3 + 2] = c[2];
     galx.siz[k] = s;
+    // the star's own size in pixels: mostly faint pinpricks, a few bright ones
+    galx.ssz[k] = bulge ? 1.0 + Math.pow(rng(), 2) * 1.3 : 0.9 + Math.pow(rng(), 2.4) * 1.9;
     galx.own[k] = b.id;
     galx.live++;
   }
@@ -7139,12 +7195,14 @@ function updateGalaxies() {
   }
   if (galx.pts) {
     // world radius -> pixels at unit distance
+    galx.stars.material.uniforms.uDpr.value = VIEW.dpr;
     galx.pts.material.uniforms.uScale.value =
       VIEW.h * VIEW.dpr / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
     if (galx.dirty) {
       galx.geo.attributes.position.needsUpdate = true;
       galx.geo.attributes.aCol.needsUpdate = true;
       galx.geo.attributes.aSize.needsUpdate = true;
+      galx.geo.attributes.aStar.needsUpdate = true;
       galx.dirty = false;
     }
   }
@@ -7656,7 +7714,7 @@ const P_CULL = 1.4e5;         // Gm — debris past this has left the system
 const parts = {
   pos: null, vel: null, m: null, size: null, bsize: null, hot: null, crate: null,
   col: null, warm: null, cool: null, on: null, src: null,
-  free: [], live: 0, geo: null, pts: null, dirty: false
+  free: [], live: 0, geo: null, pts: null, stars: null, ssz: null, dirty: false
 };
 
 /* Impact ejecta cools in a day or two. Supernova ejecta is radioactive and stays
@@ -8512,12 +8570,40 @@ function renderFrame() {
 
 /* =================================================================== camera */
 
-const view = { target: new THREE.Vector3(), dist: 900, yaw: 0.75, pitch: 0.46 };
-const MIN_DIST = 2e-4, MAX_DIST = 2.4e6;
+const view = { target: new THREE.Vector3(), dist: 900, yaw: 0.75, pitch: 0.46, over: 0 };
+const MIN_DIST = 2e-4, MAX_DIST = 1e10;
+/*
+ * Past MAX_DIST the zoom carries on as a power of ten in view.over, out to a
+ * camera distance of 10^1002 km. No floating-point number reaches that far
+ * (doubles stop near 1.8e308, the GPU's floats near 3.4e38), and by then the
+ * whole sandbox is one dot anyway — so the scene is drawn from MAX_DIST and
+ * only the scale bar keeps counting. Each notch steps further the further out
+ * you are, so the last thousand orders of magnitude take a couple of hundred
+ * notches rather than fourteen thousand.
+ */
+const ZOOM_MAX_LOG_KM = 1002;
+const OVER_MAX = ZOOM_MAX_LOG_KM - Math.log10(MAX_DIST * 1e6);
+
+/** Zoom by a factor (>1 out, <1 in), spilling past MAX_DIST into view.over. */
+function zoomBy(f) {
+  if (!(f > 0)) return;
+  const lg = Math.log10(f);
+  if (lg > 0 && view.dist >= MAX_DIST * 0.999) {
+    view.dist = MAX_DIST;
+    view.over = Math.min(OVER_MAX, view.over + lg * (1 + view.over * 0.5));
+  } else if (lg < 0 && view.over > 0) {
+    view.over = Math.max(0, view.over + lg * (1 + view.over * 0.5));
+  } else {
+    view.dist *= f;
+  }
+}
 
 function applyCamera() {
   view.pitch = clamp(view.pitch, -1.52, 1.52);
   view.dist = clamp(view.dist, MIN_DIST, MAX_DIST);
+  // Anything that put the camera back inside the real range (framing a body,
+  // landing) has left the far zoom behind.
+  if (view.dist < MAX_DIST * 0.999) view.over = 0;
   const cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
   camera.position.set(
     view.target.x + view.dist * cp * Math.sin(view.yaw),
@@ -9357,7 +9443,7 @@ function bindInput() {
         input.pinchD = d; input.pinchX = mx; input.pinchY = my;
         return;
       }
-      if (input.pinchD > 0) view.dist *= clamp(input.pinchD / Math.max(d, 1), 0.4, 2.5);
+      if (input.pinchD > 0) zoomBy(clamp(input.pinchD / Math.max(d, 1), 0.4, 2.5));
       panBy(mx - input.pinchX, my - input.pinchY);
       input.pinchD = d; input.pinchX = mx; input.pinchY = my;
       return;
@@ -9404,7 +9490,7 @@ function bindInput() {
     e.preventDefault();
     const f = Math.pow(1.0016, e.deltaMode === 1 ? e.deltaY * 18 : e.deltaY);
     if (land.b) land.alt = clamp(land.alt * f, LAND_MIN_ALT, LAND_MAX_ALT);
-    else view.dist *= f;
+    else zoomBy(f);
   }, { passive: false });
 
   window.addEventListener('resize', resize);
@@ -11435,7 +11521,7 @@ function openHelp() {
     '<ul>' +
     '<li>A <b>Protostar + Disc</b> is a star still being born, wrapped in the flat disc of gas and dust it is feeding from. Start time and the disc <b>condenses into planets</b>, one at a time — rock and small worlds on the warm side of the <b>ice line</b>, giants just beyond it, exactly the order our own Solar System came out in. Every planet takes its mass out of the disc, so once the disc is spent, that is that.</li>' +
     '<li>A <b>brown dwarf</b> is a failed star: heavier than any planet, too light to fuse hydrogen. Here one keeps contracting until it <b>lights up as a red dwarf</b> after a hundred years (change that in Settings). A real one never manages it — it just fades for trillions of years — so this one is for fun.</li>' +
-    '<li>A <b>galaxy</b> is eleven thousand individual stars, and every one of them is really orbiting. Drop two and crash them together — that is what <b>Galaxy Collision</b> in Systems sets up.</li>' +
+    '<li>A <b>galaxy</b> is eleven thousand individual stars wrapped in glowing clouds of gas, and every one of them is really orbiting. Drop two and crash them together — that is what <b>Galaxy Collision</b> in Systems sets up.</li>' +
     '</ul>' +
     '<h3>CRASHING GALAXIES TOGETHER</h3>' +
     '<ul>' +
@@ -11452,7 +11538,7 @@ function openHelp() {
     '<div class="an-keys">' +
     '<div><kbd>Drag</kbd></div><span>Rotate the view</span>' +
     '<div><kbd>Right-drag</kbd></div><span>Pan (or hold <kbd>Shift</kbd> and drag)</span>' +
-    '<div><kbd>Scroll</kbd></div><span>Zoom — the view spans from metres to light-days</span>' +
+    '<div><kbd>Scroll</kbd></div><span>Zoom — the view spans from metres out to 10<sup>1002</sup> km, far past the edge of anything that could exist</span>' +
     '<div><kbd>Space</kbd></div><span>Start or stop time</span>' +
     '<div><kbd>,</kbd> <kbd>.</kbd></div><span>Slow down / speed up time</span>' +
     '<div><kbd>F</kbd></div><span>Lock the camera onto the selected body</span>' +
@@ -11577,7 +11663,9 @@ function updateHud(realDt) {
   $('an-clock').innerHTML = 'Y ' + yr.toLocaleString() + '<br>D ' + dy;
   const slowEl = $('an-hud-slow'), slowOn = slowmoLeft > 0 && sim.running;
   if ((slowEl.style.display !== 'none') !== slowOn) slowEl.style.display = slowOn ? '' : 'none';
-  $('an-scale-lbl').textContent = fmtDist(54 * worldPerPixel(view.dist));
+  $('an-scale-lbl').textContent = view.over > 0
+    ? fmtFar(Math.log10(54 * worldPerPixel(view.dist)) + view.over)
+    : fmtDist(54 * worldPerPixel(view.dist));
 }
 
 function showPanel(which) {
