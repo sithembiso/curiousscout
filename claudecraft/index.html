@@ -125,7 +125,7 @@
     </div>
 
     <div style="position: absolute; top: 8px; right: 8px; font-size: 12px; text-align: right; line-height: 1.5;">
-      <div style="font-weight: 500; margin-bottom: 2px;">Achievements <span id="cc-ach-count">0/28</span></div>
+      <div style="font-weight: 500; margin-bottom: 2px;">Achievements <span id="cc-ach-count">0/29</span></div>
       <div id="cc-ach-list" style="font-size: 10px; opacity: 0.85; max-height: 200px; overflow: hidden;"></div>
     </div>
 
@@ -348,7 +348,7 @@
     FIRE_PORTAL:24,NETHERSTONE:25,LAVA:26,FIRE:27,DEMON:28,FIRECHEST:29,
     MILK:30,HONEY:31,HONEYCOMB:32,MILKCLOUD:33,HONEYTREE:34,GUARDIAN:35,WOLF:36,CAT:37,
     SAND:38,CACTUS:39,SNOW_GRASS:40,SNOW:41,SPRUCE_LOG:42,SPRUCE_LEAF:43,SANDSTONE:44,
-    PLANKS:45,COBBLESTONE:46,PATH:47,GLASS:48,VCHEST:49,VCHEST_EMPTY:50
+    PLANKS:45,COBBLESTONE:46,PATH:47,GLASS:48,VCHEST:49,VCHEST_EMPTY:50,DARK_MATTER:51
   };
   const BLOCK_INFO = {
     [B.GRASS]:{name:'Grass',colors:{top:0x6abe30,side:0x8B5A2B,bot:0x8B5A2B},needs:0},
@@ -399,7 +399,8 @@
     [B.PATH]:{name:'Dirt path',colors:{top:0xa58554,side:0x8B5A2B,bot:0x8B5A2B},needs:0},
     [B.GLASS]:{name:'Glass',color:0xcfeeff,needs:0},
     [B.VCHEST]:{name:'Village chest',colors:{top:0xa0702e,side:0x8a5a22,bot:0x8a5a22},needs:0},
-    [B.VCHEST_EMPTY]:{name:'Empty chest',colors:{top:0x80592a,side:0x6e481c,bot:0x6e481c},needs:0}
+    [B.VCHEST_EMPTY]:{name:'Empty chest',colors:{top:0x80592a,side:0x6e481c,bot:0x6e481c},needs:0},
+    [B.DARK_MATTER]:{name:'Dark matter',color:0x07030f,needs:4}
   };
   const PICK_TIERS = ['Hands','Wooden pick','Stone pick','Iron pick','Diamond pick'];
   const SWORD_TIERS = ['No sword','Wood sword','Stone sword','Iron sword','Gold sword','Diamond sword'];
@@ -1061,6 +1062,12 @@
       else if(BRICKS.includes(id)){if(y%4===3||x===(Math.floor(y/4)%2?4:0))f*=0.65;}
       else if(id===B.OBSIDIAN){if(r(5)<0.15)c=0x5a3a8a;}
       else if(id===B.GLOW)f=(x===0||y===0||x===7||y===7)?0.8:((x+y)%3===0?1.15:1);
+      else if(id===B.DARK_MATTER){
+        // A hole in the world with stars in it
+        f=1;
+        const st=r(5);
+        if(st<0.03)c=0xffffff; else if(st<0.11)c=0x6a3cff; else if(st<0.16)c=0x1e0f3a;
+      }
       else if(id===B.PLANKS){
         // Boards four pixels tall, with staggered seams
         if(y%4===3)f*=0.72;
@@ -1134,7 +1141,7 @@
         else if(face==='ny')shade=0.55;
         else if(face==='px'||face==='nx')shade=0.78;
         else shade=0.88;
-        if([B.PORTAL,B.FIRE_PORTAL,B.GLOW,B.BOSS,B.DEMON,B.LAVA,B.GUARDIAN].includes(blockId))shade=1.0;
+        if([B.PORTAL,B.FIRE_PORTAL,B.GLOW,B.BOSS,B.DEMON,B.LAVA,B.GUARDIAN,B.DARK_MATTER].includes(blockId))shade=1.0;
         for(let i=0;i<4;i++){
           const c=f.corners[i];
           positions.push(x+c[0],y+c[1],z+c[2]);
@@ -1483,7 +1490,12 @@
     const far=currentRealm==='overworld'&&!gameOver&&Math.hypot(player.pos.x,player.pos.z)>=WATCHER_DIST;
     if(!far){watcher.visible=false;watcherAt=null;return;}
     if(watcher.visible){
-      if(player.pos.distanceTo(watcherAt)>0.15){watcher.visible=false;watcherAt=null;watcherT=15+Math.random()*25;}
+      if(player.pos.distanceTo(watcherAt)>0.15){
+        watcher.visible=false; watcherAt=null; watcherT=15+Math.random()*25;
+        // ...and where it stood, it leaves something behind
+        const wx=Math.floor(watcher.position.x), wy=Math.floor(watcher.position.y), wz=Math.floor(watcher.position.z);
+        if(getBlock(wx,wy,wz)===B.AIR){setBlock(wx,wy,wz,B.DARK_MATTER);rebuildMesh();}
+      }
       return;
     }
     watcherT-=dt;
@@ -1692,7 +1704,8 @@
     {id:'farlands',label:'🌌 Reach the Far Lands',check:()=>achievements.farlands},
     {id:'zombieKill',label:'🧟 Slay a zombie',check:()=>achievements.zombieKill},
     {id:'village',label:'🏘️ Find a village',check:()=>achievements.village},
-    {id:'villageChest',label:'📦 Loot a village chest',check:()=>achievements.villageChest}
+    {id:'villageChest',label:'📦 Loot a village chest',check:()=>achievements.villageChest},
+    {id:'darkMatter',label:'🌑 Collect dark matter',check:()=>(inventory[B.DARK_MATTER]||0)>=1}
   ];
 
   function checkAchievements(){
