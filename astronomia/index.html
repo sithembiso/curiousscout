@@ -1377,14 +1377,18 @@ const SURFACE = {
     // `warm` nudges a star off its strict blackbody colour. A G star is
     // physically near-white, which against black reads as grey paper, so the
     // sun-like type leans towards the orange everybody actually pictures.
-    const hot = mix(kelvinToRGB(T), [255, 166, 58], o.warm || 0);
-    const core = mix(hot, [255, 255, 255], 0.42);
+    // `o.hot` replaces the blackbody colour outright — a brown dwarf glows a
+    // deep magenta-red that no warm-tinted blackbody quite reaches — and `o.dim`
+    // turns the whole disc down, because a failed star is an ember, not a sun.
+    const hot = mix(o.hot || kelvinToRGB(T), [255, 166, 58], o.warm || 0);
+    const core = mix(hot, [255, 255, 255], o.hot ? 0.16 : 0.42);
+    const dim = o.dim || 1;
     // Gas draining down an intergranular lane is cooler, so its colour is a
     // step *down the blackbody curve* rather than a step towards grey. Done
     // this way a blue giant's lanes stay blue-white and a red dwarf's go deep
     // orange; mixing everything towards black instead would bleach the chroma
     // out of the disc and leave it looking like stone, not something on fire.
-    const cool = mix(mix(kelvinToRGB(T * 0.80), [236, 116, 30], o.warm || 0), [26, 8, 2], 0.34);
+    const cool = mix(mix(o.hot ? mix(o.hot, [0, 0, 0], 0.35) : kelvinToRGB(T * 0.80), [236, 116, 30], o.warm || 0), [26, 8, 2], 0.34);
     const img = ctx.createImageData(W, H);
     const d = img.data;
     for (let y = 0, i = 0, p = 0; y < H; y++) {
@@ -1405,9 +1409,9 @@ const SURFACE = {
         // Granule centres are the tops of rising columns and run hotter than
         // the cooled gas draining down the lanes around them.
         c = mix(c, [255, 255, 255], Math.pow(clamp(hv * 1.5 - 0.62, 0, 1), 1.6) * 0.34);
-        d[p] = clamp(c[0] * shade * 1.05, 0, 255);
-        d[p + 1] = clamp(c[1] * shade * 1.03, 0, 255);
-        d[p + 2] = clamp(c[2] * shade * 1.01, 0, 255);
+        d[p] = clamp(c[0] * shade * 1.05 * dim, 0, 255);
+        d[p + 1] = clamp(c[1] * shade * 1.03 * dim, 0, 255);
+        d[p + 2] = clamp(c[2] * shade * 1.01 * dim, 0, 255);
         d[p + 3] = 255;
       }
     }
@@ -1894,8 +1898,12 @@ const HOT_BAND = { min: 0, name: 'blue', rgb: [80, 135, 255] };
 
 function starBand(b) {
   const def = TYPES[b.type];
-  if (!def.star || def.surf !== 'star' || def.dead || b.kind !== 'body') return null;
+  if (!def.star || def.surf !== 'star' || def.dead || def.brown || b.kind !== 'body') return null;
   if (b.temp >= HOT_STAR_T) return HOT_BAND;
+  const rSun0 = b.r / (R_SUN * R_EARTH);
+  // A painted ember (red dwarf) keeps its own colour until aging swells it
+  // out of the dwarf range; then the ordinary size bands take over.
+  if (def.opts && def.opts.hot && rSun0 < 1) return null;
   const rSun = b.r / (R_SUN * R_EARTH);
   for (const s of STAR_BANDS) if (rSun >= s.min) return s;
   return STAR_BANDS[STAR_BANDS.length - 1];
@@ -1905,7 +1913,9 @@ const TYPES = {
   /* ---- stars ------------------------------------------------------------ */
   red_dwarf: {
     label: 'Red Dwarf', group: 'STARS', mass: 0.21 * M_SUN, rad: 0.30 * R_SUN,
+    // Same ember photosphere as the brown dwarf, just brighter and redder-orange.
     surf: 'star', temp: 3200, star: true, spin: 45, spots: 12,
+    opts: { hot: [236, 84, 52] },
     blurb: 'The most common star in the galaxy. Cool, dim, and astonishingly long-lived.'
   },
   sun_like: {
@@ -1946,12 +1956,11 @@ const TYPES = {
   },
   brown_dwarf: {
     label: 'Brown Dwarf', group: 'STARS', mass: 40 * 317.8, rad: 11.0,
-    surf: 'gas', temp: 1300, star: true, brown: true, spin: 0.35,
-    opts: {
-      pal: [[0, [26, 10, 12]], [0.22, [92, 26, 22]], [0.4, [158, 54, 32]], [0.52, [72, 20, 20]],
-        [0.66, [176, 66, 38]], [0.82, [64, 18, 18]], [1, [22, 8, 10]]],
-      bands: 6, storms: 2
-    },
+    // Drawn as a star — a dim, ember-red one — rather than a striped planet:
+    // it glows by its own heat, so it gets a photosphere, limb darkening and a
+    // faint chromosphere and corona like every other star.
+    surf: 'star', temp: 1300, star: true, brown: true, spin: 0.35, spots: 5,
+    opts: { hot: [196, 52, 58], dim: 0.8 },
     blurb: 'A "failed star" — heavier than any planet but too light to fuse hydrogen, so it just glows a dull infrared red. In AstroNomia one keeps shrinking and heating until it lights up as a red dwarf; give it a hundred years.'
   },
 
@@ -5733,7 +5742,8 @@ function buildWorld(b, def, grp) {
     // A black dwarf gives out nothing: no glare, no halo, no light of its own.
     b.lightColor = new THREE.Color(0, 0, 0);
   } else if (def.star) {
-    const col = new THREE.Color().fromArray(kelvinToRGB(def.temp).map(c => c / 255));
+    // A star with its own painted colour (a brown dwarf) glares and lights in it too
+    const col = new THREE.Color().fromArray(((def.opts && def.opts.hot) || kelvinToRGB(def.temp)).map(c => c / 255));
     const g1 = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_GLOW, color: col, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
     const g2 = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_HALO, color: col, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
     grp.add(g1); grp.add(g2);
@@ -7426,6 +7436,9 @@ function scaleVisual(b) {
   if (p.cloud) p.cloud.scale.setScalar(r * (1.018 + lift));
   if (p.atmo) p.atmo.scale.setScalar(r * (1.09 + lift));
   if (p.puff) p.puff.scale.setScalar(r);
+  // The star's two shells ride just off its photosphere at any size.
+  if (p.chromo) p.chromo.scale.setScalar(r * 1.012);
+  if (p.corona) p.corona.scale.setScalar(r * 1.055);
   if (p.terraSkin) p.terraSkin.scale.setScalar(r * 1.004);
   if (p.terraCloud) p.terraCloud.scale.setScalar(r * (1.024 + lift));
   if (p.terraAtmo) p.terraAtmo.scale.setScalar(r * (1.09 + lift));
