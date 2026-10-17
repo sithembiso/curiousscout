@@ -1885,9 +1885,17 @@ const STAR_BANDS = [
  * family. A white dwarf, a neutron star and a brown dwarf are each a specific
  * object with a colour of its own, and a black dwarf has none.
  */
+/* The one exception to painting by size: a star burning hotter than this is
+   blue whatever its width. Blue giants and Wolf–Rayet stars really are among the
+   hottest things in the sky, and painting them orange because they are big
+   was simply wrong. */
+const HOT_STAR_T = 10000;
+const HOT_BAND = { min: 0, name: 'blue', rgb: [80, 135, 255] };
+
 function starBand(b) {
   const def = TYPES[b.type];
   if (!def.star || def.surf !== 'star' || def.dead || b.kind !== 'body') return null;
+  if (b.temp >= HOT_STAR_T) return HOT_BAND;
   const rSun = b.r / (R_SUN * R_EARTH);
   for (const s of STAR_BANDS) if (rSun >= s.min) return s;
   return STAR_BANDS[STAR_BANDS.length - 1];
@@ -4656,6 +4664,50 @@ function clearSupernovae() {
  * is off unless you ask for it and runs at whatever multiple of real time you
  * pick — that multiplier is the only unphysical number in here.
  */
+/**
+ * How much wider a star is than when it was born, at a given fraction of its
+ * lifetime. A star swells slowly through most of its life — the Sun is about a
+ * third wider now than it started — and then balloons in the last fifth as it
+ * leaves the main sequence for the giant branch.
+ */
+const ageGrowth = (f) => 1 + 0.6 * f + 14 * Math.pow(clamp((f - 0.8) / 0.2, 0, 1), 2);
+
+/* Aging never pushes a star across the black-dwarf ceiling (see STAR_BANDS):
+   growing old is not the same as being swollen past the limit, and a star that
+   ages should die the way its mass says it dies. */
+const AGE_R_CAP = 0.95 * BLACK_DWARF_R * R_SUN * R_EARTH;
+
+/** Grow and cool a star to match how far through its life it is. */
+function ageSwell(b) {
+  const f = clamp(b.age / msLifetime(b.m / M_SUN), 0, 1);
+  // Already a giant when it was placed: only a gentle further swell
+  let want = b.everSmall ? ageGrowth(f) : 1 + 0.3 * f;
+  // A star that has just become a different kind of star starts its life over
+  const fresh = b.ageGrowType !== b.type;
+  const had = fresh ? 1 : (b.ageGrow || 1);
+  const hadCool = fresh ? 1 : (b.ageCool || 1);
+  if (fresh) b.bornHot = b.temp >= HOT_STAR_T && !TYPES[b.type].stripped;
+  b.ageGrowType = b.type;
+  /* A star born hot — a blue giant — does what real massive stars do at the end
+     and cools into a red supergiant over its last stretch. A Wolf–Rayet has
+     already lost the envelope that would swell and redden, so it stays blue. */
+  const cool = b.bornHot ? 1 - 0.6 * smoothstep(clamp((f - 0.85) / 0.15, 0, 1)) : 1;
+  // Applied as a ratio to whatever radius the star has now, so a width set by
+  // hand in CUSTOMISE is grown from rather than thrown away
+  let r = b.r * want / had;
+  if (b.everSmall && r > AGE_R_CAP && b.r <= AGE_R_CAP) { r = AGE_R_CAP; want = had * r / b.r; }
+  if (!(r > 0) || (Math.abs(want - had) < 1e-4 && Math.abs(cool - hadCool) < 1e-4)) return;
+  // As it swells its surface cools at about the same luminosity (L ∝ R²T⁴)
+  b.temp *= Math.sqrt(had / want) * (cool / hadCool);
+  b.r = r;
+  b.ageGrow = want;
+  b.ageCool = cool;
+  const nat = trueRadius(b.type, b.m);
+  if (nat > 0) b.rFactor = b.r / nat;
+  updateLuminosity(b);
+  scaleVisual(b);
+}
+
 function ageStars(dt) {
   const boost = Math.pow(10, snSet.ageRate);
   let dying = null;
@@ -4664,6 +4716,7 @@ function ageStars(dt) {
     const def = TYPES[b.type];
     if (!def.star || def.brown || def.surf === 'neutron' || def.surf === 'dwarfstar') continue;
     b.age += dt * boost;
+    if (def.surf === 'star' && !def.dead) ageSwell(b);
     if (b.age >= msLifetime(b.m / M_SUN)) (dying || (dying = [])).push(b);
   }
   if (!dying) return;
@@ -10851,6 +10904,7 @@ function saveUniverse() {
         // Everything the customise panel can change, so a rebuilt body comes
         // back exactly as it was left rather than as a factory one.
         ct: b.coreT, tp: b.temp, rg: b.ringSpec, tn: b.tint,
+        gw: b.ageGrow, gwt: b.ageGrowType, gc: b.ageCool, gh: b.bornHot,
         // A galaxy is saved as its shape, not as six thousand star positions —
         // the disc is rebuilt fresh on load. A collision in progress is lost.
         gx: b.kind === 'gal'
@@ -10900,6 +10954,8 @@ function loadUniverse() {
     if (s.sc && s.sc.length) { b.scars = s.sc; b.scarCount = s.sn || s.sc.length; buildScars(b); }
     if (s.cl) { b.clumpAge = s.cl.age || 0; b.clumpLife = s.cl.life || 420; }
     if (s.tp != null) { b.temp = s.tp; updateLuminosity(b); }
+    // How far aging has already swollen it, so it doesn't swell all over again
+    if (s.gw) { b.ageGrow = s.gw; b.ageGrowType = s.gwt; b.ageCool = s.gc || 1; b.bornHot = !!s.gh; }
     if (s.gx && b.kind === 'gal') {
       b.galR = s.gx.R; b.galArms = s.gx.arms; b.galSpin = s.gx.spin;
       b.galMerged = s.gx.merged || 0;
@@ -11030,6 +11086,7 @@ function openHelp() {
     '<li>The ejecta is <b>real matter</b>, thrown with exactly 10⁵¹ erg of kinetic energy spread across the envelope. Nobody types in a speed: hand a Type Ia 1.5×10⁵¹ erg and 1.44 solar masses and about 10,000 km/s falls out on its own.</li>' +
     '<li>The <b>blast wave</b> is real too. A body intercepts the share of the shell its own disc covers, takes that much momentum and energy, and is destroyed if it got more than gravity holds it together with. At one AU that is about two hundred times what it takes to unbind the Earth.</li>' +
     '<li>Turn on <b>Stellar aging</b> in Settings and stars burn their fuel and die on their own. A star lives 10 billion years divided by (its mass)^2.5, so the Sun gets ten billion years and a twenty-solar-mass star gets six million. Light stars end by puffing off a <b>planetary nebula</b> and settling down as a white dwarf.</li>' +
+    '<li>While they age, stars <b>swell</b>: slowly for most of their lives, then fast in the last fifth as they become giants. Their surface cools as they grow, and their colour follows their size, so a Sun-like star goes from white to yellow, orange and finally <b>blood red</b> before it dies. A <b>blue giant</b> stays blue for most of its life, then cools into a red supergiant over its last stretch — just before it explodes. The panel shows how much fuel is burned.</li>' +
     '<li>Every number in that whole list is a slider in <b>Settings ▸ Supernovae</b>, starting at its real measured value, with a RESET that puts them all back.</li>' +
     '</ul>' +
     '<h3>BUILDING A NEW STAR OUT OF THE WRECKAGE</h3>' +
@@ -11059,6 +11116,7 @@ function openHelp() {
     '<li><b>3 to 5.99 R☉</b> — dark yellow</li>' +
     '<li><b>1 to 2.99 R☉</b> — yellow-white (the Sun is 1 R☉)</li>' +
     '<li><b>Under 1 R☉</b> — white</li>' +
+    '<li><b>Hotter than 10,000 K, at any size</b> — blue. That is why the <b>Blue Giant</b> and the <b>Wolf–Rayet</b> star are blue.</li>' +
     '</ul>' +
     '<p>Making a star heavier does make it wider, if it keeps its density — so mass can push it ' +
     'into the next band that way. But mass is never what is read: it is always the width.</p>' +
