@@ -38,6 +38,12 @@
       repeating-linear-gradient(rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.10) 3px, rgba(0,0,0,0) 4px),
       radial-gradient(ellipse at center, transparent 52%, rgba(3,2,10,0.72) 100%);
   }
+  /* Standing on a world in daylight, the heavy space vignette reads as a dirty lens */
+  #an-vignette.landed {
+    background:
+      repeating-linear-gradient(rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.06) 3px, rgba(0,0,0,0) 4px),
+      radial-gradient(ellipse at center, transparent 68%, rgba(3,2,10,0.32) 100%);
+  }
 
   /* ---------- shared panel chrome ---------- */
   .panel {
@@ -8485,11 +8491,316 @@ function applyCamera() {
 
 function frameOn(b, margin) {
   if (!b) return;
+  if (land.b) leaveSurface(true);
   view.target.copy(b.p);
   // A galaxy's bulge is a speck next to its disc; framing on the bulge would
   // put the camera inside the thing you asked to look at.
   const r = b.kind === 'gal' ? b.galR : visRadius(b);
   view.dist = clamp(r * (margin || 9), MIN_DIST, MAX_DIST);
+}
+
+/* ================================================================ landing */
+/*
+ * Stand on a world. The camera is pinned to a point on the body's own surface
+ * mesh — stored in the mesh's local frame, so the ground turns under you with
+ * the planet's spin and day becomes night as it rolls away from its star. The
+ * height comes from a ray cast straight down onto the drawn triangles (and the
+ * sea, if there is one), so it is exactly the ground you can see: mountains,
+ * craters, lumpy asteroids and all.
+ *
+ * A world with air gets a sky: a dome around the eye that turns blue as the
+ * star climbs, warms at sunrise and sunset, and fades back out to the stars at
+ * night. An airless one keeps a black sky full of stars at noon, as the Moon does.
+ */
+const land = {
+  b: null,
+  n: new THREE.Vector3(0, 1, 0),   // where you stand, in the surface mesh's frame
+  yaw: 0, pitch: 0.06,             // heading from local north, and look up/down
+  alt: 0.006,                      // eye height over the ground, in body radii
+  keys: new Set(),
+  dome: null, ray: null,
+  detail: null, detailOn: null     // fine grain laid over the ground you stand on
+};
+const LAND_MIN_ALT = 0.004, LAND_MAX_ALT = 4;
+const SUNSET = new THREE.Color(1.0, 0.48, 0.22);
+
+/** Why a body cannot be stood on, or null if it can. */
+function landBlock(b) {
+  if (!b || !b.alive || b.kind !== 'body') return 'There is nothing solid there to land on.';
+  const def = TYPES[b.type];
+  if (def.star && !def.dead) {
+    return b.name + ' is a ' + def.label.toLowerCase() + ' — at ' + Math.round(b.temp).toLocaleString() +
+      ' K you would be vaporised long before you touched down.';
+  }
+  return null;
+}
+
+function landOn(b) {
+  const why = landBlock(b);
+  if (why) { toast(why); return; }
+  if (!b.parts || !b.parts.surf) return;
+  if (land.b) leaveSurface(true);
+  land.b = b;
+  b.obj.updateMatrixWorld(true);
+  // Touch down on the side you were looking at, so the landing feels like a
+  // descent rather than a teleport.
+  const dir = camera.position.clone().sub(b.p);
+  if (dir.lengthSq() < 1e-30) dir.set(0, 0, 1);
+  land.n.copy(dir.normalize()).transformDirection(_invOf(b.parts.surf));
+  land.yaw = 0; land.pitch = 0.06; land.alt = 0.006;
+  sim.follow = null;
+  if (!land.dome) land.dome = makeSkyDome();
+  $('an-vignette').classList.add('landed');
+  const def = TYPES[b.type];
+  toast(GASSY_SURF.has(def.surf)
+    ? 'There is no ground on ' + b.name + ' — you are drifting on the cloud tops.'
+    : 'Welcome to ' + b.name + '! WASD to walk, drag to look around, Esc to take off.');
+  renderInspector();
+  updateHint();
+}
+
+function leaveSurface(quiet) {
+  const b = land.b;
+  land.b = null;
+  land.keys.clear();
+  if (land.dome) land.dome.visible = false;
+  dropDetail();
+  $('an-vignette').classList.remove('landed');
+  camera.up.set(0, 1, 0);
+  if (b && b.alive) {
+    // Back out into orbit straight above where you were standing.
+    view.target.copy(b.p);
+    view.dist = clamp(visRadius(b) * 4, MIN_DIST, MAX_DIST);
+    const up = camera.position.clone().sub(b.p).normalize();
+    view.pitch = Math.asin(clamp(up.y, -1, 1));
+    view.yaw = Math.atan2(up.x, up.z);
+    sim.follow = b;
+  }
+  if (!quiet) { renderInspector(); updateHint(); }
+}
+
+const _inv = new THREE.Matrix4();
+function _invOf(mesh) { return _inv.copy(mesh.matrixWorld).invert(); }
+
+function makeSkyDome() {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uUp: { value: new THREE.Vector3(0, 1, 0) },
+      uSun: { value: new THREE.Vector3(1, 0, 0) },
+      uCol: { value: new THREE.Color(0.55, 0.75, 1.0) },
+      uDay: { value: 0 }, uDusk: { value: 0 },
+      uSet: { value: SUNSET }
+    },
+    vertexShader: `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      uniform vec3 uUp, uSun, uCol, uSet;
+      uniform float uDay, uDusk;
+      varying vec3 vDir;
+      void main() {
+        vec3 d = normalize(vDir);
+        float h = dot(d, uUp);
+        // pale and thick at the horizon, deeper overhead
+        vec3 sky = mix(mix(uCol, vec3(1.0), 0.45), uCol * 0.78, smoothstep(0.0, 0.55, h));
+        // the glow pooled round the star, reddened low in the sky
+        float near = max(dot(d, uSun), 0.0);
+        sky = mix(sky, uSet, uDusk * pow(near, 3.0) * (1.0 - smoothstep(0.0, 0.5, h)));
+        sky += vec3(1.0, 0.95, 0.85) * pow(near, 24.0) * 0.35 * uDay;
+        float a = uDay * (0.80 + 0.18 * smoothstep(-0.1, 0.4, h));
+        a = max(a, uDusk * 0.55 * pow(near, 2.0) * (1.0 - smoothstep(0.0, 0.6, h)));
+        gl_FragColor = vec4(sky, clamp(a, 0.0, 0.95));
+      }`,
+    side: THREE.BackSide, transparent: true, depthWrite: false
+  });
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(SKY_R * 0.9, 48, 24), mat);
+  dome.frustumCulled = false;
+  dome.renderOrder = -1;
+  dome.visible = false;
+  scene.add(dome);
+  return dome;
+}
+
+/*
+ * A world's own painted map is a few hundred texels round the whole globe, so
+ * at your feet one texel is the size of a county and the ground is a smear. A
+ * second copy of the surface mesh carries a fine, tiled grain multiplied over
+ * it — invisible from orbit (it averages out in the mipmaps), but enough on
+ * the ground to give the eye some gravel and grit to judge distance by.
+ */
+function grainTexture() {
+  const N = 256, cv = document.createElement('canvas');
+  cv.width = cv.height = N;
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(N, N), d = img.data;
+  const rnd = mulberry32(90210);
+  // wrapped value noise at a few scales, so the tile repeats without a seam
+  const layers = [8, 16, 32, 64].map(g => ({ g, v: Float32Array.from({ length: g * g }, () => rnd()) }));
+  const at = (L, x, y) => {
+    const fx = x * L.g / N, fy = y * L.g / N;
+    const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = smoothstep(fx - x0), ty = smoothstep(fy - y0);
+    const g = L.g, v = L.v, x1 = (x0 + 1) % g, y1 = (y0 + 1) % g;
+    const a = v[y0 * g + x0] + (v[y0 * g + x1] - v[y0 * g + x0]) * tx;
+    const b = v[y1 * g + x0] + (v[y1 * g + x1] - v[y1 * g + x0]) * tx;
+    return a + (b - a) * ty;
+  };
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      let n = 0, w = 0.5;
+      for (const L of layers) { n += at(L, x, y) * w; w *= 0.62; }
+      const grit = rnd() * 0.10;
+      const c = clamp(0.62 + n * 0.42 - grit, 0, 1) * 255;
+      const i = (y * N + x) * 4;
+      d[i] = d[i + 1] = d[i + 2] = c; d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(320, 160);
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+
+let GRAIN = null;
+function attachDetail(surf) {
+  dropDetail();
+  if (!GRAIN) GRAIN = grainTexture();
+  const m = new THREE.Mesh(surf.geometry, new THREE.MeshBasicMaterial({
+    map: GRAIN, transparent: true, depthWrite: false,
+    blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
+    blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+  }));
+  m.renderOrder = 2;
+  surf.add(m);
+  land.detail = m; land.detailOn = surf;
+}
+
+function dropDetail() {
+  if (land.detail) {
+    land.detail.parent && land.detail.parent.remove(land.detail);
+    land.detail.material.dispose();
+  }
+  land.detail = null; land.detailOn = null;
+}
+
+/** The brightest light in this world's sky, as a direction from `at`, or null. */
+function brightestSun(b, at) {
+  let best = null, score = 0;
+  for (const s of sim.starCache) {
+    if (s === b || !s.alive || !(s.lum > 0)) continue;
+    const d2 = Math.max(s.p.distanceToSquared(at), 1e-18);
+    if (s.lum / d2 > score) { score = s.lum / d2; best = s; }
+  }
+  return best ? best.p.clone().sub(at).normalize() : null;
+}
+
+/** The colour of a world's air, or null if it has none worth the name. */
+function airOf(b) {
+  const def = TYPES[b.type];
+  if (def.atmo) return def.atmo;
+  if (b.terra > 0.3 && !def.star) return SKY;   // a world terraformed into breathing
+  return null;
+}
+
+const _lN = new THREE.Vector3(), _lNorth = new THREE.Vector3(), _lEast = new THREE.Vector3();
+const _lFwd = new THREE.Vector3(), _lEye = new THREE.Vector3(), _lLook = new THREE.Vector3();
+
+function applyLanded(realDt) {
+  const b = land.b;
+  if (!b.alive || !b.parts || !b.parts.surf || landBlock(b)) {
+    const name = b.name;
+    leaveSurface();
+    toast(b.alive ? 'You had to leave ' + name + ' in a hurry!' : name + ' is gone — you are adrift in space.');
+    return;
+  }
+  const surf = b.parts.surf;
+  // The mesh is rebuilt whenever the world changes type or takes a crater.
+  if (land.detailOn !== surf || (land.detail && land.detail.geometry !== surf.geometry)) attachDetail(surf);
+  b.obj.updateMatrixWorld(true);
+  const r = visRadius(b);
+
+  // Your local compass: up out of the ground, north toward the spin axis.
+  const up = _lN.copy(land.n).transformDirection(surf.matrixWorld);
+  _lNorth.set(0, 1, 0).transformDirection(surf.matrixWorld);
+  _lNorth.addScaledVector(up, -_lNorth.dot(up));
+  if (_lNorth.lengthSq() < 1e-8) _lNorth.set(1, 0, 0).addScaledVector(up, -up.x);
+  _lNorth.normalize();
+  _lEast.crossVectors(_lNorth, up).normalize();
+  _lFwd.copy(_lNorth).multiplyScalar(Math.cos(land.yaw)).addScaledVector(_lEast, Math.sin(land.yaw));
+
+  // Walk: turn the position vector itself, so you go round the world.
+  const k = land.keys;
+  let fwd = 0, side = 0;
+  if (k.has('w') || k.has('arrowup')) fwd += 1;
+  if (k.has('s') || k.has('arrowdown')) fwd -= 1;
+  if (k.has('d') || k.has('arrowright')) side += 1;
+  if (k.has('a') || k.has('arrowleft')) side -= 1;
+  if (k.has('q')) land.alt *= Math.pow(0.4, realDt);
+  if (k.has('e')) land.alt *= Math.pow(2.5, realDt);
+  land.alt = clamp(land.alt, LAND_MIN_ALT, LAND_MAX_ALT);
+  if (fwd || side) {
+    const pace = Math.max(land.alt, 0.006) * (k.has('shift') ? 9 : 2) * realDt;
+    const step = _lLook.copy(_lFwd).multiplyScalar(fwd).addScaledVector(_lEast, side).normalize();
+    up.addScaledVector(step, pace).normalize();
+    land.n.copy(up).transformDirection(_invOf(surf));
+  }
+
+  // Ground height: drop a ray straight down onto what is drawn.
+  if (!land.ray) land.ray = new THREE.Raycaster();
+  _lEye.copy(b.p).addScaledVector(up, r * 3);
+  land.ray.set(_lEye, _lLook.copy(up).negate());
+  land.ray.near = 0; land.ray.far = r * 3;
+  const targets = [surf];
+  if (b.parts.sea && b.parts.sea.visible !== false) targets.push(b.parts.sea);
+  const hit = land.ray.intersectObjects(targets, false)[0];
+  const ground = hit ? r * 3 - hit.distance : r * groundAt(b, land.n);
+
+  const h = land.alt * r;
+  _lEye.copy(b.p).addScaledVector(up, ground + h);
+  camera.position.copy(_lEye);
+  camera.up.copy(up);
+  land.pitch = clamp(land.pitch, -1.5, 1.5);
+  _lLook.copy(_lFwd).multiplyScalar(Math.cos(land.pitch)).addScaledVector(up, Math.sin(land.pitch));
+  camera.lookAt(_lEye.clone().add(_lLook));
+  camera.near = Math.max(1e-9, h * 0.05);
+  camera.far = SKY_R * 2.2;
+  camera.updateProjectionMatrix();
+  if (skyGroup) skyGroup.position.copy(_lEye);
+  // Keep the orbit camera parked on this world, so taking off and every
+  // level-of-detail test that reads `view` both find it.
+  view.target.copy(b.p);
+  view.dist = ground + h;
+
+  // The sky.
+  const dome = land.dome, air = airOf(b);
+  const sun = brightestSun(b, _lEye);
+  if (dome) {
+    dome.visible = !!air;
+    dome.position.copy(_lEye);
+    if (air) {
+      const u = dome.material.uniforms;
+      const el = sun ? sun.dot(up) : -1;
+      u.uUp.value.copy(up);
+      if (sun) u.uSun.value.copy(sun);
+      u.uCol.value.setRGB(air[0] / 255, air[1] / 255, air[2] / 255);
+      // Climb out of the air and the sky goes back to black.
+      const thin = 1 - smoothstep(clamp((land.alt - 0.03) / 0.35, 0, 1));
+      u.uDay.value = smoothstep(clamp((el + 0.08) / 0.30, 0, 1)) * thin;
+      u.uDusk.value = Math.max(0, 1 - Math.abs(el) / 0.25) * thin;
+    }
+  }
+}
+
+function landedHUD() {
+  const b = land.b;
+  if (!b) return '';
+  return 'On <b>' + b.name + '</b> &middot; <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk ' +
+    '&middot; <kbd>Shift</kbd> run &middot; <kbd>Q</kbd>/<kbd>E</kbd> or scroll: lower/higher ' +
+    '&middot; drag to look &middot; <kbd>Esc</kbd> take off';
 }
 
 function resize() {
@@ -8515,7 +8826,7 @@ function resize() {
 function updateReticle() {
   const el = $('an-ret');
   const b = sim.selected;
-  if (!b || !b.alive) { if (el.style.display !== 'none') el.style.display = 'none'; return; }
+  if (!b || !b.alive || b === land.b) { if (el.style.display !== 'none') el.style.display = 'none'; return; }
   const px = apparentPx(b);
   // Once a body fills the view it is obvious what is selected, and a reticle
   // that size just sprawls across the panels.
@@ -8556,6 +8867,8 @@ function updateLabels() {
   // the pool size decide how many get named rather than a raw pixel threshold.
   const cands = [];
   for (const b of sim.bodies) {
+    if (b === land.b) continue;           // you are standing on it
+    if (land.b && _tmpA.copy(b.p).sub(camera.position).normalize().dot(camera.up) < -0.03) continue;  // below your horizon
     const px = apparentPx(b);
     const score = (b === sim.selected || b === sim.follow)
       ? 1e9
@@ -8731,6 +9044,9 @@ function updateVisuals(realDt, simDt) {
     if (p.dot) {
       const show = tiny || def.star || b.kind === 'wh';
       p.dot.visible = show;
+      // Normally drawn over everything so nothing is ever lost; standing on a
+      // world, the ground has to be allowed to hide a star that has set.
+      p.dot.material.depthTest = !!land.b;
       if (show) {
         const size = tiny ? 5.4 * wpp : Math.max(r * 2.2, 3.0 * wpp);
         p.dot.scale.setScalar(size);
@@ -8993,6 +9309,11 @@ function bindInput() {
       const p = [...input.pointers.values()];
       const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
       const mx = (p[0].x + p[1].x) / 2, my = (p[0].y + p[1].y) / 2;
+      if (land.b) {
+        if (input.pinchD > 0) land.alt = clamp(land.alt * clamp(input.pinchD / Math.max(d, 1), 0.4, 2.5), LAND_MIN_ALT, LAND_MAX_ALT);
+        input.pinchD = d; input.pinchX = mx; input.pinchY = my;
+        return;
+      }
       if (input.pinchD > 0) view.dist *= clamp(input.pinchD / Math.max(d, 1), 0.4, 2.5);
       panBy(mx - input.pinchX, my - input.pinchY);
       input.pinchD = d; input.pinchX = mx; input.pinchY = my;
@@ -9003,7 +9324,10 @@ function bindInput() {
     input.x = e.clientX; input.y = e.clientY;
     if (Math.hypot(e.clientX - input.x0, e.clientY - input.y0) > 5) input.moved = true;
 
-    if (input.mode === 'orbit') {
+    if (land.b && (input.mode === 'orbit' || input.mode === 'pan')) {
+      land.yaw += dx * 0.004;
+      land.pitch -= dy * 0.004;
+    } else if (input.mode === 'orbit') {
       view.yaw -= dx * 0.005;
       view.pitch += dy * 0.005;
     } else if (input.mode === 'pan') {
@@ -9035,11 +9359,16 @@ function bindInput() {
 
   c.addEventListener('wheel', (e) => {
     e.preventDefault();
-    view.dist *= Math.pow(1.0016, e.deltaMode === 1 ? e.deltaY * 18 : e.deltaY);
+    const f = Math.pow(1.0016, e.deltaMode === 1 ? e.deltaY * 18 : e.deltaY);
+    if (land.b) land.alt = clamp(land.alt * f, LAND_MIN_ALT, LAND_MAX_ALT);
+    else view.dist *= f;
   }, { passive: false });
 
   window.addEventListener('resize', resize);
   window.addEventListener('keydown', onKey);
+  // Held keys for walking; cleared if the window loses focus mid-stride.
+  window.addEventListener('keyup', (e) => land.keys.delete(e.key.toLowerCase()));
+  window.addEventListener('blur', () => land.keys.clear());
 }
 
 function panBy(dx, dy) {
@@ -9103,6 +9432,15 @@ function dropArmed() {
 
 function onKey(e) {
   if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+  if (land.b) {
+    const k = e.key.toLowerCase();
+    if (k === 'escape') { leaveSurface(); return; }
+    if (/^(w|a|s|d|q|e|shift|arrowup|arrowdown|arrowleft|arrowright)$/.test(k)) {
+      e.preventDefault();
+      land.keys.add(k);
+      return;
+    }
+  }
   switch (e.key) {
     case ' ': e.preventDefault(); togglePlay(); break;
     case ',': case '<': changeRate(-1); break;
@@ -9173,7 +9511,9 @@ function arm(type) {
 function updateHint() {
   const el = $('an-hint');
   let s;
-  if (input.armed) {
+  if (land.b) {
+    s = landedHUD();
+  } else if (input.armed) {
     s = 'Click empty space to drop <b>' + TYPES[input.armed].label + '</b> &middot; <b>drag</b> to aim its speed';
     if (settings.grid) s += ' &middot; grid square <b class="an-cell">—</b>';
   } else if (sim.selected) {
@@ -9946,6 +10286,9 @@ function renderInspector() {
     terraHTML(b) +
     customiseHTML(b) +
     '<div class="an-row"><button id="is-follow">' + (sim.follow === b ? 'UNFOLLOW' : 'FOLLOW') + '</button><button id="is-zoom">ZOOM TO</button></div>' +
+    (land.b === b
+      ? '<div class="an-row"><button id="is-land">TAKE OFF</button></div>'
+      : landBlock(b) ? '' : '<div class="an-row"><button id="is-land">LAND</button></div>') +
     '<div class="an-row"><button id="is-shatter" class="an-danger">SHATTER</button><button id="is-del" class="an-danger">REMOVE</button></div>' +
     '<p style="font-size:11px;line-height:1.55;color:var(--ink-dim);margin-top:13px">' + def.blurb + '</p>';
 
@@ -10007,6 +10350,8 @@ function renderInspector() {
     renderInspector();
   });
   $('is-zoom').addEventListener('click', () => { frameOn(b, 9); sim.follow = b; renderInspector(); });
+  const landBtn = $('is-land');
+  if (landBtn) landBtn.addEventListener('click', () => { if (land.b === b) leaveSurface(); else landOn(b); });
   $('is-shatter').addEventListener('click', () => shatterBody(b));
   $('is-del').addEventListener('click', () => { select(null); removeBody(b); compact(); });
 
@@ -11072,6 +11417,17 @@ function openHelp() {
     '<div><kbd>T</kbd> <kbd>L</kbd></div><span>Toggle trails / labels</span>' +
     '</div>' +
     '<p style="margin-top:8px">On a touch screen: one finger rotates, two fingers pinch to zoom and drag to pan.</p>' +
+    '<h3>LANDING ON A WORLD</h3>' +
+    '<p>Select any planet, moon, asteroid or comet and press <b>LAND</b> to stand on it, on the side you were looking at. ' +
+    'The ground turns with the world, so you watch its star rise and set. Worlds with air get a blue (or orange, or yellow) sky by day and a ' +
+    'glowing sunset; airless ones keep a black sky full of stars even at noon. On a gas giant there is no ground — you drift on the cloud tops. ' +
+    'Stars are far too hot to land on.</p>' +
+    '<div class="an-keys">' +
+    '<div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div><span>Walk (arrow keys work too) — hold <kbd>Shift</kbd> to run</span>' +
+    '<div><kbd>Drag</kbd></div><span>Look around</span>' +
+    '<div><kbd>Q</kbd> <kbd>E</kbd></div><span>Sink lower / rise higher (or scroll, or pinch)</span>' +
+    '<div><kbd>Esc</kbd></div><span>Take off back into orbit</span>' +
+    '</div>' +
     '<h3>WHAT THE PHYSICS ACTUALLY DOES</h3>' +
     '<ul>' +
     '<li>Every body pulls on every other one with real Newtonian gravity, stepped with a leapfrog integrator that keeps orbits stable for thousands of years.</li>' +
@@ -11209,8 +11565,11 @@ function loop(now) {
     if (sim.follow.alive) view.target.copy(sim.follow.p);
     else { sim.follow = null; renderInspector(); }
   }
-  applyCamera();
+  // On the ground the camera is placed after the world has been turned and
+  // moved this frame, or the horizon would judder a frame behind it.
+  if (!land.b) applyCamera();
   updateVisuals(realDt, simDt);
+  if (land.b) applyLanded(realDt);
   renderFrame();
   updateHud(realDt);
 
