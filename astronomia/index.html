@@ -2135,6 +2135,31 @@ const TYPES = {
     kind: 'gal', spin: 6e6,
     blurb: 'A hundred billion stars in a spiral, built at its real size — tens of thousands of light-years across. Click any of its stars to lock on, then scroll in to visit it.'
   },
+  barred_galaxy: {
+    label: 'Barred Spiral', group: 'DISCS & GALAXIES', mass: 4.3e6 * M_SUN, rad: 0,
+    kind: 'gal', shape: 'barred', scale: [0.6, 1.4], spin: 6e6,
+    blurb: 'A spiral with a straight bar of old stars across its middle, and the arms trailing off the ends of the bar. Our own Milky Way is one of these.'
+  },
+  elliptical_galaxy: {
+    label: 'Elliptical Galaxy', group: 'DISCS & GALAXIES', mass: 4.3e6 * M_SUN, rad: 0,
+    kind: 'gal', shape: 'elliptical', scale: [0.6, 2.0], spin: 6e6,
+    blurb: 'A great smooth egg of old red and yellow stars, swarming on orbits in every direction instead of in a disc. Almost no new stars are born here. The biggest galaxies in the universe are ellipticals — usually made when spirals collide.'
+  },
+  irregular_galaxy: {
+    label: 'Irregular Galaxy', group: 'DISCS & GALAXIES', mass: 4.3e6 * M_SUN, rad: 0,
+    kind: 'gal', shape: 'irregular', scale: [0.2, 0.5], spin: 6e6,
+    blurb: 'No arms, no shape — just bright clumps of young blue stars and glowing pink gas, often torn up by a bigger neighbour. The Magellanic Clouds are irregulars.'
+  },
+  ring_galaxy: {
+    label: 'Ring Galaxy', group: 'DISCS & GALAXIES', mass: 4.3e6 * M_SUN, rad: 0,
+    kind: 'gal', shape: 'ring', scale: [0.5, 1.1], spin: 6e6,
+    blurb: 'A yellow core inside a perfect ring of blue stars, with almost nothing in between — like Hoag\'s Object. Most rings are left behind when a small galaxy punches straight through the middle of a bigger one.'
+  },
+  dwarf_galaxy: {
+    label: 'Dwarf Galaxy', group: 'DISCS & GALAXIES', mass: 4.3e6 * M_SUN, rad: 0,
+    kind: 'gal', shape: 'dwarf', scale: [0.06, 0.14], stars: 2200, spin: 6e6,
+    blurb: 'A tiny galaxy of a few billion stars, only a few thousand light-years across. They are the most common galaxies of all, and big galaxies grow by swallowing them.'
+  },
 
   /* ---- the biggest and smallest things there are ------------------------ */
   singularity: {
@@ -2228,6 +2253,8 @@ const GROUPS = ['STARS', 'PLANETS', 'MOONS & DEBRIS', 'EXOTIC', 'HYPOTHETICAL', 
 /* Representative swatch colour for each palette entry. */
 const SWATCH = {
   singularity: '#ffffff', universe: '#c9a6ff',
+  barred_galaxy: '#cfe0ff', elliptical_galaxy: '#ffd39a', irregular_galaxy: '#9fc4ff',
+  ring_galaxy: '#a9c8ff', dwarf_galaxy: '#d9d0ff',
   red_dwarf: '#ff7a52', sun_like: '#ffe9a8', blue_giant: '#b9d4ff', red_supergiant: '#ff8a5c',
   wolf_rayet: '#dff0ff', white_dwarf: '#e8f2ff', neutron_star: '#cfe4ff', brown_dwarf: '#a03a2c',
   terrestrial: '#4d96ff', super_earth: '#5aa870', ocean_world: '#2bb4d6', desert_world: '#c98a52',
@@ -6831,6 +6858,9 @@ const GAL_VERT = `
     vCol = aCol;
     vA = aSize > 0.0 ? min(1.0, px * px / 9.0) : 0.0;
     gl_PointSize = aSize > 0.0 ? clamp(px, 3.0, 240.0) : 0.0;
+    // A freed slot is parked off-screen too: some GPUs still draw a zero-size
+    // point as one pixel, which leaves a ghost of the last galaxy behind.
+    if (aSize <= 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
   }`;
 
 const GAL_FRAG = `
@@ -6941,6 +6971,7 @@ const GAL_STAR_VERT = `
     vNear = smoothstep(0.6, 2.0, disc);
     s = max(s * uDpr, min(disc * 9.0, 900.0));
     gl_PointSize = aSize > 0.0 ? s : 0.0;
+    if (aSize <= 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
   }`;
 
 const GAL_STAR_FRAG = `
@@ -7084,27 +7115,94 @@ function seedGalaxyStars(b) {
   const HII = [1.0, 0.44, 0.60];        // pink hydrogen where stars are forming
   const DISC = [0.52, 0.50, 0.66];
 
+  const shape = TYPES[b.type].shape || 'spiral';
+  const OLD = [1.0, 0.78, 0.52];        // an elliptical's whole population
+  // Irregulars and dwarfs are built round a handful of star-forming clumps.
+  const clumps = [];
+  if (shape === 'irregular' || shape === 'dwarf') {
+    const nc = shape === 'dwarf' ? 2 + ((rng() * 2) | 0) : 4 + ((rng() * 4) | 0);
+    for (let j = 0; j < nc; j++) {
+      const a = rng() * TAU, d = Math.sqrt(rng()) * 0.62 * R;
+      clumps.push([Math.cos(a) * d, Math.sin(a) * d, gauss() * 0.10 * R, 0.10 + rng() * 0.16]);
+    }
+  }
+  const BULGE_SHARE = { spiral: 0.24, barred: 0.18, ring: 0.16, elliptical: 1, irregular: 0.08, dwarf: 0.06 }[shape];
+
   const want = Math.min(b.galN || GAL_STARS, galx.free.length);
   for (let i = 0; i < want; i++) {
     const k = galx.free.pop();
     const k3 = k * 3;
-    const bulge = i < want * 0.24;
-    let r, th, h, c, s;
+    const bulge = i < want * BULGE_SHARE;
+    /* Each shape fills in the star's place in the galaxy's own frame — lx along
+       u, ly along w, lz up the spin axis — its cloud colour and puff size, and
+       whether it moves in the disc (`hot` false) or swarms on an orbit tipped
+       at random, the way the stars of a bulge or an elliptical do. */
+    let lx, ly, lz, c, s, hot = false, old = bulge, disp = 0.05;
 
-    if (bulge) {
-      r = (0.02 + Math.pow(rng(), 2.1) * 0.20) * R;
-      th = rng() * TAU;
-      h = gauss() * r * 0.55;                       // a fat, round bulge
+    if (shape === 'elliptical') {
+      // A triaxial egg, densest at the middle, all old stars.
+      const r = R * 0.9 * Math.pow(rng(), 1.7) + R * 0.01;
+      const d = new THREE.Vector3(gauss(), gauss(), gauss()).normalize();
+      lx = d.x * r; ly = d.y * r * 0.78; lz = d.z * r * 0.62;
+      const t = r / R;
+      c = mix(OLD, [1, 0.95, 0.86], Math.pow(1 - t, 3) * 0.8);
+      const dim = 0.30 + (1 - t) * 0.12;
+      c = [c[0] * dim, c[1] * dim, c[2] * dim];
+      s = R * (0.06 + rng() * 0.10) * (0.6 + t);
+      hot = true; old = true; disp = 0.28;
+    } else if (bulge) {
+      const r = (0.02 + Math.pow(rng(), 2.1) * 0.20) * R;
+      const th = rng() * TAU;
+      lx = Math.cos(th) * r; ly = Math.sin(th) * r;
+      lz = gauss() * r * 0.55;                      // a fat, round bulge
       c = mix(BULGE, [1, 1, 1], Math.pow(1 - r / (0.22 * R), 2) * 0.7);
       // a quarter of the puffs in a twentieth of the area: keep each one faint
       c = [c[0] * 0.45, c[1] * 0.45, c[2] * 0.45];
       s = R * (0.05 + rng() * 0.07);
+      hot = true; disp = 0.34;
+    } else if (shape === 'barred' && i < want * 0.40) {
+      // The bar: a straight, crowded box of old stars across the middle.
+      lx = (rng() * 2 - 1) * 0.40 * R;
+      ly = gauss() * 0.055 * R;
+      lz = gauss() * 0.025 * R;
+      c = mix(BULGE, [1, 0.96, 0.88], 0.4);
+      c = [c[0] * 0.5, c[1] * 0.5, c[2] * 0.5];
+      s = R * (0.04 + rng() * 0.05);
+      old = true; disp = 0.10;
+    } else if (shape === 'ring') {
+      // Nothing between the core and the ring; the ring itself is all young.
+      const r = R * (0.74 + gauss() * 0.07);
+      const th = rng() * TAU;
+      lx = Math.cos(th) * r; ly = Math.sin(th) * r;
+      lz = gauss() * 0.02 * R;
+      const knot = rng() < 0.2;
+      c = knot ? HII : ARM;
+      const dim = knot ? 3.0 : 1.1;
+      c = [c[0] * dim, c[1] * dim, c[2] * dim];
+      s = knot ? R * (0.012 + rng() * 0.014) : R * (0.03 + rng() * 0.04);
+    } else if (clumps.length) {
+      // Irregular and dwarf: lumps of young stars and pink gas, no order at all.
+      const cl = clumps[(rng() * clumps.length) | 0];
+      lx = cl[0] + gauss() * cl[3] * R;
+      ly = cl[1] + gauss() * cl[3] * R;
+      lz = cl[2] + gauss() * cl[3] * 0.5 * R;
+      const knot = rng() < 0.25;
+      c = knot ? HII : mix(ARM, DISC, rng() * 0.5);
+      const dim = knot ? 2.0 : 0.5;
+      c = [c[0] * dim, c[1] * dim, c[2] * dim];
+      s = knot ? R * (0.015 + rng() * 0.02) : R * (0.04 + rng() * 0.06);
+      disp = 0.15;
     } else {
-      r = (0.14 + Math.sqrt(rng()) * 0.86) * R;
+      // Spiral arms; for a barred spiral they start at the ends of the bar.
+      const r0 = shape === 'barred' ? 0.40 : 0.14;
+      const r = (r0 + Math.sqrt(rng()) * (1 - r0)) * R;
       const t = r / R;
       const spread = (0.16 + t * 0.34) * gauss() * 2.2;
-      th = Math.log(Math.max(t, 0.02) / 0.10) * WIND + ((rng() * arms) | 0) * (TAU / arms) + spread;
-      h = gauss() * (0.012 + t * 0.020) * R;        // a thin disc
+      const th = shape === 'barred'
+        ? Math.log(t / r0) * WIND * 0.8 + ((rng() * 2) | 0) * Math.PI + spread
+        : Math.log(Math.max(t, 0.02) / 0.10) * WIND + ((rng() * arms) | 0) * (TAU / arms) + spread;
+      lx = Math.cos(th) * r; ly = Math.sin(th) * r;
+      lz = gauss() * (0.012 + t * 0.020) * R;       // a thin disc
       const onArm = clamp(1 - Math.abs(spread) / (0.2 + t * 0.4), 0, 1);
       c = mix(DISC, ARM, onArm);
       // Star-forming knots are small, tight and bright; the rest is broad haze.
@@ -7116,28 +7214,37 @@ function seedGalaxyStars(b) {
         : R * (0.03 + rng() * 0.05) * (0.8 + t * 0.6) * (1 + (1 - onArm) * 1.6);   // between the arms, broad faint haze
     }
 
-    const ct = Math.cos(th), st = Math.sin(th);
-    const ox = u.x * ct + w.x * st, oy = u.y * ct + w.y * st, oz = u.z * ct + w.z * st;
-    const tx = (-u.x * st + w.x * ct) * spin, ty = (-u.y * st + w.y * ct) * spin, tz = (-u.z * st + w.z * ct) * spin;
+    galx.pos[k3] = b.p.x + u.x * lx + w.x * ly + ax.x * lz;
+    galx.pos[k3 + 1] = b.p.y + u.y * lx + w.y * ly + ax.y * lz;
+    galx.pos[k3 + 2] = b.p.z + u.z * lx + w.z * ly + ax.z * lz;
 
-    galx.pos[k3] = b.p.x + ox * r + ax.x * h;
-    galx.pos[k3 + 1] = b.p.y + oy * r + ax.y * h;
-    galx.pos[k3 + 2] = b.p.z + oz * r + ax.z * h;
-
-    // Circular in the disc plane, plus a small random dispersion — real discs
-    // are warm, and a perfectly cold one looks like a diagram.
-    const vc = galVCirc(b.m, r, soft) * (bulge ? rnd(0.55, 0.95) : rnd(0.97, 1.03));
-    const disp = vc * (bulge ? 0.34 : 0.05);
-    galx.vel[k3] = b.v.x + tx * vc + gauss() * disp;
-    galx.vel[k3 + 1] = b.v.y + ty * vc + gauss() * disp;
-    galx.vel[k3 + 2] = b.v.z + tz * vc + gauss() * disp;
+    let tx, ty, tz, vc;
+    if (hot && shape === 'elliptical') {
+      // Round the middle on an orbit tipped at random: no disc, no net spin.
+      const rr = Math.hypot(lx, ly, lz);
+      const rad = new THREE.Vector3(u.x * lx + w.x * ly + ax.x * lz, u.y * lx + w.y * ly + ax.y * lz, u.z * lx + w.z * ly + ax.z * lz).normalize();
+      const tan = new THREE.Vector3(gauss(), gauss(), gauss()).cross(rad).normalize();
+      tx = tan.x; ty = tan.y; tz = tan.z;
+      vc = galVCirc(b.m, rr, soft) * rnd(0.6, 0.95);
+    } else {
+      // Circular in the disc plane, plus a small random dispersion — real discs
+      // are warm, and a perfectly cold one looks like a diagram.
+      const rr = Math.hypot(lx, ly), th = Math.atan2(ly, lx);
+      const ct = Math.cos(th), st = Math.sin(th);
+      tx = (-u.x * st + w.x * ct) * spin; ty = (-u.y * st + w.y * ct) * spin; tz = (-u.z * st + w.z * ct) * spin;
+      vc = galVCirc(b.m, rr, soft) * (hot ? rnd(0.55, 0.95) : rnd(0.97, 1.03));
+    }
+    const dv = vc * disp;
+    galx.vel[k3] = b.v.x + tx * vc + gauss() * dv;
+    galx.vel[k3 + 1] = b.v.y + ty * vc + gauss() * dv;
+    galx.vel[k3 + 2] = b.v.z + tz * vc + gauss() * dv;
 
     galx.col[k3] = c[0]; galx.col[k3 + 1] = c[1]; galx.col[k3 + 2] = c[2];
     galx.siz[k] = s;
     // What kind of star this actually is.
     const roll = rng();
     let kind;
-    if (bulge) kind = roll < 0.55 ? 0 : roll < 0.85 ? 1 : 4;
+    if (old) kind = roll < 0.55 ? 0 : roll < 0.85 ? 1 : 4;
     else if (roll < 0.45) kind = 0;
     else if (roll < 0.78) kind = 1;
     else if (roll < 0.92) kind = c[2] > c[0] && rng() < 0.7 ? 3 : 2;   // blue giants on the young arms
@@ -7300,11 +7407,15 @@ const MW_PERIOD = 230e6 * 365.25;
 
 function buildGalaxy(b, grp) {
   const rng = mulberry32(b.seed);
-  b.galArms = b.galArms || (rng() < 0.62 ? 2 : 4);
+  b.galArms = b.galArms || (TYPES[b.type].shape === 'barred' || rng() < 0.62 ? 2 : 4);
   b.galSpin = b.galSpin || (rng() < 0.5 ? 1 : -1);
+  const def = TYPES[b.type];
+  if (b.galN == null && def.stars) b.galN = def.stars;
   if (b.galR == null) {
-    // Real size: somewhere between half and one and a half Milky Ways.
-    b.galR = GAL_R_MW * lerp(0.5, 1.5, rng());
+    // Real size: for a spiral, between half and one and a half Milky Ways;
+    // every other kind has its own range.
+    const sc = def.scale || [0.5, 1.5];
+    b.galR = GAL_R_MW * lerp(sc[0], sc[1], rng());
     b.m = galMassFor(b.galR, b.galPeriod);
   }
   if (!b.galAxis) {
@@ -7420,6 +7531,9 @@ let uniCount = 0;
 const UNI_R = 14 * GAL_R_MW;           // radius at birth, ~700,000 light-years
 const UNI_EXPAND = 2600;               // days for the bubble to double, early on
 const UNI_CRUNCH = 260;                // e-folding time of a crunch, in days
+// What a universe is made of, by rough share: spirals, then ellipticals and dwarfs.
+const UNI_MIX = ['galaxy', 'galaxy', 'galaxy', 'barred_galaxy', 'barred_galaxy', 'elliptical_galaxy',
+  'elliptical_galaxy', 'irregular_galaxy', 'ring_galaxy', 'dwarf_galaxy', 'dwarf_galaxy'];
 
 const UNI_VERT = `
   #include <common>
@@ -7478,9 +7592,11 @@ function makeUniverse(at, vel, opts) {
     const pos = at.clone().addScaledVector(dir, dist);
     const v = vel.clone().addScaledVector(dir, dist * H * (o.bang ? 2.4 : 1));
     if (sim.bodies.length >= MAX_BODIES) break;
-    const g = makeBody('galaxy', pos, v);
-    g.galR = GAL_R_MW * lerp(0.3, 0.8, rng());
-    g.galN = 3200;
+    const kind = UNI_MIX[(rng() * UNI_MIX.length) | 0];
+    const g = makeBody(kind, pos, v);
+    const sc = TYPES[kind].scale || [0.5, 1.5];
+    g.galR = GAL_R_MW * lerp(sc[0], sc[1], rng()) * 0.6;
+    g.galN = kind === 'dwarf_galaxy' ? 1400 : 3200;
     g.m = galMassFor(g.galR);
     g.galAxis = new THREE.Vector3(rng() * 2 - 1, rng() * 2 - 1, rng() * 2 - 1).normalize();
     seedGalaxyStars(g);
@@ -11830,7 +11946,8 @@ const PRESETS = [
     dist: GAL_R_MW * 2.8,
     build() {
       const R = GAL_R_MW;
-      const g = makeBody('galaxy', new V3(), new V3(), { name: 'Milky Way' });
+      // A barred spiral, as the real one is.
+      const g = makeBody('barred_galaxy', new V3(), new V3(), { name: 'Milky Way' });
       g.galR = R;
       g.galPeriod = MW_PERIOD;
       g.m = galMassFor(R, MW_PERIOD);
@@ -12110,6 +12227,15 @@ function openHelp() {
     '<li>A <b>Protostar + Disc</b> is a star still being born, wrapped in the flat disc of gas and dust it is feeding from. Start time and the disc <b>condenses into planets</b>, one at a time — rock and small worlds on the warm side of the <b>ice line</b>, giants just beyond it, exactly the order our own Solar System came out in. Every planet takes its mass out of the disc, so once the disc is spent, that is that.</li>' +
     '<li>A <b>brown dwarf</b> is a failed star: heavier than any planet, too light to fuse hydrogen. Here one keeps contracting until it <b>lights up as a red dwarf</b> after a hundred years (change that in Settings). A real one never manages it — it just fades for trillions of years — so this one is for fun.</li>' +
     '<li>A <b>galaxy</b> is eleven thousand individual stars wrapped in glowing clouds of gas, and every one of them is really orbiting. Drop two and crash them together — that is what <b>Galaxy Collision</b> in Systems sets up.</li>' +
+    '</ul>' +
+    '<h3>KINDS OF GALAXY</h3>' +
+    '<ul>' +
+    '<li><b>Galaxy</b> — a spiral, with a yellow bulge and blue arms.</li>' +
+    '<li><b>Barred Spiral</b> — a straight bar of old stars across the middle, arms off its ends. The Milky Way is one.</li>' +
+    '<li><b>Elliptical</b> — a smooth egg of old red and yellow stars on orbits in every direction. Crash two spirals together and you get one of these.</li>' +
+    '<li><b>Irregular</b> — clumps of young blue stars and pink gas with no shape at all.</li>' +
+    '<li><b>Ring</b> — a core inside a perfect ring of new stars, like Hoag\'s Object.</li>' +
+    '<li><b>Dwarf</b> — a tiny galaxy a few thousand light-years across. The most common kind in the universe.</li>' +
     '</ul>' +
     '<h3>SINGULARITIES AND UNIVERSES</h3>' +
     '<ul>' +
