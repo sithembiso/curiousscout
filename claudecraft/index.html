@@ -42,7 +42,8 @@
   <div id="cc-start" style="position: absolute; inset: 0; background: rgba(0,0,0,0.78); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 20; padding: 20px; text-align: center; overflow-y: auto;">
     <div style="font-size: 30px; font-weight: 500; letter-spacing: 2px; margin-bottom: 4px;">CLAUDECRAFT</div>
     <div style="font-size: 17px; color: #ffd866; font-weight: 500; margin-bottom: 6px;">😈👼 0.6 — Demons & Angels! 👼😈</div>
-    <div style="font-size: 12px; color: #ffaa44; margin-bottom: 12px;">⏰ 30 minute challenge — FOUR worlds!</div>
+    <div style="font-size: 12px; color: #ffaa44; margin-bottom: 4px;">⏰ 30 minute challenge — FOUR worlds!</div>
+    <div style="font-size: 12px; color: #8be0ff; margin-bottom: 12px;">🌍 The Overworld never ends — walk 1,000 blocks out to find the Far Lands 🌌</div>
     <div style="font-size: 12px; opacity: 0.85; margin-bottom: 12px; max-width: 540px; line-height: 1.6; text-align: left;">
       <b>The ultimate quest:</b><br>
       1. Beat the obsidian pillar — but DON'T break the diamond heart yet!<br>
@@ -92,7 +93,7 @@
     </div>
 
     <div style="position: absolute; top: 8px; right: 8px; font-size: 12px; text-align: right; line-height: 1.5;">
-      <div style="font-weight: 500; margin-bottom: 2px;">Achievements <span id="cc-ach-count">0/24</span></div>
+      <div style="font-weight: 500; margin-bottom: 2px;">Achievements <span id="cc-ach-count">0/25</span></div>
       <div id="cc-ach-list" style="font-size: 10px; opacity: 0.85; max-height: 200px; overflow: hidden;"></div>
     </div>
 
@@ -353,7 +354,7 @@
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x87CEEB);
-  scene.fog = new THREE.Fog(0x87CEEB, 30, 100);
+  scene.fog = new THREE.Fog(0x87CEEB, 30, 78);
   const W0=root.clientWidth, H0=root.clientHeight;
   const renderer = new THREE.WebGLRenderer({canvas:canvas, antialias:false});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -365,76 +366,155 @@
   scene.add(sun);
   scene.add(new THREE.AmbientLight(0xffffff, 0.45));
 
-  const overworld=new Map(), aether=new Map(), underworld=new Map(), milkhoney=new Map();
-  let blocks=overworld;
-  const WORLD_SIZE=80, WORLD_HEIGHT=24, AETHER_HEIGHT=18, UNDER_HEIGHT=20, MH_HEIGHT=22;
+  const WORLD_SIZE=80, WORLD_HEIGHT=32, AETHER_HEIGHT=18, UNDER_HEIGHT=20, MH_HEIGHT=22;
+  // The overworld is infinite: it is generated in 16x16 chunks as you walk, and
+  // only the chunks within RENDER_CHUNKS of you are meshed. Past FAR_LANDS blocks
+  // from 0,0 on either axis the terrain generator breaks down into the Far Lands.
+  const CHUNK=16, RENDER_CHUNKS=5, FAR_LANDS=1000;
   const key=(x,y,z)=>x+','+y+','+z;
+
+  // The small realms: a sparse map of "x,y,z" -> block id
+  class MapWorld{
+    constructor(){this.m=new Map();}
+    get(x,y,z){return this.m.get(key(x,y,z))||B.AIR;}
+    set(x,y,z,v){const k=key(x,y,z);if(v===B.AIR)this.m.delete(k);else this.m.set(k,v);}
+    forEachBlock(fn){this.m.forEach((id,k)=>{const p=k.split(',');fn(+p[0],+p[1],+p[2],id);});}
+  }
+  // The overworld: one Uint8Array per chunk, generated the first time anything touches it.
+  // CHUNK is 16, so x>>4 / x&15 give the chunk and the position inside it (negatives too).
+  class ChunkWorld{
+    constructor(h,gen){this.h=h;this.gen=gen;this.chunks=new Map();this.dirty=new Set();}
+    get(x,y,z){
+      if(y<0||y>=this.h)return B.AIR;
+      const a=this.chunks.get((x>>4)+','+(z>>4));
+      return a?a[(y*CHUNK+(z&15))*CHUNK+(x&15)]:B.AIR;
+    }
+    set(x,y,z,v){
+      if(y<0||y>=this.h)return;
+      const cx=x>>4, cz=z>>4;
+      const a=this.chunks.get(cx+','+cz)||this.gen(cx,cz);
+      a[(y*CHUNK+(z&15))*CHUNK+(x&15)]=v;
+      // A block on a chunk edge also changes which faces its neighbour draws
+      const lx=x&15, lz=z&15;
+      this.dirty.add(cx+','+cz);
+      if(lx===0)this.dirty.add((cx-1)+','+cz);
+      if(lx===15)this.dirty.add((cx+1)+','+cz);
+      if(lz===0)this.dirty.add(cx+','+(cz-1));
+      if(lz===15)this.dirty.add(cx+','+(cz+1));
+    }
+  }
+
+  const overworld=new ChunkWorld(WORLD_HEIGHT,genOverworldChunk);
+  const aether=new MapWorld(), underworld=new MapWorld(), milkhoney=new MapWorld();
+  let blocks=overworld;
   function getHeight(){if(currentRealm==='aether')return AETHER_HEIGHT;if(currentRealm==='underworld')return UNDER_HEIGHT;if(currentRealm==='milkhoney')return MH_HEIGHT;return WORLD_HEIGHT;}
-  function getBlock(x,y,z){if(y<0||y>=getHeight())return B.AIR;return blocks.get(key(x,y,z))||B.AIR;}
-  function setBlock(x,y,z,v){const k=key(x,y,z);if(v===B.AIR)blocks.delete(k);else blocks.set(k,v);}
-  function setBlockIn(m,x,y,z,v){const k=key(x,y,z);if(v===B.AIR)m.delete(k);else m.set(k,v);}
-  function getBlockIn(m,x,y,z){return m.get(key(x,y,z))||B.AIR;}
+  function getBlock(x,y,z){if(y<0||y>=getHeight())return B.AIR;return blocks.get(x,y,z);}
+  function setBlock(x,y,z,v){blocks.set(x,y,z,v);}
+  function setBlockIn(m,x,y,z,v){m.set(x,y,z,v);}
+  function getBlockIn(m,x,y,z){return m.get(x,y,z);}
   function noise(x,z){return Math.sin(x*0.13+z*0.17)*0.5+Math.cos(x*0.07-z*0.11)*0.5+Math.sin(x*0.31+z*0.27)*0.3;}
 
-  let dungeonHeartPos=null, aetherBoss=null, demonBoss=null, guardianPos=null;
+  let dungeonHeartPos=null, aetherBoss=null, demonBoss=null, guardianPos=null, pillar=null;
   let mhSpawn={x:0,y:12,z:0};
   const pets=[];  // {type, x, y, z, tamed, vx, vz} — declared early so world gen can populate
   const entities=[];  // {kind:'demon'|'angel', x,y,z, hp, cooldown, vx,vz, mesh}
   const fireballs=[];  // {x,y,z, vx,vy,vz, life}
 
-  function generateOverworld(){
-    const half=WORLD_SIZE/2;
-    for(let x=-half;x<half;x++)for(let z=-half;z<half;z++){
-      const h=Math.floor(8+noise(x,z)*3);
-      for(let y=0;y<=h;y++){
-        if(y===0)setBlockIn(overworld,x,y,z,B.BEDROCK);
-        else if(y===h)setBlockIn(overworld,x,y,z,B.GRASS);
-        else if(y>h-3)setBlockIn(overworld,x,y,z,B.DIRT);
-        else setBlockIn(overworld,x,y,z,B.STONE);
+  // ===== INFINITE OVERWORLD =====
+  // Everything here is a pure function of x,z so a chunk comes out the same
+  // whenever it is generated. The long, gentle sine adds rolling hills so the
+  // endless terrain doesn't repeat the same bumps forever.
+  const heightAt=(x,z)=>Math.floor(8+noise(x,z)*3+Math.sin(x*0.021+1.3)*Math.cos(z*0.017)*3);
+  const isFarLands=(x,z)=>Math.abs(x)>=FAR_LANDS||Math.abs(z)>=FAR_LANDS;
+  const treeAt=(x,z)=>!isFarLands(x,z)&&rnd3(x,z,7)<0.02;
+
+  // The Far Lands: the generator "overflows" into towering walls of stacked,
+  // holey strata. Like the real thing they are stretched out along the axis you
+  // crossed, and where both axes are past the edge they turn into stringy pillars.
+  function farSolid(x,y,z){
+    if(y<=2)return true;
+    const fx=Math.abs(x)>=FAR_LANDS, fz=Math.abs(z)>=FAR_LANDS;
+    let d;
+    if(fx&&fz)d=Math.sin(x*0.6)*Math.sin(z*0.6)*1.2+Math.sin(y*1.1+x*0.3+z*0.2)*0.4;
+    else{
+      const a=fx?z:x, b=fx?x:z;
+      d=Math.sin(y*1.9+a*0.31)*0.55+Math.sin(a*0.13-y*0.7)*0.45+Math.sin(b*0.02+a*0.05)*0.25;
+    }
+    // Thinning out with height leaves a ragged skyline instead of a flat roof
+    return d>-0.35+y*0.03;
+  }
+
+  function genOverworldChunk(cx,cz){
+    const H=WORLD_HEIGHT, a=new Uint8Array(CHUNK*CHUNK*H);
+    overworld.chunks.set(cx+','+cz,a);
+    const x0=cx*CHUNK, z0=cz*CHUNK;
+    const idx=(x,y,z)=>(y*CHUNK+(z-z0))*CHUNK+(x-x0);
+    const inside=(x,y,z)=>x>=x0&&x<x0+CHUNK&&z>=z0&&z<z0+CHUNK&&y>=0&&y<H;
+    for(let x=x0;x<x0+CHUNK;x++)for(let z=z0;z<z0+CHUNK;z++){
+      if(isFarLands(x,z)){
+        a[idx(x,0,z)]=B.BEDROCK;
+        let depth=0;   // solid blocks since the last gap above
+        for(let y=H-1;y>0;y--){
+          if(!farSolid(x,y,z)){depth=0;continue;}
+          a[idx(x,y,z)]=depth===0?B.GRASS:depth<3?B.DIRT:B.STONE;
+          depth++;
+        }
+        continue;
       }
+      const h=heightAt(x,z);
+      for(let y=0;y<=h;y++)a[idx(x,y,z)]=y===0?B.BEDROCK:y===h?B.GRASS:y>h-3?B.DIRT:B.STONE;
       for(let y=1;y<h-2;y++){
         const r=Math.abs(Math.sin(x*7.3+y*3.1+z*1.7)*9999)%1;
-        if(r<0.008)setBlockIn(overworld,x,y,z,B.DIAMOND);
-        else if(r<0.035)setBlockIn(overworld,x,y,z,B.GOLD);
-        else if(r<0.075)setBlockIn(overworld,x,y,z,B.REDSTONE);
-        else if(r<0.105)setBlockIn(overworld,x,y,z,B.IRON);
-        else if(r<0.16)setBlockIn(overworld,x,y,z,B.COAL);
+        if(r<0.008)a[idx(x,y,z)]=B.DIAMOND;
+        else if(r<0.035)a[idx(x,y,z)]=B.GOLD;
+        else if(r<0.075)a[idx(x,y,z)]=B.REDSTONE;
+        else if(r<0.105)a[idx(x,y,z)]=B.IRON;
+        else if(r<0.16)a[idx(x,y,z)]=B.COAL;
       }
     }
-    for(let i=0;i<100;i++){
-      const tx=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.9);
-      const tz=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.9);
-      let ty=WORLD_HEIGHT-1;
-      while(ty>0&&getBlockIn(overworld,tx,ty,tz)===B.AIR)ty--;
-      if(getBlockIn(overworld,tx,ty,tz)!==B.GRASS)continue;
-      const baseY=ty+1;
-      const trunkH=4+Math.floor(Math.random()*2);
-      for(let y=0;y<trunkH;y++)setBlockIn(overworld,tx,baseY+y,tz,B.WOOD);
-      const top=baseY+trunkH;
+    // Trees rooted up to 2 blocks outside this chunk can still drop leaves into it.
+    // All trunks go in before any leaves, so the result doesn't depend on chunk order.
+    const roots=[];
+    for(let tx=x0-2;tx<x0+CHUNK+2;tx++)for(let tz=z0-2;tz<z0+CHUNK+2;tz++){
+      if(treeAt(tx,tz))roots.push([tx,heightAt(tx,tz)+1,tz,4+Math.floor(rnd3(tx,tz,8)*2)]);
+    }
+    for(const [tx,by,tz,th] of roots)for(let y=0;y<th;y++)if(inside(tx,by+y,tz))a[idx(tx,by+y,tz)]=B.WOOD;
+    for(const [tx,by,tz,th] of roots){
+      const top=by+th;
       for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++)for(let dy=-1;dy<=1;dy++){
         if(Math.abs(dx)===2&&Math.abs(dz)===2)continue;
         if(dy===1&&(Math.abs(dx)+Math.abs(dz))>2)continue;
         const lx=tx+dx,ly=top+dy,lz=tz+dz;
-        if(getBlockIn(overworld,lx,ly,lz)===B.AIR)setBlockIn(overworld,lx,ly,lz,B.LEAF);
+        if(inside(lx,ly,lz)&&a[idx(lx,ly,lz)]===B.AIR)a[idx(lx,ly,lz)]=B.LEAF;
       }
     }
-    for(let attempt=0;attempt<100;attempt++){
+    // The obsidian pillar dungeon, stamped over whatever was there
+    if(pillar){
+      for(let dy=0;dy<10;dy++)for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){
+        const x=pillar.x+dx, y=pillar.y+dy, z=pillar.z+dz;
+        if(!inside(x,y,z))continue;
+        let v=B.OBSIDIAN;
+        if(dy===9&&dx===0&&dz===0)v=B.GLOW;
+        else if(dx===0&&dz===0&&dy>=4&&dy<=6)v=dy===5?B.DIAMOND:B.AIR;
+        a[idx(x,y,z)]=v;
+      }
+    }
+    // Neighbours meshed before this chunk existed drew faces against it
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]])overworld.dirty.add((cx+dx)+','+(cz+dz));
+    return a;
+  }
+
+  function generateOverworld(){
+    for(let attempt=0;attempt<100&&!pillar;attempt++){
       const px=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.8);
       const pz=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.8);
       if(Math.abs(px)<15&&Math.abs(pz)<15)continue;
-      let py=WORLD_HEIGHT-1;
-      while(py>0&&getBlockIn(overworld,px,py,pz)===B.AIR)py--;
-      if(getBlockIn(overworld,px,py,pz)!==B.GRASS)continue;
-      const baseY=py+1;
-      for(let dy=0;dy<10;dy++)for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){
-        if(dy===9&&dx===0&&dz===0)setBlockIn(overworld,px+dx,baseY+dy,pz+dz,B.GLOW);
-        else if(dx===0&&dz===0&&dy>=4&&dy<=6){
-          if(dy===5){setBlockIn(overworld,px,baseY+dy,pz,B.DIAMOND);dungeonHeartPos={x:px,y:baseY+dy,z:pz};}
-          else setBlockIn(overworld,px+dx,baseY+dy,pz+dz,B.AIR);
-        } else setBlockIn(overworld,px+dx,baseY+dy,pz+dz,B.OBSIDIAN);
-      }
-      break;
+      pillar={x:px,y:heightAt(px,pz)+1,z:pz};
     }
+    dungeonHeartPos={x:pillar.x,y:pillar.y+5,z:pillar.z};
+    // The rest streams in as the player moves (see updateChunks)
+    const R=RENDER_CHUNKS+1;
+    for(let cx=-R;cx<=R;cx++)for(let cz=-R;cz<=R;cz++)if(!overworld.chunks.has(cx+','+cz))genOverworldChunk(cx,cz);
   }
 
   function generateAether(){
@@ -753,18 +833,16 @@
     const c=t%ATLAS_COLS, r=Math.floor(t/ATLAS_COLS), e=0.02;
     return [(c*TEX+e)/ATLAS_W,((c+1)*TEX-e)/ATLAS_W,1-((r+1)*TEX-e)/ATLAS_H,1-(r*TEX+e)/ATLAS_H];
   }
-  let worldMesh=null;
-  function rebuildMesh(){
-    if(worldMesh){meshGroup.remove(worldMesh);worldMesh.geometry.dispose();worldMesh.material.dispose();}
+  const worldMat=new THREE.MeshLambertMaterial({vertexColors:true, map:atlasTex});
+  // eachBlock(fn) calls fn(x,y,z,id) for every block to draw; world answers neighbour lookups
+  function buildGeometry(world,eachBlock){
     const positions=[], normals=[], colors=[], uvs=[], indices=[];
     let idx=0;
-    blocks.forEach((blockId,k)=>{
-      const [xs,ys,zs]=k.split(',');
-      const x=+xs,y=+ys,z=+zs;
+    eachBlock((x,y,z,blockId)=>{
       for(const face in FACES){
         const f=FACES[face];
         const nx=x+f.dir[0], ny=y+f.dir[1], nz=z+f.dir[2];
-        const neighbor=blocks.get(key(nx,ny,nz))||B.AIR;
+        const neighbor=world.get(nx,ny,nz);
         if(neighbor!==B.AIR&&neighbor!==B.LEAF&&neighbor!==B.PORTAL&&neighbor!==B.FIRE_PORTAL&&neighbor!==B.MILK&&neighbor!==B.HONEY)continue;
         if(neighbor===B.LEAF&&blockId===B.LEAF)continue;
         const [u0,u1,v0,v1]=tileUV(blockId,face);
@@ -792,7 +870,61 @@
     geom.setAttribute('color', new THREE.Float32BufferAttribute(colors,3));
     geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs,2));
     geom.setIndex(indices);
-    worldMesh=new THREE.Mesh(geom, new THREE.MeshLambertMaterial({vertexColors:true, map:atlasTex}));
+    return geom;
+  }
+
+  // Overworld chunk meshes, keyed "cx,cz". Block data outlives its mesh, so
+  // anything you build far away is still there when you walk back.
+  const chunkGroup=new THREE.Group();
+  scene.add(chunkGroup);
+  const chunkMeshes=new Map();
+  const chunkCenter={x:0,z:0};   // world position the loaded area is centred on
+  function meshChunk(ck){
+    const [cx,cz]=ck.split(',').map(Number);
+    const old=chunkMeshes.get(ck);
+    if(old){chunkGroup.remove(old);old.geometry.dispose();}
+    const a=overworld.chunks.get(ck);
+    const x0=cx*CHUNK, z0=cz*CHUNK;
+    const geom=buildGeometry(overworld,fn=>{
+      for(let i=0;i<a.length;i++)if(a[i])fn(x0+(i&15),i>>8,z0+((i>>4)&15),a[i]);
+    });
+    const m=new THREE.Mesh(geom,worldMat);
+    chunkGroup.add(m);
+    chunkMeshes.set(ck,m);
+  }
+  // Generate, mesh and unload around chunkCenter. `budget` caps how many chunks
+  // are generated and meshed this call, so walking never stalls a frame.
+  function updateChunks(budget){
+    const R=RENDER_CHUNKS;
+    const pcx=Math.floor(chunkCenter.x)>>4, pcz=Math.floor(chunkCenter.z)>>4;
+    const want=[];
+    for(let dx=-R-1;dx<=R+1;dx++)for(let dz=-R-1;dz<=R+1;dz++)want.push([dx*dx+dz*dz,pcx+dx,pcz+dz,Math.max(Math.abs(dx),Math.abs(dz))]);
+    want.sort((p,q)=>p[0]-q[0]);
+    let gen=budget, mesh=budget;
+    for(const [,cx,cz] of want){
+      if(gen<=0)break;
+      if(!overworld.chunks.has(cx+','+cz)){genOverworldChunk(cx,cz);gen--;}
+    }
+    for(const [,cx,cz,d] of want){
+      if(mesh<=0)break;
+      const ck=cx+','+cz;
+      if(d<=R&&!chunkMeshes.has(ck)&&overworld.chunks.has(ck)){meshChunk(ck);mesh--;overworld.dirty.delete(ck);}
+    }
+    for(const ck of overworld.dirty)if(chunkMeshes.has(ck))meshChunk(ck);
+    overworld.dirty.clear();
+    for(const [ck,m] of chunkMeshes){
+      const [cx,cz]=ck.split(',').map(Number);
+      if(Math.max(Math.abs(cx-pcx),Math.abs(cz-pcz))>R+1){chunkGroup.remove(m);m.geometry.dispose();chunkMeshes.delete(ck);}
+    }
+  }
+
+  // The small realms are still one mesh; the overworld redraws whichever chunks changed
+  let worldMesh=null;
+  function rebuildMesh(){
+    if(worldMesh){meshGroup.remove(worldMesh);worldMesh.geometry.dispose();worldMesh=null;}
+    chunkGroup.visible=(blocks===overworld);
+    if(blocks===overworld){updateChunks(Infinity);return;}
+    worldMesh=new THREE.Mesh(buildGeometry(blocks,fn=>blocks.forEachBlock(fn)),worldMat);
     meshGroup.add(worldMesh);
   }
   rebuildMesh();
@@ -966,7 +1098,8 @@
     {id:'dsword',label:'💎 Diamond sword',check:()=>tools.swordTier>=5},
     {id:'pet',label:'🐺 Tame a pet',check:()=>pets.some(p=>p.tamed)},
     {id:'demonKill',label:'😈 Slay a mini demon',check:()=>achievements.demonKill},
-    {id:'angelHeal',label:'👼 Get healed by an angel',check:()=>achievements.angelHeal}
+    {id:'angelHeal',label:'👼 Get healed by an angel',check:()=>achievements.angelHeal},
+    {id:'farlands',label:'🌌 Reach the Far Lands',check:()=>achievements.farlands}
   ];
 
   function checkAchievements(){
@@ -1302,9 +1435,10 @@
     } else {
       blocks=overworld;
       scene.background=new THREE.Color(0x87CEEB); scene.fog.color.set(0x87CEEB);
-      scene.fog.near=30; scene.fog.far=100;
+      scene.fog.near=30; scene.fog.far=78;
       for(let y=WORLD_HEIGHT-1;y>0;y--){if(getBlockIn(overworld,0,y,0)!==B.AIR){player.pos.set(0.5,y+2,0.5);break;}}
       player.vel.set(0,0,0);
+      chunkCenter.x=player.pos.x; chunkCenter.z=player.pos.z;
       document.getElementById('cc-realm').textContent='OVERWORLD';
       document.getElementById('cc-realm').style.background='rgba(106,190,48,0.85)';
       document.getElementById('cc-realm').style.color='#042c1f';
@@ -1633,6 +1767,14 @@
     if(currentRealm==='milkhoney'&&player.pos.y<-5)teleportTo('overworld');
     const px=Math.floor(player.pos.x),py=Math.floor(player.pos.y),pz=Math.floor(player.pos.z);
     if(currentRealm==='overworld'){
+      // Stream the infinite world in around the player, a couple of chunks a frame
+      chunkCenter.x=player.pos.x; chunkCenter.z=player.pos.z;
+      updateChunks(2);
+      if(!achievements.farlands&&isFarLands(px,pz)){
+        achievements.farlands=true;
+        toast('🌌 You reached the FAR LANDS! The world is breaking apart...',5500);
+        renderAchievements();
+      }
       if(getBlock(px,py,pz)===B.PORTAL||getBlock(px,py+1,pz)===B.PORTAL)teleportTo('aether');
       else if(getBlock(px,py,pz)===B.FIRE_PORTAL||getBlock(px,py+1,pz)===B.FIRE_PORTAL)teleportTo('underworld');
     }
