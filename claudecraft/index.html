@@ -668,6 +668,17 @@
   function rnd3(a,b,c){const s=Math.sin(a*12.9898+b*78.233+c*37.719)*43758.5453;return s-Math.floor(s);}
   const hexRGB=(c)=>[(c>>16)&255,(c>>8)&255,c&255];
   const ORES=[B.COAL,B.IRON,B.GOLD,B.REDSTONE,B.DIAMOND];
+  const ORE_MASK=[
+    '........',
+    '.32...3.',
+    '.21..321',
+    '.....21.',
+    '..3.....',
+    '.321..32',
+    '..21..21',
+    '........'
+  ];
+  const ORE_SHADE=[1,0.62,1,1.32];
   const BRICKS=[B.RUINSTONE,B.AETHERSTONE];
   const LIQUIDS=[B.LAVA,B.HONEY,B.MILK,B.PORTAL,B.FIRE_PORTAL,B.FIRE];
   function tilePixels(id,kind){
@@ -680,7 +691,13 @@
       const r=(s)=>rnd3(id*3+kind,x+y*TEX,s);
       let c=base, f=0.88+r(0)*0.24;
       if((id===B.GRASS||id===B.AETHER_GRASS)&&side&&(y<2||(y===2&&r(1)<0.5)))c=info.colors.top;
-      else if(ORES.includes(id)){c=(x>0&&x<7&&y>0&&y<7&&r(2)<0.22)?base:0x888888;}
+      else if(ORES.includes(id)){
+        // Hand-placed clumps, lit from the top-left: 3 highlight, 2 body, 1 shadow
+        // Shifted (not mirrored) per ore so the light still comes from the top-left
+        const m=+ORE_MASK[y][(x+id*3)%TEX]||0;
+        if(m){c=base;f=ORE_SHADE[m]*(0.97+r(2)*0.06);}
+        else c=0x888888;
+      }
       else if([B.STONE,B.DIRT,B.NETHERSTONE].includes(id)){if(r(3)<0.12)f*=0.72;}
       else if(id===B.BEDROCK)f=0.5+r(0)*0.9;
       else if(id===B.WOOD||id===B.HONEYTREE){
