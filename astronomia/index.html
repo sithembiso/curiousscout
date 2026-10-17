@@ -256,6 +256,14 @@
     font-size: 10px; text-transform: uppercase; letter-spacing: 1.1px; color: var(--ink-dim); margin-bottom: 5px;
   }
   .an-field label b { font-family: "Orbitron", sans-serif; font-size: 11px; color: var(--accent2); letter-spacing: 0; }
+  /* Inspector values can be clicked and typed into */
+  #an-insp-body .an-field label b { cursor: text; border-bottom: 1px dashed rgba(139,224,255,0.5); }
+  #an-insp-body .an-field label b:hover { color: #fff; border-bottom-color: var(--accent); }
+  .an-type-in {
+    width: 120px; padding: 1px 6px; text-align: right;
+    font-family: "Orbitron", sans-serif; font-size: 11px; font-weight: 700; color: #fff;
+    background: rgba(150,130,255,0.2); border: 1px solid var(--accent); border-radius: 5px; outline: none;
+  }
 
   input[type=range] {
     -webkit-appearance: none; appearance: none;
@@ -8572,9 +8580,13 @@ function nearestStar(b) {
 }
 
 function updateVisuals(realDt, simDt) {
-  // Worlds part-way inside one another. On the wall clock, not the simulation
-  // clock, and first because finishing one removes a body.
-  updateEngulf(realDt);
+  /* The impact effects — a world sinking into another, flashes, the swirl of a
+     birth — run on the wall clock, so they stay watchable at any time rate. But
+     they must keep pace with what is being played: slowed in slow motion along
+     with everything else, and frozen while time is paused. */
+  const fxDt = sim.running ? realDt * slowmoScale() : 0;
+  // Worlds part-way inside one another. First, because finishing one removes a body.
+  updateEngulf(fxDt);
   // Then, because an explosion can destroy bodies and is itself a light source
   // that the two passes below need to know about.
   updateSupernovae(simDt);
@@ -8778,7 +8790,7 @@ function updateVisuals(realDt, simDt) {
   updateReticle();
   updateTrails();
   updateParticles(simDt);
-  updateFx(realDt, simDt);
+  updateFx(fxDt, simDt);
   updateLabels();
 }
 
@@ -9104,6 +9116,115 @@ function updateHint() {
     s = 'Pick something from <b>Add Body</b>, then click space to place it &middot; <kbd>Space</kbd> starts time';
   }
   el.innerHTML = s;
+}
+
+/* ----------------------------------------------------- typing in values */
+/*
+ * Every value readout in the inspector can be clicked and typed into instead of
+ * dragged. A typed value can carry a unit ("2.5 M☉", "3 Jupiters", "6e24 kg",
+ * "5000 km", "10 hours", "300 °C") or none, in which case it is read in the unit
+ * the readout was already showing. It is then pushed through the slider itself
+ * — widening its range if need be and lifting its step so nothing is rounded —
+ * so every rule a drag would trigger (ignition, collapse, re-colouring) still runs.
+ */
+const UNITS = {
+  mass: { 'kg': 1 / KG_PER_ME, 't': 1000 / KG_PER_ME, 'tonnes': 1000 / KG_PER_ME,
+    'm⊕': 1, 'me': 1, '⊕': 1, 'earth': 1, 'earths': 1,
+    'm☉': M_SUN, 'ms': M_SUN, 'msun': M_SUN, '☉': M_SUN, 'sun': M_SUN, 'suns': M_SUN, 'solar': M_SUN,
+    'mj': 317.8, 'jupiter': 317.8, 'jupiters': 317.8 },
+  length: { 'm': 1e-9, 'km': 1e-6, 'gm': 1, 'au': AU,
+    'r⊕': R_EARTH, 're': R_EARTH, '⊕': R_EARTH, 'earth': R_EARTH, 'earths': R_EARTH,
+    'r☉': R_SUN * R_EARTH, 'rs': R_SUN * R_EARTH, '☉': R_SUN * R_EARTH, 'sun': R_SUN * R_EARTH, 'suns': R_SUN * R_EARTH,
+    'rj': 11.21 * R_EARTH, 'jupiter': 11.21 * R_EARTH, 'jupiters': 11.21 * R_EARTH },
+  time: { 's': 1 / 86400, 'sec': 1 / 86400, 'seconds': 1 / 86400, 'min': 1 / 1440, 'minutes': 1 / 1440,
+    'h': 1 / 24, 'hr': 1 / 24, 'hrs': 1 / 24, 'hour': 1 / 24, 'hours': 1 / 24,
+    'd': 1, 'day': 1, 'days': 1, 'y': 365.25, 'yr': 365.25, 'year': 365.25, 'years': 365.25 },
+  temp: { 'k': 1, 'kelvin': 1 },
+  angle: { '°': 1, 'deg': 1, 'degrees': 1 },
+  plain: { '× radius': 1, 'x radius': 1, '×': 1, 'x': 1, 'radius': 1 },
+  percent: { '%': 1, 'percent': 1 }
+};
+const UNIT_EXAMPLE = { mass: '2.5 M☉ or 6e24 kg', length: '5000 km or 1.5 R⊕', time: '10 hours or 3 days',
+  temp: '5800 K', angle: '23°', plain: '2.3', percent: '40%' };
+
+/** Read "<number> [unit]" as a value in the quantity's base unit. `shown` supplies the default unit. */
+function parseQuantity(text, q, shown) {
+  const m = /^\s*([-+]?(?:\d[\d,]*\.?\d*|\.\d+)(?:e[-+]?\d+)?)\s*(.*)$/i.exec(String(text).replace(/↺/g, ''));
+  if (!m) return NaN;
+  let n = Number(m[1].replace(/,/g, ''));
+  let unit = m[2].trim().toLowerCase();
+  if (!unit) {
+    // No unit typed: use the one on display, e.g. "1.00 M☉" or "9.60×10²⁰ kg"
+    unit = String(shown).replace(/↺/g, '').replace(/×10[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]+/, '')
+      .replace(/^[\s\d.,+-]+/, '').trim().toLowerCase();
+  }
+  if (/million/.test(unit)) { n *= 1e6; unit = unit.replace('million', '').trim(); }
+  if (q === 'temp' && /^°?c$|celsius/.test(unit)) return n + 273.15;
+  const table = UNITS[q];
+  if (!unit) return n;
+  return table[unit] != null ? n * table[unit] : NaN;
+}
+
+/* Slider id -> the quantity it holds and how a value maps onto the slider */
+const TYPEABLE = {
+  'is-mslider': { q: 'mass', to: (v) => Math.log10(v) },
+  'is-rad-s': { q: 'length', to: (v) => Math.log10(v) },
+  'is-gwide': { q: 'length', to: (v) => Math.log10(v) },
+  'is-spin-s': { q: 'time', to: (v) => Math.log10(Math.abs(v)) },
+  'is-tilt-s': { q: 'angle', to: (v) => v },
+  'is-core-s': { q: 'temp', to: (v) => Math.log10(v) },
+  'is-ctemp': { q: 'temp', to: (v) => Math.log10(v) },
+  'is-ri': { q: 'plain', to: (v) => v },
+  'is-ro': { q: 'plain', to: (v) => v },
+  'is-rop': { q: 'percent', to: (v) => v / 100 },
+  'is-wat': { q: 'percent', to: (v) => v }
+};
+
+function bindTypedValues() {
+  $('an-insp-body').addEventListener('click', (e) => {
+    const b = e.target.closest('.an-field label b');
+    if (!b || b.style.display === 'none') return;
+    const slider = b.closest('.an-field').querySelector('input[type=range]');
+    const spec = slider && TYPEABLE[slider.id];
+    if (!spec) return;
+    e.preventDefault();
+    // The readout keeps being refreshed while you type, so it is hidden rather than replaced
+    const shown = b.textContent;
+    const inp = document.createElement('input');
+    inp.className = 'an-type-in';
+    inp.value = shown.replace(/↺/g, '').trim();
+    b.style.display = 'none';
+    b.after(inp);
+    inp.focus(); inp.select();
+    let done = false;
+    const finish = (apply) => {
+      if (done) return;
+      done = true;
+      const text = inp.value;
+      inp.remove();
+      b.style.display = '';
+      if (!apply || text.trim() === shown.replace(/↺/g, '').trim()) return;
+      const v = parseQuantity(text, spec.q, shown);
+      const positive = spec.q === 'mass' || spec.q === 'length' || spec.q === 'time' || spec.q === 'temp';
+      if (!Number.isFinite(v) || (positive && !(v > 0))) {
+        toast('Couldn\'t read "' + text + '" — try ' + UNIT_EXAMPLE[spec.q]);
+        return;
+      }
+      const raw = spec.to(v);
+      if (raw < +slider.min) slider.min = raw;
+      if (raw > +slider.max) slider.max = raw;
+      slider.step = 'any';
+      slider.value = raw;
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+      slider.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    inp.addEventListener('keydown', (ev) => {
+      ev.stopPropagation();
+      if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+    });
+    inp.addEventListener('blur', () => finish(true));
+  });
 }
 
 /* ---------------------------------------------------------------- inspector */
@@ -10823,6 +10944,7 @@ function openHelp() {
     '<li><b>Drag</b> while placing to aim it — the longer the drag, the faster it flies. About 120 pixels of drag equals one circular orbit speed at that spot.</li>' +
     '<li>Just click without dragging and <b>Auto-orbit</b> gives it a clean circular orbit around whatever dominates nearby.</li>' +
     '<li><b>Click a body</b> to select it. The panel on the right shows its real mass, density, speed and temperature, and lets you resize it.</li>' +
+    '<li><b>Click any value</b> in that panel (the ones with a dotted line under them) to <b>type it in</b> instead of dragging. Units are optional: <b>2.5 M☉</b>, <b>3 Jupiters</b>, <b>6e24 kg</b>, <b>5000 km</b>, <b>10 hours</b>, <b>300 °C</b> — leave one off and it uses the unit already shown. Press Enter to set it, Esc to cancel.</li>' +
     '<li><b>Click its name</b> in that panel to rename it — type anything and press Enter.</li>' +
     '<li>While something is armed a <b>measuring grid</b> appears on the plane you are dropping onto. The hint at the bottom says how wide one square is, so you can space a system out on purpose. Turn on <b>Snap to the grid</b> in Settings and drops land exactly on the crossings.</li>' +
     '<li>The <b>Solar System</b> group at the bottom of the list holds all eight real planets — plus the Sun, the Moon and Pluto — with their real masses, widths, spin periods and axial tilts. Uranus really is tipped over on its side, and Venus really does spin backwards.</li>' +
@@ -11003,7 +11125,11 @@ function loop(now) {
   const realDt = Math.min((now - lastFrame) / 1000, 0.1) || 0;
   lastFrame = now;
 
-  if (slowmoLeft > 0 && sim.running) slowmoLeft = Math.max(0, slowmoLeft - realDt);
+  if (slowmoLeft > 0 && sim.running) {
+    slowmoLeft = Math.max(0, slowmoLeft - realDt);
+    // Stay slow until any world that is still sinking into another is fully under
+    if (slowmoLeft < 1.2 && sim.bodies.some(b => b.sink)) slowmoLeft = 1.2;
+  }
   const t0 = sim.time;
   advance(realDt);
   const simDt = sim.time - t0;
@@ -11045,6 +11171,7 @@ function boot() {
   initLabels();
   buildPalette();
   bindInput();
+  bindTypedValues();
 
   $('an-play').addEventListener('click', togglePlay);
   $('an-slower').addEventListener('click', () => changeRate(-1));
