@@ -6817,48 +6817,136 @@ const GAL_FRAG = `
   }`;
 const GAL_GAIN = 0.03;
 
+/* A galaxy star seen up close: a real ball of fire. Drawn camera-relative
+   (galx.mesh sits at the camera and each instance is offset from it), because
+   a star half a galaxy from the origin is 10^8 Gm out and a 32-bit float there
+   cannot place anything to better than tens of Gm — a Sun is one and a half. */
+const GAL_SPHERE_VERT = `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  varying vec3 vN;
+  varying vec3 vV;
+  varying vec3 vP;
+  varying vec3 vC;
+  void main() {
+    vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+    vN = normalize(normalMatrix * mat3(instanceMatrix) * normal);
+    vV = -mv.xyz;
+    vP = position;
+    #ifdef USE_INSTANCING_COLOR
+      vC = instanceColor;
+    #else
+      vC = vec3(1.0);
+    #endif
+    gl_Position = projectionMatrix * mv;
+    #include <logdepthbuf_vertex>
+  }`;
+
+const GAL_SPHERE_FRAG = `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  uniform float uTime;
+  varying vec3 vN;
+  varying vec3 vV;
+  varying vec3 vP;
+  varying vec3 vC;
+  float h3(vec3 p) {
+    p = fract(p * 0.3183099 + 0.1); p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+  }
+  float n3(vec3 x) {
+    vec3 i = floor(x), f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
+               mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+  }
+  void main() {
+    #include <logdepthbuf_fragment>
+    float mu = clamp(dot(normalize(vN), normalize(vV)), 0.0, 1.0);
+    // boiling granulation, two scales drifting against each other
+    float g = n3(vP * 13.0 + uTime * 0.25) * 0.6 + n3(vP * 34.0 - uTime * 0.4) * 0.4;
+    vec3 c = vC * (0.62 + 0.5 * g);
+    c = mix(c, vec3(1.0), 0.30 * pow(mu, 2.0));        // a hot white middle
+    float limb = 0.30 + 0.70 * pow(mu, 0.45);           // and a dark, reddened rim
+    c *= limb;
+    c.gb *= mix(0.80, 1.0, mu);
+    gl_FragColor = vec4(c * 1.2, 1.0);
+  }`;
+const GAL_SPHERES = 96;
+
+/* Real star types, so a galaxy is made of stars you could actually point at.
+   Mostly red dwarfs, as every real galaxy is; blue giants live where stars are
+   still being born, out on the arms; old red giants crowd the bulge. */
+const GAL_TYPES = [
+  { name: 'red dwarf',     T: [2800, 3800],   R: [0.12, 0.6], px: [0.8, 1.2] },
+  { name: 'Sun-like star', T: [5000, 6200],   R: [0.8, 1.3],  px: [1.1, 1.6] },
+  { name: 'white star',    T: [7400, 10000],  R: [1.4, 2.4],  px: [1.4, 2.0] },
+  { name: 'blue giant',    T: [15000, 35000], R: [4, 10],     px: [2.7, 3.3] },
+  { name: 'red giant',     T: [3300, 4600],   R: [12, 70],    px: [2.0, 2.6] }
+];
+
 /* ...and the stars inside the clouds. The same orbiting points drawn a second
    time as crisp, screen-sized stars, so the gas has stars in it at every zoom:
    fly into a galaxy and the clouds open out around thousands of separate suns.
    The brightest few carry a four-point diffraction glint. */
 const GAL_STAR_VERT = `
-  attribute vec3 aCol;
+  attribute vec3 aSCol;
   attribute float aSize;
   attribute float aStar;
+  attribute float aRad;
   uniform float uDpr;
+  uniform float uScale;
   varying vec3 vCol;
   varying float vSpike;
+  varying float vNear;
   void main() {
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
-    vCol = aCol;
+    vCol = aSCol;
     vSpike = step(2.65, aStar);
     float s = aStar * (1.0 + vSpike * 2.2);
-    gl_PointSize = aSize > 0.0 ? s * uDpr : 0.0;
+    // Close enough to see the star as a ball, the sprite becomes its glare,
+    // reaching out a few radii round the sphere drawn by galx.mesh.
+    float disc = aRad * uScale / max(-mv.z, 1e-9);
+    vNear = smoothstep(0.6, 2.0, disc);
+    s = max(s * uDpr, min(disc * 9.0, 900.0));
+    gl_PointSize = aSize > 0.0 ? s : 0.0;
   }`;
 
 const GAL_STAR_FRAG = `
   varying vec3 vCol;
   varying float vSpike;
+  varying float vNear;
   void main() {
     vec2 q = gl_PointCoord * 2.0 - 1.0;
     float d2 = dot(q, q);
     float a = exp(-d2 * (vSpike > 0.5 ? 14.0 : 4.5));
+    a = mix(a, exp(-d2 * 9.0) * 0.75, vNear);
     // thin cross through the middle, fading out to the tips
     float cross = max(exp(-q.x * q.x * 260.0), exp(-q.y * q.y * 260.0)) * (1.0 - sqrt(d2));
-    a = max(a, cross * vSpike * 0.8);
+    a = max(a, cross * vSpike * 0.8 * (1.0 - vNear * 0.75));
     if (a < 0.01) discard;
     gl_FragColor = vec4(min(vCol * 1.35, vec3(1.0)), a);
   }`;
 
 const galx = {
   pos: null, vel: null, col: null, siz: null, own: null,
-  free: [], live: 0, geo: null, pts: null, stars: null, ssz: null, dirty: false
+  free: [], live: 0, geo: null, pts: null, stars: null, ssz: null, dirty: false,
+  gpos: null, scol: null, rad: null, temp: null, kind: null,
+  origin: new THREE.Vector3(), mesh: null, focus: -1
 };
 
 function initGalaxyStars() {
-  galx.pos = new Float32Array(GAL_MAX * 3);
-  galx.vel = new Float32Array(GAL_MAX * 3);
+  // Positions are kept in doubles — a galaxy is real-sized now, ~10^9 Gm across
+  // — and handed to the GPU relative to the camera (galx.gpos), so a single star
+  // can be zoomed right into without it shaking about on a coarse float grid.
+  galx.pos = new Float64Array(GAL_MAX * 3);
+  galx.vel = new Float64Array(GAL_MAX * 3);
+  galx.gpos = new Float32Array(GAL_MAX * 3);
+  galx.scol = new Float32Array(GAL_MAX * 3);
+  galx.rad = new Float32Array(GAL_MAX);
+  galx.temp = new Float32Array(GAL_MAX);
+  galx.kind = new Uint8Array(GAL_MAX);
   galx.col = new Float32Array(GAL_MAX * 3);
   galx.siz = new Float32Array(GAL_MAX);
   galx.ssz = new Float32Array(GAL_MAX);
@@ -6868,7 +6956,9 @@ function initGalaxyStars() {
   galx.live = 0;
 
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(galx.pos, 3));
+  geo.setAttribute('position', new THREE.BufferAttribute(galx.gpos, 3));
+  geo.setAttribute('aSCol', new THREE.BufferAttribute(galx.scol, 3));
+  geo.setAttribute('aRad', new THREE.BufferAttribute(galx.rad, 1));
   geo.setAttribute('aCol', new THREE.BufferAttribute(galx.col, 3));
   geo.setAttribute('aSize', new THREE.BufferAttribute(galx.siz, 1));
   geo.setAttribute('aStar', new THREE.BufferAttribute(galx.ssz, 1));
@@ -6886,13 +6976,23 @@ function initGalaxyStars() {
   galx.pts.renderOrder = -5;             // behind every solid body in the scene
   scene.add(galx.pts);
   galx.stars = new THREE.Points(geo, new THREE.ShaderMaterial({
-    uniforms: { uDpr: { value: VIEW.dpr } },
+    uniforms: { uDpr: { value: VIEW.dpr }, uScale: { value: 1 } },
     vertexShader: GAL_STAR_VERT, fragmentShader: GAL_STAR_FRAG,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
   }));
   galx.stars.frustumCulled = false;
   galx.stars.renderOrder = -4;
   scene.add(galx.stars);
+
+  const sm = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 40, 28), new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: GAL_SPHERE_VERT, fragmentShader: GAL_SPHERE_FRAG
+  }), GAL_SPHERES);
+  sm.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(GAL_SPHERES * 3), 3);
+  sm.count = 0;
+  sm.frustumCulled = false;
+  scene.add(sm);
+  galx.mesh = sm;
 }
 
 /**
@@ -7004,8 +7104,23 @@ function seedGalaxyStars(b) {
 
     galx.col[k3] = c[0]; galx.col[k3 + 1] = c[1]; galx.col[k3 + 2] = c[2];
     galx.siz[k] = s;
-    // the star's own size in pixels: mostly faint pinpricks, a few bright ones
-    galx.ssz[k] = bulge ? 1.0 + Math.pow(rng(), 2) * 1.3 : 0.9 + Math.pow(rng(), 2.4) * 1.9;
+    // What kind of star this actually is.
+    const roll = rng();
+    let kind;
+    if (bulge) kind = roll < 0.55 ? 0 : roll < 0.85 ? 1 : 4;
+    else if (roll < 0.45) kind = 0;
+    else if (roll < 0.78) kind = 1;
+    else if (roll < 0.92) kind = c[2] > c[0] && rng() < 0.7 ? 3 : 2;   // blue giants on the young arms
+    else kind = 4;
+    const st8 = GAL_TYPES[kind];
+    const T = lerp(st8.T[0], st8.T[1], rng());
+    const sc = kelvinToRGB(T);
+    galx.kind[k] = kind;
+    galx.temp[k] = T;
+    galx.rad[k] = lerp(st8.R[0], st8.R[1], Math.pow(rng(), 1.5)) * R_SUN * R_EARTH;
+    galx.scol[k3] = sc[0] / 255; galx.scol[k3 + 1] = sc[1] / 255; galx.scol[k3 + 2] = sc[2] / 255;
+    // its size as a point of light: mostly faint pinpricks, a few bright ones
+    galx.ssz[k] = lerp(st8.px[0], st8.px[1], rng());
     galx.own[k] = b.id;
     galx.live++;
   }
@@ -7143,6 +7258,7 @@ function mergeGalaxies(a, b) {
  * the scale is compressed.
  */
 const GAL_PERIOD = 4000;      // days for one turn at the disc edge
+const GAL_R_MW = 50000 * 9460.73;   // the Milky Way's disc, ~50,000 light-years, in Gm
 
 /** The core mass a galaxy of this size needs for that rotation period. */
 const galMassFor = (R) =>
@@ -7152,14 +7268,9 @@ function buildGalaxy(b, grp) {
   const rng = mulberry32(b.seed);
   b.galArms = b.galArms || (rng() < 0.62 ? 2 : 4);
   b.galSpin = b.galSpin || (rng() < 0.5 ? 1 : -1);
-  // How wide it was asked to be on screen when it was placed. Once it exists
-  // that is history: from here on it has a real size in real units.
-  if (b.galWide == null) b.galWide = lerp(settings.galMinPx, settings.galMaxPx, rng());
   if (b.galR == null) {
-    // The pixel range picks how much of the screen it fills when dropped, with
-    // a floor so that placing one while zoomed in on a moon still gives you a
-    // galaxy rather than a two-AU curiosity.
-    b.galR = Math.max(b.galWide * 0.5 * worldPerPixel(view.dist), 900);
+    // Real size: somewhere between half and one and a half Milky Ways.
+    b.galR = GAL_R_MW * lerp(0.5, 1.5, rng());
     b.m = galMassFor(b.galR);
   }
   if (!b.galAxis) {
@@ -7195,17 +7306,91 @@ function updateGalaxies() {
   }
   if (galx.pts) {
     // world radius -> pixels at unit distance
+    const S = VIEW.h * VIEW.dpr / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
     galx.stars.material.uniforms.uDpr.value = VIEW.dpr;
-    galx.pts.material.uniforms.uScale.value =
-      VIEW.h * VIEW.dpr / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+    galx.pts.material.uniforms.uScale.value = S;
+    galx.stars.material.uniforms.uScale.value = S;
+    if (galx.live > 0) placeGalaxyStars(S);
+    else if (galx.mesh) galx.mesh.count = 0;
     if (galx.dirty) {
-      galx.geo.attributes.position.needsUpdate = true;
+      galx.geo.attributes.aSCol.needsUpdate = true;
+      galx.geo.attributes.aRad.needsUpdate = true;
       galx.geo.attributes.aCol.needsUpdate = true;
       galx.geo.attributes.aSize.needsUpdate = true;
       galx.geo.attributes.aStar.needsUpdate = true;
       galx.dirty = false;
     }
   }
+}
+
+/**
+ * Hand the GPU every star relative to the camera, and give the few close
+ * enough to show a disc a real sphere. Run every frame: the camera and the
+ * stars both move, and 34,000 subtractions is nothing.
+ */
+const _gm = new THREE.Matrix4(), _gq = new THREE.Quaternion(), _gs = new THREE.Vector3(), _gt = new THREE.Vector3();
+const _gNear = [];
+function placeGalaxyStars(S) {
+  const o = galx.origin.copy(camera.position);
+  const pos = galx.pos, gp = galx.gpos, own = galx.own, rad = galx.rad;
+  _gNear.length = 0;
+  for (let k = 0; k < GAL_MAX; k++) {
+    if (own[k] < 0) continue;
+    const k3 = k * 3;
+    const x = pos[k3] - o.x, y = pos[k3 + 1] - o.y, z = pos[k3 + 2] - o.z;
+    gp[k3] = x; gp[k3 + 1] = y; gp[k3 + 2] = z;
+    const px = rad[k] * S / Math.max(Math.sqrt(x * x + y * y + z * z), 1e-9);
+    if (px > 0.8) _gNear.push(px, k);
+  }
+  galx.geo.attributes.position.needsUpdate = true;
+  galx.pts.position.copy(o);
+  galx.stars.position.copy(o);
+
+  const sm = galx.mesh;
+  if (!sm) return;
+  sm.position.copy(o);
+  // The biggest-looking ones win the spheres.
+  const idx = [];
+  for (let i = 0; i < _gNear.length; i += 2) idx.push(i);
+  if (idx.length > GAL_SPHERES) idx.sort((a, b) => _gNear[b] - _gNear[a]).length = GAL_SPHERES;
+  let n = 0;
+  for (const i of idx) {
+    const k = _gNear[i + 1], k3 = k * 3;
+    _gt.set(gp[k3], gp[k3 + 1], gp[k3 + 2]);
+    _gs.setScalar(rad[k]);
+    sm.setMatrixAt(n, _gm.compose(_gt, _gq, _gs));
+    sm.instanceColor.setXYZ(n, galx.scol[k3], galx.scol[k3 + 1], galx.scol[k3 + 2]);
+    n++;
+  }
+  sm.count = n;
+  sm.instanceMatrix.needsUpdate = true;
+  sm.instanceColor.needsUpdate = true;
+  sm.material.uniforms.uTime.value = performance.now() / 1000;
+}
+
+/** The galaxy star nearest a click, or -1. */
+function pickGalaxyStar(sx, sy) {
+  if (!galx.own || galx.live === 0) return -1;
+  let best = -1, bestD = 9;
+  for (let k = 0; k < GAL_MAX; k++) {
+    if (galx.own[k] < 0) continue;
+    const k3 = k * 3;
+    _lp.set(galx.pos[k3], galx.pos[k3 + 1], galx.pos[k3 + 2]).project(camera);
+    if (_lp.z < -1 || _lp.z > 1) continue;
+    const d = Math.hypot((_lp.x + 1) * 0.5 * VIEW.w - sx, (1 - _lp.y) * 0.5 * VIEW.h - sy);
+    if (d < bestD) { bestD = d; best = k; }
+  }
+  return best;
+}
+
+/** Lock the camera on to one galaxy star, so you can scroll in and visit it. */
+function focusGalaxyStar(k) {
+  galx.focus = k;
+  sim.follow = null;
+  const ty = GAL_TYPES[galx.kind[k]];
+  const rs = galx.rad[k] / (R_SUN * R_EARTH);
+  toast('Locked on to a ' + ty.name + ' — ' + rs.toPrecision(2) + ' R☉, ' +
+    Math.round(galx.temp[k]).toLocaleString() + ' K. Scroll in to visit it.');
 }
 
 /* ================================================== protoplanetary discs   */
@@ -7714,7 +7899,7 @@ const P_CULL = 1.4e5;         // Gm — debris past this has left the system
 const parts = {
   pos: null, vel: null, m: null, size: null, bsize: null, hot: null, crate: null,
   col: null, warm: null, cool: null, on: null, src: null,
-  free: [], live: 0, geo: null, pts: null, stars: null, ssz: null, dirty: false
+  free: [], live: 0, geo: null, pts: null, dirty: false
 };
 
 /* Impact ejecta cools in a day or two. Supernova ejecta is radioactive and stays
@@ -8613,13 +8798,16 @@ function applyCamera() {
   camera.lookAt(view.target);
   // keep the near plane sensible across nine orders of magnitude
   camera.near = Math.max(1e-6, view.dist * 1e-4);
-  camera.far = Math.max(view.dist * 12, SKY_R * 2.2);
+  // Real-sized galaxies are ~10^9 Gm across: from inside one, looking at a
+  // single star, the rest of it still has to be in range.
+  camera.far = Math.max(view.dist * 12, SKY_R * 2.2, galx.live > 0 ? 2e11 : 0);
   camera.updateProjectionMatrix();
   if (skyGroup) skyGroup.position.copy(camera.position);
 }
 
 function frameOn(b, margin) {
   if (!b) return;
+  galx.focus = -1;
   if (land.b) leaveSurface(true);
   view.target.copy(b.p);
   // A galaxy's bulge is a speck next to its disc; framing on the bulge would
@@ -8896,7 +9084,7 @@ function applyLanded(realDt) {
   _lLook.copy(_lFwd).multiplyScalar(Math.cos(land.pitch)).addScaledVector(up, Math.sin(land.pitch));
   camera.lookAt(_lEye.clone().add(_lLook));
   camera.near = Math.max(1e-9, h * 0.05);
-  camera.far = SKY_R * 2.2;
+  camera.far = Math.max(SKY_R * 2.2, galx.live > 0 ? 2e11 : 0);
   camera.updateProjectionMatrix();
   if (skyGroup) skyGroup.position.copy(_lEye);
   // Keep the orbit camera parked on this world, so taking off and every
@@ -9462,6 +9650,7 @@ function bindInput() {
     } else if (input.mode === 'pan') {
       panBy(dx, dy);
       sim.follow = null;
+      galx.focus = -1;
     } else if (input.mode === 'place') {
       drawAim();
     }
@@ -9475,7 +9664,10 @@ function bindInput() {
       dropArmed();
       hideAim();
     } else if (input.mode === 'orbit' && !input.moved) {
-      select(pickBody(e.clientX, e.clientY));
+      const hit = pickBody(e.clientX, e.clientY);
+      const star = hit ? -1 : pickGalaxyStar(e.clientX, e.clientY);
+      select(hit);
+      if (star >= 0) focusGalaxyStar(star);
     }
     if (input.pointers.size === 0) input.mode = null;
     else if (input.pointers.size === 1) {
@@ -9554,6 +9746,8 @@ function dropArmed() {
   const vel = velocityFromDrag();
   const b = makeBody(input.armed, input.placePos, vel);
   select(b);
+  // A galaxy is tens of thousands of light-years wide: pull back to see it.
+  if (b.kind === 'gal') frameOn(b, 2.6);
   if (!sim.running && sim.bodies.length > 1) toast('Press ▶ to start time');
 }
 
@@ -10224,7 +10418,7 @@ function renderGalaxyInspector(b) {
     '" step="0.01" value="' + lm.toFixed(3) + '"></div>' +
     '<p class="an-note">Everything that holds this galaxy together. A real one weighs about a trillion Suns — drag it all the way up and see what that does to the stars.</p>' +
     '<div class="an-field"><label>Disc radius <b id="is-gwv"></b></label>' +
-    '<input type="range" id="is-gwide" min="1" max="7" step="0.01" value="' + lr.toFixed(3) + '"></div>' +
+    '<input type="range" id="is-gwide" min="6" max="9.8" step="0.01" value="' + lr.toFixed(3) + '"></div>' +
     '<p class="an-note">Changing this rebuilds the disc from scratch, so anything already happening to it is lost.</p>' +
     '<div class="an-row"><button id="is-reseed">REBUILD THE DISC</button></div>' +
     '<div class="an-row"><button id="is-follow">' + (sim.follow === b ? 'UNFOLLOW' : 'FOLLOW') + '</button><button id="is-zoom">ZOOM TO</button></div>' +
@@ -10660,9 +10854,7 @@ function openSettings() {
     '<p class="an-note">How long a dead world takes to be given oceans, weather and a sky — and it only holds on to them while it stays heavy enough and warm enough. Dying back happens twice as fast.</p>' +
 
     '<div class="an-sec">GALAXIES</div>' +
-    '<p class="an-note">A galaxy here is <b>six thousand real stars</b>, each one orbiting under the gravity of every galaxy core in the scene — which is what lets two of them genuinely collide. A real galaxy is millions of times wider than this sandbox can hold, so a new one is built at whatever size fills this much of your screen when you drop it. After that it has a real size in real units, and everything that happens to it is real physics.</p>' +
-    sld('st-galmin', 'Smallest a new galaxy', 200, 3000, 50, settings.galMinPx) +
-    sld('st-galmax', 'Largest a new galaxy', 400, 5000, 50, settings.galMaxPx) +
+    '<p class="an-note">A galaxy here is <b>eleven thousand real stars</b> — red dwarfs, Sun-like stars, blue giants and red giants — each one orbiting under the gravity of every galaxy core in the scene, which is what lets two of them genuinely collide. New galaxies are <b>real-sized</b>: between half and one and a half times the Milky Way, tens of thousands of light-years across. Click any star in one to lock on to it, then scroll in until it is a ball of fire.</p>' +
 
     '<div class="an-sec">SUPERNOVAE</div>' +
     '<p class="an-note">Every number below starts at its real measured value. Change whatever you like — <b>RESET</b> puts the universe back the way it actually is.</p>' +
@@ -10767,15 +10959,6 @@ function openSettings() {
   bindSld('st-terra', (v) => v < 1 ? Math.round(v * 365.25) + ' days' : v.toFixed(2) + ' years',
     (v) => { settings.terraYears = v; });
 
-  // The two galaxy limits must not be able to cross each other.
-  const galLo = bindSld('st-galmin', (v) => Math.round(v) + ' px', (v) => {
-    settings.galMinPx = v;
-    if (settings.galMaxPx < v) { settings.galMaxPx = v; galHi.set(v); }
-  });
-  const galHi = bindSld('st-galmax', (v) => Math.round(v) + ' px', (v) => {
-    settings.galMaxPx = v;
-    if (settings.galMinPx > v) { settings.galMinPx = v; galLo.set(v); }
-  });
 
   /* ------------------------------------------------------------ supernovae */
 
@@ -11252,11 +11435,11 @@ const PRESETS = [
     }
   },
   {
-    name: 'Galaxy', desc: 'A spiral galaxy — six thousand stars, each one really orbiting. Its heavy middle pulls on everything nearby.',
-    dist: 9000,
+    name: 'Galaxy', desc: 'A real-sized spiral galaxy, 100,000 light-years across — eleven thousand stars, each one really orbiting. Click any star to lock on, then scroll in to visit it.',
+    dist: GAL_R_MW * 2.8,
     build() {
       const g = makeBody('galaxy', new V3(), new V3(), { name: 'Andromeda' });
-      g.galR = 3200;
+      g.galR = GAL_R_MW;
       g.m = galMassFor(g.galR);
       g.galAxis = new V3(0, 1, 0);
       seedGalaxyStars(g);
@@ -11267,12 +11450,12 @@ const PRESETS = [
   },
   {
     name: 'Galaxy Collision', desc: 'Two spirals on a grazing pass. Watch the tidal tails whip out behind them, then the orbit decay, then the merger. This is what the Milky Way and Andromeda are going to do.',
-    dist: 26000,
+    dist: GAL_R_MW * 8,
     build() {
       // A prograde grazing encounter — the arrangement Toomre & Toomre used to
       // reproduce the Antennae, and the one that throws the longest tails. The
       // two discs are tilted differently so the tails are not mirror images.
-      const R = 3200, sep = R * 4.4;
+      const R = GAL_R_MW, sep = R * 4.4;
       const a = makeBody('galaxy', new V3(-sep / 2, 0, 0), new V3(), { name: 'Milky Way' });
       const b = makeBody('galaxy', new V3(sep / 2, R * 0.28, 0), new V3(), { name: 'Andromeda' });
       a.galR = R; b.galR = R * 0.88;
@@ -11693,8 +11876,13 @@ function loop(now) {
   const simDt = sim.time - t0;
 
   if (sim.follow) {
+    galx.focus = -1;
     if (sim.follow.alive) view.target.copy(sim.follow.p);
     else { sim.follow = null; renderInspector(); }
+  } else if (galx.focus >= 0) {
+    const k = galx.focus;
+    if (galx.own[k] < 0) galx.focus = -1;
+    else view.target.set(galx.pos[k * 3], galx.pos[k * 3 + 1], galx.pos[k * 3 + 2]);
   }
   // On the ground the camera is placed after the world has been turned and
   // moved this frame, or the horizon would judder a frame behind it.
