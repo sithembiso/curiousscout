@@ -1457,6 +1457,51 @@
     dayEl.textContent=night?'🌙 Night':dusk>0.35?(t<0.25||t>0.9?'🌅 Sunrise':'🌇 Sunset'):'☀️ Day';
   }
 
+  // ===== THE WATCHER =====
+  // Out past 999,999 blocks from spawn, something starts standing in the
+  // distance — a tall black figure, just off to one side of where you're
+  // looking, always facing you. Take a single step and it's gone. Turning
+  // your head is fine; moving is not. It's unlit and ignores the fog, so it
+  // stays a crisp silhouette however far away it is.
+  const WATCHER_DIST=999999;
+  const watcher=(function(){
+    const g=new THREE.Group();
+    const black=new THREE.MeshBasicMaterial({color:0x000000,fog:false});
+    const white=new THREE.MeshBasicMaterial({color:0xffffff,fog:false});
+    const part=(w,h,d,x,y,z,mat)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat||black);m.position.set(x,y,z);g.add(m);};
+    part(0.18,1.3,0.18,-0.13,0.65,0); part(0.18,1.3,0.18,0.13,0.65,0);      // legs
+    part(0.5,0.9,0.25,0,1.75,0);                                             // body
+    part(0.14,1.45,0.14,-0.34,1.5,0); part(0.14,1.45,0.14,0.34,1.5,0);      // arms, hanging too long
+    part(0.42,0.42,0.42,0,2.41,0);                                           // head
+    part(0.07,0.04,0.02,-0.1,2.45,0.215,white); part(0.07,0.04,0.02,0.1,2.45,0.215,white);   // eyes
+    g.visible=false;
+    scene.add(g);
+    return g;
+  })();
+  let watcherT=10, watcherAt=null;   // countdown to its next appearance; where you stood when it came
+  function updateWatcher(dt){
+    const far=currentRealm==='overworld'&&!gameOver&&Math.hypot(player.pos.x,player.pos.z)>=WATCHER_DIST;
+    if(!far){watcher.visible=false;watcherAt=null;return;}
+    if(watcher.visible){
+      if(player.pos.distanceTo(watcherAt)>0.15){watcher.visible=false;watcherAt=null;watcherT=15+Math.random()*25;}
+      return;
+    }
+    watcherT-=dt;
+    if(watcherT>0)return;
+    // Only while you're standing still — otherwise it would be gone before you saw it
+    if((!player.onGround&&!player.flying)||Math.abs(player.vel.x)+Math.abs(player.vel.z)>0.01){watcherT=0.5;return;}
+    // Somewhere ahead and a little to the side, 45-60 blocks out, on the highest ground there
+    const a=player.yaw+(Math.random()<0.5?-1:1)*(0.25+Math.random()*0.35), d=45+Math.random()*15;
+    const x=Math.floor(player.pos.x-Math.sin(a)*d), z=Math.floor(player.pos.z-Math.cos(a)*d);
+    let y=-1;
+    for(let yy=WORLD_HEIGHT-1;yy>=0;yy--)if(isSolid(x,yy,z)){y=yy+1;break;}
+    if(y<0||y>WORLD_HEIGHT-3){watcherT=1;return;}
+    watcher.position.set(x+0.5,y,z+0.5);
+    watcher.lookAt(player.pos.x,y,player.pos.z);
+    watcher.visible=true;
+    watcherAt=player.pos.clone();
+  }
+
   // ===== ZOMBIES =====
   // They spawn on the surface around you at night, shamble toward you, hop up
   // one-block steps, and burn away once the sun is up. Fists do 1 damage, swords more.
@@ -2879,6 +2924,7 @@
     }
 
     updateSky(dt);
+    updateWatcher(dt);
     spawnZombies(dt);
     // Natural regeneration: a heart back every 15s once you've avoided damage for that long
     if(!isCreative()&&!gameOver&&playerHearts>0&&playerHearts<3&&performance.now()-lastHurt>15000){
