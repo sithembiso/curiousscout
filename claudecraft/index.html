@@ -53,10 +53,11 @@
     </div>
     <div style="font-size: 11px; opacity: 0.75; margin-bottom: 12px;">
       <b>Keyboard:</b> WASD · C jump · click break/place · 1-9 · E craft · P pause<br>
+      <b>Creative:</b> double-tap C (or ⬆️) to fly · C up · Shift down<br>
       <b>Mobile:</b> joystick · tap-drag to look · ⛏️🧱⬆️🛠️ buttons
     </div>
     <div id="cc-ver-badge" style="font-size:11px;color:#4ade80;background:rgba(74,222,128,0.15);border:1px solid #4ade80;padding:4px 10px;border-radius:6px;margin-bottom:10px;font-weight:600;">🎮 Playing version 0.6 — Demons & Angels</div>
-    <button id="cc-play" style="background: linear-gradient(135deg, #4ade80, #16a34a); color: #042c1f; border: none; padding: 14px 36px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer; margin-bottom: 12px;">Begin the ultimate quest!</button>
+    <button id="cc-play" style="background: linear-gradient(135deg, #4ade80, #16a34a); color: #042c1f; border: none; padding: 14px 36px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer; margin-bottom: 12px;">🌍 Play — choose a world</button>
     <div style="display: flex; gap: 8px;">
       <button id="cc-show-release" style="background: transparent; color: #4ade80; border: 1px solid #4ade80; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">📋 What's New in 0.6</button>
       <button id="cc-settings-btn" style="background: transparent; color: #4ade80; border: 1px solid #4ade80; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">⚙️ Settings</button>
@@ -80,12 +81,38 @@
     </div>
   </div>
 
+  <!-- ===== WORLD SELECT ===== -->
+  <div id="cc-worlds" style="position: absolute; inset: 0; background: rgba(10, 20, 35, 0.94); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 25; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #1a2a44, #0f1a2e); color: white; max-width: 560px; width: 100%; border-radius: 16px; padding: 22px; box-shadow: 0 8px 40px rgba(0,0,0,0.5); max-height: 92%; overflow-y: auto; border: 2px solid #5aa8ff;">
+      <div style="text-align: center; margin-bottom: 14px;">
+        <div style="font-size: 32px;">🌍</div>
+        <div style="font-size: 22px; font-weight: 700; color: #8bc4ff;">Select World</div>
+      </div>
+      <div id="cc-world-list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px;"></div>
+
+      <div style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; padding: 14px; margin-bottom: 14px;">
+        <div style="font-size: 14px; font-weight: 700; color: #8bc4ff; margin-bottom: 10px;">✨ Create New World</div>
+        <label style="display:block; font-size: 11px; opacity: 0.8; margin-bottom: 3px;">World name</label>
+        <input id="cc-new-name" maxlength="28" placeholder="New World" style="width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.35); color: white; font-size: 14px; margin-bottom: 10px; font-family: inherit;">
+        <label style="display:block; font-size: 11px; opacity: 0.8; margin-bottom: 3px;">Seed — any number or word. Leave blank for a random one.</label>
+        <input id="cc-new-seed" maxlength="40" placeholder="Random" style="width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.35); color: white; font-size: 14px; margin-bottom: 12px; font-family: inherit;">
+        <div style="font-size: 11px; opacity: 0.8; margin-bottom: 5px;">Game mode</div>
+        <div id="cc-mode-pick" style="display: flex; gap: 6px; margin-bottom: 8px;"></div>
+        <div id="cc-mode-desc" style="font-size: 12px; opacity: 0.85; line-height: 1.5; min-height: 36px; margin-bottom: 12px;"></div>
+        <button id="cc-create" style="display: block; width: 100%; background: linear-gradient(135deg, #4ade80, #16a34a); color: #042c1f; border: none; padding: 12px; font-size: 15px; font-weight: 700; border-radius: 10px; cursor: pointer;">Create &amp; Play ▶</button>
+      </div>
+      <button id="cc-worlds-close" style="display: block; width: 100%; background: transparent; color: #8bc4ff; border: 1px solid #5aa8ff; padding: 10px; font-size: 14px; font-weight: 600; border-radius: 10px; cursor: pointer;">Back to menu</button>
+    </div>
+  </div>
+
   <div id="cc-hud" style="position: absolute; inset: 0; pointer-events: none; z-index: 5; display: none; color: white; text-shadow: 1px 1px 2px rgba(0,0,0,0.8);">
     <div style="position: absolute; top: 8px; left: 8px; font-size: 12px; line-height: 1.4;">
       <div id="cc-timer" style="font-size: 20px; font-weight: 500; background: rgba(0,0,0,0.55); padding: 3px 8px; border-radius: 6px; display: inline-block; margin-bottom: 4px;">⏰ 30:00</div>
       <div id="cc-realm" style="font-size: 11px; padding: 2px 6px; background: rgba(106, 190, 48, 0.85); color: #042c1f; border-radius: 4px; display: inline-block; margin-left: 4px; font-weight: 600;">OVERWORLD</div>
+      <div id="cc-mode" style="font-size: 11px; padding: 2px 6px; background: rgba(0,0,0,0.55); border-radius: 4px; display: inline-block; margin-left: 4px; font-weight: 600;"></div>
       <div id="cc-hearts" style="margin-top: 3px; font-size: 14px;">❤️❤️❤️</div>
       <div id="cc-pos" style="font-size: 11px;">x: 0  y: 0  z: 0</div>
+      <div id="cc-seed" style="font-size: 10px; opacity: 0.75;"></div>
       <div id="cc-near" style="margin-top: 3px; padding: 2px 5px; background: rgba(74, 222, 128, 0.8); color: #042c1f; border-radius: 4px; display: none; font-weight: 500; font-size: 11px;">✓ Near crafting table</div>
       <div id="cc-portal-hint" style="margin-top: 3px; padding: 2px 5px; background: rgba(196, 168, 255, 0.85); color: #1a1033; border-radius: 4px; display: none; font-weight: 500; font-size: 11px;">✨ Aether portal ready → place diamond!</div>
       <div id="cc-fireportal-hint" style="margin-top: 3px; padding: 2px 5px; background: rgba(255, 90, 50, 0.9); color: #fff; border-radius: 4px; display: none; font-weight: 500; font-size: 11px;">🔥 Fire portal ready → place diamond!</div>
@@ -134,6 +161,7 @@
     </div>
     <div style="position: absolute; right: 10px; bottom: 14px; display: flex; flex-direction: column; gap: 6px; pointer-events: auto;">
       <div style="display: flex; gap: 6px; justify-content: flex-end;">
+        <button id="cc-down-btn" style="display: none; width: 56px; height: 56px; border-radius: 50%; background: rgba(80,140,255,0.7); border: 2px solid rgba(255,255,255,0.6); color: white; font-size: 22px; font-weight: 600; cursor: pointer; touch-action: none;">⬇️</button>
         <button id="cc-jump-btn" style="width: 56px; height: 56px; border-radius: 50%; background: rgba(80,140,255,0.7); border: 2px solid rgba(255,255,255,0.6); color: white; font-size: 22px; font-weight: 600; cursor: pointer; touch-action: none;">⬆️</button>
         <button id="cc-craft-btn" style="width: 56px; height: 56px; border-radius: 50%; background: rgba(180,130,60,0.85); border: 2px solid rgba(255,255,255,0.6); color: white; font-size: 22px; cursor: pointer; touch-action: none;">🛠️</button>
       </div>
@@ -151,6 +179,7 @@
     <div style="font-size: 28px; font-weight: 500; margin-bottom: 4px;">Paused</div>
     <div style="font-size: 13px; opacity: 0.8; margin-bottom: 22px;">Take a breather!</div>
     <button id="cc-resume-btn" style="background: #4ade80; color: #042c1f; border: none; padding: 12px 32px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer;">▶ Resume</button>
+    <button id="cc-quit-btn" style="margin-top: 10px; background: transparent; color: #8bc4ff; border: 1px solid #5aa8ff; padding: 8px 20px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer;">🌍 Save &amp; quit to worlds</button>
   </div>
 
   <div id="cc-craft" style="position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 8; padding: 16px;">
@@ -409,12 +438,41 @@
   let blocks=overworld;
   function getHeight(){if(currentRealm==='aether')return AETHER_HEIGHT;if(currentRealm==='underworld')return UNDER_HEIGHT;if(currentRealm==='milkhoney')return MH_HEIGHT;return WORLD_HEIGHT;}
   function getBlock(x,y,z){if(y<0||y>=getHeight())return B.AIR;return blocks.get(x,y,z);}
-  function setBlock(x,y,z,v){blocks.set(x,y,z,v);}
+  // Every change made during play, "realm:x,y,z" -> block. Saving a world stores
+  // this log plus the seed; loading regenerates from the seed and replays it.
+  const edits=new Map();
+  function setBlock(x,y,z,v){blocks.set(x,y,z,v);edits.set(currentRealm+':'+key(x,y,z),v);}
+  let gameMode='survival';
+  const isCreative=()=>gameMode==='creative', isHardcore=()=>gameMode==='hardcore';
   function setBlockIn(m,x,y,z,v){m.set(x,y,z,v);}
   function getBlockIn(m,x,y,z){return m.get(x,y,z);}
   function noise(x,z){return Math.sin(x*0.13+z*0.17)*0.5+Math.cos(x*0.07-z*0.11)*0.5+Math.sin(x*0.31+z*0.27)*0.3;}
 
   let dungeonHeartPos=null, aetherBoss=null, demonBoss=null, guardianPos=null, pillar=null;
+
+  // ===== SEEDS =====
+  // A seed fixes the whole universe: rand() drives every random choice made while
+  // generating the four realms, and SEED_OX/OZ/ORE shift the overworld's terrain,
+  // trees and ores (the Far Lands stay pinned to the real 1000-block line).
+  function mulberry32(a){return function(){a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  let worldSeed=0, rand=Math.random, SEED_OX=0, SEED_OZ=0, SEED_ORE=0;
+  function seedWorld(seed){
+    worldSeed=seed|0;
+    rand=mulberry32(worldSeed);
+    SEED_OX=Math.floor(rand()*20000)-10000;
+    SEED_OZ=Math.floor(rand()*20000)-10000;
+    SEED_ORE=rand()*1000;
+  }
+  // Numbers are used as-is; any other text is hashed, so "dragons" is a seed too
+  function parseSeed(text){
+    const t=String(text||'').trim();
+    if(!t)return Math.floor(Math.random()*4294967296)-2147483648;
+    if(/^-?\d+$/.test(t))return Number(t)|0;
+    let h=2166136261;
+    for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,16777619);}
+    return h|0;
+  }
+  seedWorld(parseSeed(''));
   let mhSpawn={x:0,y:12,z:0};
   const pets=[];  // {type, x, y, z, tamed, vx, vz} — declared early so world gen can populate
   const entities=[];  // {kind:'demon'|'angel', x,y,z, hp, cooldown, vx,vz, mesh}
@@ -424,9 +482,9 @@
   // Everything here is a pure function of x,z so a chunk comes out the same
   // whenever it is generated. The long, gentle sine adds rolling hills so the
   // endless terrain doesn't repeat the same bumps forever.
-  const heightAt=(x,z)=>Math.floor(8+noise(x,z)*3+Math.sin(x*0.021+1.3)*Math.cos(z*0.017)*3);
+  const heightAt=(x,z)=>{const sx=x+SEED_OX, sz=z+SEED_OZ;return Math.floor(8+noise(sx,sz)*3+Math.sin(sx*0.021+1.3)*Math.cos(sz*0.017)*3);};
   const isFarLands=(x,z)=>Math.abs(x)>=FAR_LANDS||Math.abs(z)>=FAR_LANDS;
-  const treeAt=(x,z)=>!isFarLands(x,z)&&rnd3(x,z,7)<0.02;
+  const treeAt=(x,z)=>!isFarLands(x,z)&&rnd3(x+SEED_OX,z+SEED_OZ,7)<0.02;
 
   // The Far Lands: the generator "overflows" into towering walls of stacked,
   // holey strata. Like the real thing they are stretched out along the axis you
@@ -464,7 +522,7 @@
       const h=heightAt(x,z);
       for(let y=0;y<=h;y++)a[idx(x,y,z)]=y===0?B.BEDROCK:y===h?B.GRASS:y>h-3?B.DIRT:B.STONE;
       for(let y=1;y<h-2;y++){
-        const r=Math.abs(Math.sin(x*7.3+y*3.1+z*1.7)*9999)%1;
+        const r=Math.abs(Math.sin(x*7.3+y*3.1+z*1.7+SEED_ORE)*9999)%1;
         if(r<0.008)a[idx(x,y,z)]=B.DIAMOND;
         else if(r<0.035)a[idx(x,y,z)]=B.GOLD;
         else if(r<0.075)a[idx(x,y,z)]=B.REDSTONE;
@@ -476,7 +534,7 @@
     // All trunks go in before any leaves, so the result doesn't depend on chunk order.
     const roots=[];
     for(let tx=x0-2;tx<x0+CHUNK+2;tx++)for(let tz=z0-2;tz<z0+CHUNK+2;tz++){
-      if(treeAt(tx,tz))roots.push([tx,heightAt(tx,tz)+1,tz,4+Math.floor(rnd3(tx,tz,8)*2)]);
+      if(treeAt(tx,tz))roots.push([tx,heightAt(tx,tz)+1,tz,4+Math.floor(rnd3(tx+SEED_OX,tz+SEED_OZ,8)*2)]);
     }
     for(const [tx,by,tz,th] of roots)for(let y=0;y<th;y++)if(inside(tx,by+y,tz))a[idx(tx,by+y,tz)]=B.WOOD;
     for(const [tx,by,tz,th] of roots){
@@ -506,8 +564,8 @@
 
   function generateOverworld(){
     for(let attempt=0;attempt<100&&!pillar;attempt++){
-      const px=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.8);
-      const pz=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.8);
+      const px=Math.floor((rand()-0.5)*WORLD_SIZE*0.8);
+      const pz=Math.floor((rand()-0.5)*WORLD_SIZE*0.8);
       if(Math.abs(px)<15&&Math.abs(pz)<15)continue;
       pillar={x:px,y:heightAt(px,pz)+1,z:pz};
     }
@@ -525,7 +583,7 @@
       {cx:8,cz:20,r:5,type:'crystal'},{cx:0,cz:28,r:9,type:'boss'}
     ];
     islands.forEach(island=>{
-      const baseY=8+Math.floor((Math.random()-0.5)*3);
+      const baseY=8+Math.floor((rand()-0.5)*3);
       for(let dx=-island.r;dx<=island.r;dx++)for(let dz=-island.r;dz<=island.r;dz++){
         const dist=Math.sqrt(dx*dx+dz*dz);
         if(dist>island.r)continue;
@@ -535,26 +593,26 @@
           const y=baseY-dy;
           let block;
           if(island.type==='cloud')block=(dy===0)?B.AETHER_GRASS:B.CLOUD;
-          else if(island.type==='crystal')block=(dy===0)?((Math.random()<0.3)?B.CRYSTAL:B.AETHER_GRASS):B.CLOUD;
-          else if(island.type==='ruin')block=(dy===0)?((Math.random()<0.4)?B.RUINSTONE:B.AETHER_GRASS):B.RUINSTONE;
+          else if(island.type==='crystal')block=(dy===0)?((rand()<0.3)?B.CRYSTAL:B.AETHER_GRASS):B.CLOUD;
+          else if(island.type==='ruin')block=(dy===0)?((rand()<0.4)?B.RUINSTONE:B.AETHER_GRASS):B.RUINSTONE;
           else if(island.type==='boss')block=(dy===0)?B.RUINSTONE:B.CLOUD;
           setBlockIn(aether,x,y,z,block);
         }
-        if(island.type!=='cloud'&&island.type!=='boss'&&dist<island.r-1&&Math.random()<0.04)setBlockIn(aether,x,baseY-1,z,B.AETHERSTONE);
+        if(island.type!=='cloud'&&island.type!=='boss'&&dist<island.r-1&&rand()<0.04)setBlockIn(aether,x,baseY-1,z,B.AETHERSTONE);
       }
       if(island.type==='crystal'){
         for(let i=0;i<3;i++){
-          const ox=island.cx+Math.floor((Math.random()-0.5)*island.r);
-          const oz=island.cz+Math.floor((Math.random()-0.5)*island.r);
-          for(let h=1;h<=2+Math.floor(Math.random()*2);h++){
+          const ox=island.cx+Math.floor((rand()-0.5)*island.r);
+          const oz=island.cz+Math.floor((rand()-0.5)*island.r);
+          for(let h=1;h<=2+Math.floor(rand()*2);h++){
             if(getBlockIn(aether,ox,baseY+h-1,oz)===B.AIR&&getBlockIn(aether,ox,baseY,oz)!==B.AIR)setBlockIn(aether,ox,baseY+h,oz,B.CRYSTAL);
           }
         }
       } else if(island.type==='ruin'){
         for(let i=0;i<2;i++){
-          const ox=island.cx+Math.floor((Math.random()-0.5)*island.r);
-          const oz=island.cz+Math.floor((Math.random()-0.5)*island.r);
-          const h=2+Math.floor(Math.random()*3);
+          const ox=island.cx+Math.floor((rand()-0.5)*island.r);
+          const oz=island.cz+Math.floor((rand()-0.5)*island.r);
+          const h=2+Math.floor(rand()*3);
           for(let dy=1;dy<=h;dy++){if(getBlockIn(aether,ox,baseY,oz)!==B.AIR)setBlockIn(aether,ox,baseY+dy,oz,B.RUINSTONE);}
         }
       } else if(island.type==='boss'){
@@ -573,7 +631,7 @@
       const angelSpots = [[0,-8],[-15,10],[15,5],[-8,20],[12,-15],[20,25]];
       for (const [ax, az] of angelSpots) {
         // Angels float in the air
-        entities.push({kind:'angel', realm:'aether', x:ax+0.5, y:14, z:az+0.5, hp:99, cooldown:0, vx:0, vz:0, wanderT:0, floatT:Math.random()*Math.PI*2});
+        entities.push({id:entities.length, kind:'angel', realm:'aether', x:ax+0.5, y:14, z:az+0.5, hp:99, cooldown:0, vx:0, vz:0, wanderT:0, floatT:rand()*Math.PI*2});
       }
     }
   }
@@ -588,10 +646,10 @@
       for(let y=floorY;y<=h;y++)setBlockIn(underworld,x,y,z,B.NETHERSTONE);
     }
     for(let i=0;i<8;i++){
-      const lx=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.7);
-      const lz=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.7);
+      const lx=Math.floor((rand()-0.5)*WORLD_SIZE*0.7);
+      const lz=Math.floor((rand()-0.5)*WORLD_SIZE*0.7);
       if(Math.abs(lx)<10&&Math.abs(lz)<10)continue;
-      const lr=4+Math.floor(Math.random()*4);
+      const lr=4+Math.floor(rand()*4);
       for(let dx=-lr;dx<=lr;dx++)for(let dz=-lr;dz<=lr;dz++){
         if(dx*dx+dz*dz>lr*lr)continue;
         const x=lx+dx, z=lz+dz;
@@ -601,8 +659,8 @@
       }
     }
     for(let i=0;i<25;i++){
-      const gx=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.9);
-      const gz=Math.floor((Math.random()-0.5)*WORLD_SIZE*0.9);
+      const gx=Math.floor((rand()-0.5)*WORLD_SIZE*0.9);
+      const gz=Math.floor((rand()-0.5)*WORLD_SIZE*0.9);
       setBlockIn(underworld,gx,ceilY-1,gz,B.GLOW);
     }
     const dx0=0, dz0=0;
@@ -623,8 +681,8 @@
     // Spawn mini demons (0.7+)
     if (FEAT.entities) {
       for (let i = 0; i < 5; i++) {
-        const dx = Math.floor((Math.random()-0.5)*WORLD_SIZE*0.6);
-        const dz = Math.floor((Math.random()-0.5)*WORLD_SIZE*0.6);
+        const dx = Math.floor((rand()-0.5)*WORLD_SIZE*0.6);
+        const dz = Math.floor((rand()-0.5)*WORLD_SIZE*0.6);
         if (Math.abs(dx) < 8 && Math.abs(dz) < 8) continue;
         let dy = floorY + 1;
         for (let y = ceilY - 2; y > floorY; y--) {
@@ -632,7 +690,7 @@
             dy = y; break;
           }
         }
-        entities.push({kind:'demon', realm:'underworld', x:dx+0.5, y:dy, z:dz+0.5, hp:2, cooldown:1+Math.random()*2, vx:0, vz:0, wanderT:0});
+        entities.push({id:entities.length, kind:'demon', realm:'underworld', x:dx+0.5, y:dy, z:dz+0.5, hp:2, cooldown:1+rand()*2, vx:0, vz:0, wanderT:0});
       }
     }
   }
@@ -647,9 +705,9 @@
       }
     }
     for(let i=0;i<4;i++){
-      let mx=Math.floor((Math.random()-0.5)*half), mz=Math.floor((Math.random()-0.5)*half);
-      const len=25+Math.floor(Math.random()*15);
-      let dir=Math.random()*Math.PI*2;
+      let mx=Math.floor((rand()-0.5)*half), mz=Math.floor((rand()-0.5)*half);
+      const len=25+Math.floor(rand()*15);
+      let dir=rand()*Math.PI*2;
       for(let s=0;s<len;s++){
         let topY=1;
         for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,mx,y,mz)===B.HONEYCOMB){topY=y;break;}}
@@ -657,16 +715,16 @@
           if(Math.abs(dx)+Math.abs(dz)>1)continue;
           setBlockIn(milkhoney,mx+dx,topY,mz+dz,B.MILK);
         }
-        dir+=(Math.random()-0.5)*0.4;
+        dir+=(rand()-0.5)*0.4;
         mx+=Math.round(Math.cos(dir));
         mz+=Math.round(Math.sin(dir));
       }
     }
     for(let i=0;i<5;i++){
-      const px=Math.floor((Math.random()-0.5)*half*1.5);
-      const pz=Math.floor((Math.random()-0.5)*half*1.5);
+      const px=Math.floor((rand()-0.5)*half*1.5);
+      const pz=Math.floor((rand()-0.5)*half*1.5);
       if(Math.abs(px)<5&&Math.abs(pz)<5)continue;
-      const r=2+Math.floor(Math.random()*2);
+      const r=2+Math.floor(rand()*2);
       let topY=1;
       for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,px,y,pz)===B.HONEYCOMB){topY=y;break;}}
       for(let dx=-r;dx<=r;dx++)for(let dz=-r;dz<=r;dz++){
@@ -675,13 +733,13 @@
       }
     }
     for(let i=0;i<22;i++){
-      const tx=Math.floor((Math.random()-0.5)*half*1.6);
-      const tz=Math.floor((Math.random()-0.5)*half*1.6);
+      const tx=Math.floor((rand()-0.5)*half*1.6);
+      const tz=Math.floor((rand()-0.5)*half*1.6);
       let ty=1;
       for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,tx,y,tz)===B.HONEYCOMB){ty=y;break;}}
       if(getBlockIn(milkhoney,tx,ty,tz)!==B.HONEYCOMB)continue;
       const baseY=ty+1;
-      const trunkH=3+Math.floor(Math.random()*2);
+      const trunkH=3+Math.floor(rand()*2);
       for(let y=0;y<trunkH;y++)setBlockIn(milkhoney,tx,baseY+y,tz,B.HONEYTREE);
       const top=baseY+trunkH;
       for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++)for(let dy=0;dy<=1;dy++){
@@ -691,10 +749,10 @@
       }
     }
     for(let i=0;i<10;i++){
-      const cx=Math.floor((Math.random()-0.5)*half*1.5);
-      const cz=Math.floor((Math.random()-0.5)*half*1.5);
-      const cy=14+Math.floor(Math.random()*4);
-      const cr=2+Math.floor(Math.random()*2);
+      const cx=Math.floor((rand()-0.5)*half*1.5);
+      const cz=Math.floor((rand()-0.5)*half*1.5);
+      const cy=14+Math.floor(rand()*4);
+      const cr=2+Math.floor(rand()*2);
       for(let dx=-cr;dx<=cr;dx++)for(let dz=-cr;dz<=cr;dz++){
         if(dx*dx+dz*dz>cr*cr)continue;
         setBlockIn(milkhoney,cx+dx,cy,cz+dz,B.MILKCLOUD);
@@ -715,8 +773,8 @@
     // Spawn pets! 3 wolves + 3 cats scattered around milk & honey (only in 0.5+)
     if (FEAT.pets) {
       for(let i=0;i<6;i++){
-        const px=Math.floor((Math.random()-0.5)*40);
-        const pz=Math.floor((Math.random()-0.5)*40);
+        const px=Math.floor((rand()-0.5)*40);
+        const pz=Math.floor((rand()-0.5)*40);
         let py=1;
         for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,px,y,pz)===B.HONEYCOMB){py=y+1;break;}}
         const type=i<3?B.WOLF:B.CAT;
@@ -1064,7 +1122,7 @@
 
   const player={
     pos:new THREE.Vector3(0,14,0), vel:new THREE.Vector3(0,0,0),
-    yaw:0, pitch:0, onGround:false,
+    yaw:0, pitch:0, onGround:false, flying:false,
     radius:0.3, height:1.7, eyeOffset:1.55
   };
   for(let y=WORLD_HEIGHT-1;y>0;y--){if(getBlockIn(overworld,0,y,0)!==B.AIR){player.pos.set(0.5,y+2,0.5);break;}}
@@ -1115,6 +1173,7 @@
     toast._t=setTimeout(()=>el.style.opacity='0', dur||2200);
   }
   function damagePlayer(){
+    if(isCreative())return;
     playerHearts--;
     document.getElementById('cc-damage').style.opacity='1';
     setTimeout(()=>document.getElementById('cc-damage').style.opacity='0', 250);
@@ -1124,6 +1183,7 @@
       document.getElementById('cc-lose-icon').textContent='💀';
       document.getElementById('cc-lose-title').textContent='You burned up!';
       document.getElementById('cc-lose-msg').textContent='The lava was too much.';
+      worldLost();
       loseEl.style.display='flex';
     }
   }
@@ -1141,7 +1201,7 @@
       const col=info.colors?info.colors.side:info.color;
       const hex='#'+col.toString(16).padStart(6,'0');
       slot.style.cssText=`width:40px;height:40px;background:${hex};border:2px solid ${i===activeSlot?'white':'rgba(255,255,255,0.25)'};border-radius:4px;display:flex;align-items:flex-end;justify-content:center;font-size:11px;color:white;text-shadow:1px 1px 2px black;padding-bottom:2px;cursor:pointer;`;
-      slot.textContent=inventory[bid]||0;
+      slot.textContent=isCreative()?'∞':(inventory[bid]||0);
       slot.onclick=()=>{activeSlot=i;renderHotbar();};
       slot.ontouchstart=(e)=>{e.preventDefault();activeSlot=i;renderHotbar();};
       el.appendChild(slot);
@@ -1195,8 +1255,8 @@
     const el=document.getElementById('cc-craft-recipes');
     el.innerHTML='';
     recipes.forEach(r=>{
-      const canAfford=Object.entries(r.cost).every(([bid,n])=>(inventory[+bid]||0)>=n);
-      const tableOk=!r.requiresTable||near;
+      const canAfford=isCreative()||Object.entries(r.cost).every(([bid,n])=>(inventory[+bid]||0)>=n);
+      const tableOk=isCreative()||!r.requiresTable||near;
       const enabled=canAfford&&tableOk;
       const costStr=Object.entries(r.cost).map(([bid,n])=>`${n} ${BLOCK_INFO[+bid].name.toLowerCase()}`).join(', ');
       const row=document.createElement('div');
@@ -1206,14 +1266,27 @@
       btn.textContent='Craft';
       btn.disabled=!enabled;
       btn.style.cssText=`background:${enabled?'#4ade80':'#555'};color:${enabled?'#042c1f':'#aaa'};border:none;padding:6px 14px;border-radius:4px;cursor:${enabled?'pointer':'not-allowed'};font-weight:500;`;
-      btn.onclick=()=>{if(!enabled)return;Object.entries(r.cost).forEach(([bid,n])=>{inventory[+bid]-=n;});r.action();renderHotbar();renderTools();renderArmor();renderCraft();checkAchievements();};
+      btn.onclick=()=>{if(!enabled)return;if(!isCreative())Object.entries(r.cost).forEach(([bid,n])=>{inventory[+bid]-=n;});r.action();renderHotbar();renderTools();renderArmor();renderCraft();checkAchievements();};
       row.appendChild(btn);
       el.appendChild(row);
     });
   }
 
   const keys={};
+  let lastJumpTap=0;
+  // Creative: tapping jump twice quickly toggles flying
+  function jumpTapped(){
+    if(!isCreative())return;
+    const now=performance.now();
+    if(now-lastJumpTap<300){
+      player.flying=!player.flying; player.vel.y=0; lastJumpTap=0;
+      document.getElementById('cc-down-btn').style.display=player.flying?'block':'none';
+      toast(player.flying?'🕊️ Flying — C up, Shift down':'🚶 Walking');
+    } else lastJumpTap=now;
+  }
   document.addEventListener('keydown',(e)=>{
+    if(e.target&&e.target.tagName==='INPUT')return;
+    if(e.code==='KeyC'&&!e.repeat)jumpTapped();
     keys[e.code]=true;
     if(e.code==='KeyP'){e.preventDefault();paused?resumeGame():pauseGame();return;}
     if(paused)return;
@@ -1310,9 +1383,16 @@
   }
   let jumpHeld=false;
   const jumpBtn=document.getElementById('cc-jump-btn');
-  jumpBtn.addEventListener('touchstart',(e)=>{e.preventDefault();jumpHeld=true;},{passive:false});
+  jumpBtn.addEventListener('touchstart',(e)=>{e.preventDefault();jumpHeld=true;jumpTapped();},{passive:false});
   jumpBtn.addEventListener('touchend',(e)=>{e.preventDefault();jumpHeld=false;},{passive:false});
-  jumpBtn.addEventListener('mousedown',()=>{jumpHeld=true;});
+  jumpBtn.addEventListener('mousedown',()=>{jumpHeld=true;jumpTapped();});
+  let downHeld=false;
+  const downBtn=document.getElementById('cc-down-btn');
+  downBtn.addEventListener('touchstart',(e)=>{e.preventDefault();downHeld=true;},{passive:false});
+  downBtn.addEventListener('touchend',(e)=>{e.preventDefault();downHeld=false;},{passive:false});
+  downBtn.addEventListener('mousedown',()=>{downHeld=true;});
+  downBtn.addEventListener('mouseup',()=>{downHeld=false;});
+  downBtn.addEventListener('mouseleave',()=>{downHeld=false;});
   jumpBtn.addEventListener('mouseup',()=>{jumpHeld=false;});
   jumpBtn.addEventListener('mouseleave',()=>{jumpHeld=false;});
   tapButton('cc-break-btn',breakBlock);
@@ -1321,17 +1401,203 @@
   tapButton('cc-slot-left',()=>{activeSlot=(activeSlot-1+hotbarSlots.length)%hotbarSlots.length;renderHotbar();});
   tapButton('cc-slot-right',()=>{activeSlot=(activeSlot+1)%hotbarSlots.length;renderHotbar();});
 
-  function pauseGame(){if(gameOver)return;paused=true;pauseEl.style.display='flex';if(pointerLocked)document.exitPointerLock();}
+  function pauseGame(){if(gameOver)return;saveWorld();paused=true;pauseEl.style.display='flex';if(pointerLocked)document.exitPointerLock();}
   function resumeGame(){paused=false;pauseEl.style.display='none';}
-  document.getElementById('cc-play').addEventListener('click',()=>{
-    startEl.style.display='none';
+  // ===== WORLDS: SELECT, SAVE, LOAD =====
+  // A world is {id, name, seed, mode, created, lastPlayed, state}. `state` is null
+  // until it has been played; after that it holds the edit log and the player.
+  const WORLDS_KEY='cc_worlds';
+  const MODES={
+    survival:{label:'⚔️ Survival',color:'#4ade80',desc:'The classic quest: 30 minutes and 3 hearts. Mine and craft everything yourself.'},
+    creative:{label:'🎨 Creative',color:'#8bc4ff',desc:'No timer and no damage. Endless blocks, free crafting, break anything by hand — and double-tap jump to fly.'},
+    hardcore:{label:'💀 Hardcore',color:'#ff6b6b',desc:'One life, and demons fire twice as fast. Die or run out of time and the world is deleted forever.'}
+  };
+  const REALMS={overworld, aether, underworld, milkhoney};
+  const DEFAULT_HOTBAR=hotbarSlots.slice();
+  const slainEntities=new Set();
+  const worldsEl=document.getElementById('cc-worlds');
+  let worlds=[], activeWorld=null, newMode='survival';
+  try{worlds=JSON.parse(localStorage.getItem(WORLDS_KEY)||'[]');}catch(e){}
+  if(!Array.isArray(worlds))worlds=[];
+  function persistWorlds(){try{localStorage.setItem(WORLDS_KEY,JSON.stringify(worlds));}catch(e){}}
+
+  function saveWorld(){
+    if(!activeWorld||gameOver||!worlds.includes(activeWorld))return;
+    activeWorld.state={
+      edits:[...edits], inv:Object.assign({},inventory), tools:Object.assign({},tools),
+      armor:Object.assign({},armor), ach:Object.assign({},achievements),
+      time:timeLeft, hearts:playerHearts, realm:currentRealm,
+      pos:[player.pos.x,player.pos.y,player.pos.z], yaw:player.yaw, pitch:player.pitch,
+      hotbar:hotbarSlots.slice(), aetherHp:aetherBoss?aetherBoss.hp:null, demonHp:demonBoss?demonBoss.hp:null,
+      tamed:pets.map(p=>p.tamed), slain:[...slainEntities], flying:player.flying
+    };
+    activeWorld.lastPlayed=Date.now();
+    persistWorlds();
+  }
+  setInterval(()=>{if(hudEl.style.display==='block')saveWorld();},10000);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)saveWorld();});
+  window.addEventListener('beforeunload',saveWorld);
+
+  // Called from both ways of losing. Survival starts the world over; hardcore deletes it.
+  function worldLost(){
+    if(!activeWorld)return;
+    const retry=document.getElementById('cc-lose-retry');
+    if(isHardcore()){
+      worlds=worlds.filter(w=>w!==activeWorld);
+      document.getElementById('cc-lose-msg').textContent+=' 💀 This hardcore world is gone forever.';
+      retry.textContent='Back to worlds';
+    } else {
+      activeWorld.state=null;
+      retry.textContent='Try again';
+    }
+    persistWorlds();
+  }
+
+  // Throw the current universe away and build `world` from its seed, then replay its save
+  function startWorld(world){
+    activeWorld=world;
+    gameMode=MODES[world.mode]?world.mode:'survival';
+    seedWorld(world.seed);
+    overworld.chunks.clear(); overworld.dirty.clear();
+    for(const m of chunkMeshes.values()){chunkGroup.remove(m);m.geometry.dispose();}
+    chunkMeshes.clear();
+    aether.m.clear(); underworld.m.clear(); milkhoney.m.clear();
+    pillar=null; dungeonHeartPos=null; aetherBoss=null; demonBoss=null; guardianPos=null;
+    entities.length=0; pets.length=0; slainEntities.clear(); edits.clear();
+    while(fireballGroup.children.length)fireballGroup.remove(fireballGroup.children[0]);
+    fireballs.length=0;
+    for(const o of [inventory,armor,achievements])for(const k in o)delete o[k];
+    tools.pickTier=0; tools.swordTier=0; tools.flameSword=false;
+    hotbarSlots.splice(0,hotbarSlots.length,...DEFAULT_HOTBAR); activeSlot=0;
+    timeLeft=TIME_LIMIT; playerHearts=3; gameOver=false; paused=false;
+    puzzleOrigin=null; waitingForPuzzleSolve=false; activePuzzleIndex=0;
+    player.flying=false; player.vel.set(0,0,0);
+    document.getElementById('cc-boss').style.display='none';
+    for(const id of ['cc-win','cc-lose','cc-pause','cc-craft','cc-puzzle'])document.getElementById(id).style.display='none';
+
+    generateOverworld(); generateAether(); generateUnderworld(); generateMilkAndHoney();
+
+    const st=world.state;
+    if(st){
+      for(const [k,v] of st.edits){
+        const c=k.indexOf(':'), p=k.slice(c+1).split(',').map(Number);
+        REALMS[k.slice(0,c)].set(p[0],p[1],p[2],v);
+        edits.set(k,v);
+      }
+      Object.assign(inventory,st.inv); Object.assign(tools,st.tools);
+      Object.assign(armor,st.armor); Object.assign(achievements,st.ach);
+      timeLeft=st.time; playerHearts=st.hearts;
+      if(st.hotbar)hotbarSlots.splice(0,hotbarSlots.length,...st.hotbar);
+      if(aetherBoss&&st.aetherHp!=null)aetherBoss.hp=st.aetherHp;
+      if(demonBoss&&st.demonHp!=null)demonBoss.hp=st.demonHp;
+      (st.tamed||[]).forEach((t,i)=>{if(pets[i])pets[i].tamed=t;});
+      for(const id of st.slain||[]){
+        slainEntities.add(id);
+        const j=entities.findIndex(e=>e.id===id);
+        if(j>=0)entities.splice(j,1);
+      }
+    }
+    teleportTo('overworld',true);
+    if(st){
+      if(st.realm!=='overworld')teleportTo(st.realm,true);
+      player.pos.set(st.pos[0],st.pos[1],st.pos[2]);
+      player.yaw=st.yaw; player.pitch=st.pitch;
+      player.flying=!!st.flying&&isCreative();
+      chunkCenter.x=player.pos.x; chunkCenter.z=player.pos.z;
+      rebuildMesh();
+    }
+    document.getElementById('cc-down-btn').style.display=player.flying?'block':'none';
+    const modeEl=document.getElementById('cc-mode');
+    modeEl.textContent=MODES[gameMode].label; modeEl.style.color=MODES[gameMode].color;
+    document.getElementById('cc-seed').textContent='🌱 '+world.name+' · seed '+world.seed;
+    renderHotbar(); renderTools(); renderArmor(); renderAchievements(); renderHearts();
+  }
+
+  function beginPlay(){
+    startEl.style.display='none'; worldsEl.style.display='none';
     hudEl.style.display='block';
-    timerRunning=true;
+    timerRunning=!isCreative();
     if(!('ontouchstart' in window)||matchMedia('(pointer:fine)').matches)canvas.requestPointerLock();
+  }
+
+  function worldButton(label,bg,fg,onClick){
+    const b=document.createElement('button');
+    b.textContent=label;
+    b.style.cssText=`background:${bg};color:${fg};border:1px solid ${bg==='transparent'?fg:bg};padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;font-family:inherit;white-space:nowrap;`;
+    b.onclick=onClick;
+    return b;
+  }
+  function renderWorldList(){
+    const list=document.getElementById('cc-world-list');
+    list.innerHTML='';
+    if(!worlds.length){
+      list.innerHTML='<div style="font-size:12px;opacity:0.7;text-align:center;padding:8px;">No worlds yet — create one below!</div>';
+      return;
+    }
+    worlds.slice().sort((a,b)=>(b.lastPlayed||0)-(a.lastPlayed||0)).forEach(w=>{
+      const m=MODES[w.mode]||MODES.survival;
+      const row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:10px 12px;';
+      const info=document.createElement('div');
+      info.style.cssText='flex:1;min-width:0;';
+      const name=document.createElement('div');
+      name.style.cssText='font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      name.textContent=w.name;
+      const meta=document.createElement('div');
+      meta.style.cssText='font-size:11px;opacity:0.85;margin-top:2px;';
+      meta.innerHTML=`<span style="color:${m.color};font-weight:600;">${m.label}</span> · seed ${w.seed|0}${w.state?'':' · not started'}`;
+      info.append(name,meta);
+      // Two clicks to delete, so a world is never lost to one stray tap
+      const del=worldButton('🗑️','transparent','#ff8888',()=>{
+        if(del.dataset.armed){worlds=worlds.filter(x=>x!==w);persistWorlds();renderWorldList();}
+        else{del.dataset.armed='1';del.textContent='Delete?';}
+      });
+      row.append(info,worldButton('▶ Play','#4ade80','#042c1f',()=>{startWorld(w);beginPlay();}),del);
+      list.appendChild(row);
+    });
+  }
+  function renderModePick(){
+    const pick=document.getElementById('cc-mode-pick');
+    pick.innerHTML='';
+    for(const k in MODES){
+      const m=MODES[k], on=k===newMode;
+      const b=worldButton(m.label,on?m.color:'transparent',on?'#0a1420':m.color,()=>{newMode=k;renderModePick();});
+      b.style.flex='1';
+      pick.appendChild(b);
+    }
+    document.getElementById('cc-mode-desc').textContent=MODES[newMode].desc;
+  }
+  function openWorlds(){
+    startEl.style.display='none'; hudEl.style.display='none';
+    worldsEl.style.display='flex';
+    renderWorldList(); renderModePick();
+  }
+  document.getElementById('cc-play').addEventListener('click',openWorlds);
+  document.getElementById('cc-worlds-close').addEventListener('click',()=>{worldsEl.style.display='none';startEl.style.display='flex';});
+  document.getElementById('cc-create').addEventListener('click',()=>{
+    const nameIn=document.getElementById('cc-new-name'), seedIn=document.getElementById('cc-new-seed');
+    const w={id:Date.now().toString(36), name:nameIn.value.trim()||'New World', seed:parseSeed(seedIn.value),
+      mode:newMode, created:Date.now(), lastPlayed:Date.now(), state:null};
+    worlds.push(w);
+    persistWorlds();
+    nameIn.value=''; seedIn.value='';
+    startWorld(w);
+    beginPlay();
+  });
+  document.getElementById('cc-quit-btn').addEventListener('click',()=>{
+    saveWorld();
+    paused=false; pauseEl.style.display='none';
+    timerRunning=false;
+    openWorlds();
   });
   document.getElementById('cc-craft-close').addEventListener('click',()=>{craftEl.style.display='none';});
   document.getElementById('cc-win-close').addEventListener('click',()=>{winEl.style.display='none';});
-  document.getElementById('cc-lose-retry').addEventListener('click',()=>{location.reload();});
+  document.getElementById('cc-lose-retry').addEventListener('click',()=>{
+    loseEl.style.display='none';
+    // A survival world starts over from its seed; a hardcore one is gone
+    if(activeWorld&&worlds.includes(activeWorld)){startWorld(activeWorld);beginPlay();}
+    else openWorlds();
+  });
   document.getElementById('cc-pause-btn').addEventListener('click',pauseGame);
   document.getElementById('cc-resume-btn').addEventListener('click',resumeGame);
   document.getElementById('cc-puzzle-close').addEventListener('click',()=>{puzzleEl.style.display='none';});
@@ -1399,7 +1665,7 @@
     toast('🔥 FIRE PORTAL OPENED! Get diamond armor first!',5500);
   }
 
-  function teleportTo(realm){
+  function teleportTo(realm,quiet){
     currentRealm=realm;
     if(realm==='aether'){
       blocks=aether;
@@ -1409,7 +1675,7 @@
       document.getElementById('cc-realm').textContent='✨ AETHER';
       document.getElementById('cc-realm').style.background='rgba(196,168,255,0.85)';
       document.getElementById('cc-realm').style.color='#1a1033';
-      toast('☁️ Welcome to the Aether!',3500);
+      if(!quiet)toast('☁️ Welcome to the Aether!',3500);
     } else if(realm==='underworld'){
       blocks=underworld;
       scene.background=new THREE.Color(0x4a1010); scene.fog.color.set(0x4a1010);
@@ -1421,7 +1687,7 @@
       document.getElementById('cc-realm').style.background='rgba(255,90,50,0.9)';
       document.getElementById('cc-realm').style.color='#fff';
       achievements.underworld=true; checkAchievements();
-      toast('🔥 Underworld! Avoid lava!',4500);
+      if(!quiet)toast('🔥 Underworld! Avoid lava!',4500);
     } else if(realm==='milkhoney'){
       blocks=milkhoney;
       scene.background=new THREE.Color(0xfff4d8); scene.fog.color.set(0xfff4d8);
@@ -1431,7 +1697,7 @@
       document.getElementById('cc-realm').style.background='rgba(255,216,102,0.92)';
       document.getElementById('cc-realm').style.color='#4a2c00';
       achievements.milkhoney=true; checkAchievements();
-      toast('🥛🍯 Land of Milk and Honey! Find the Wise Guardian!',5500);
+      if(!quiet)toast('🥛🍯 Land of Milk and Honey! Find the Wise Guardian!',5500);
     } else {
       blocks=overworld;
       scene.background=new THREE.Color(0x87CEEB); scene.fog.color.set(0x87CEEB);
@@ -1442,7 +1708,7 @@
       document.getElementById('cc-realm').textContent='OVERWORLD';
       document.getElementById('cc-realm').style.background='rgba(106,190,48,0.85)';
       document.getElementById('cc-realm').style.color='#042c1f';
-      toast('🌍 Back in the Overworld');
+      if(!quiet)toast('🌍 Back in the Overworld');
     }
     // Clear any in-flight fireballs when changing realms
     while (fireballGroup.children.length) fireballGroup.remove(fireballGroup.children[0]);
@@ -1554,6 +1820,7 @@
         if (e.hp <= 0) {
           if (e.mesh) entityMeshGroup.remove(e.mesh);
           entities.splice(i, 1);
+          slainEntities.add(e.id);
           toast('😈 Demon slain!');
           achievements.demonKill = true;
           checkAchievements();
@@ -1654,7 +1921,7 @@
     if(r.blockId===B.LAVA){toast("Can't break lava!");return;}
     if(r.blockId===B.MILK){inventory[B.MILK]=(inventory[B.MILK]||0)+1;toast('🥛 You drank some milk!');achievements.taste=true;checkAchievements();renderHotbar();return;}
     if(r.blockId===B.HONEY){inventory[B.HONEY]=(inventory[B.HONEY]||0)+1;toast('🍯 Sweet honey!');achievements.taste=true;checkAchievements();renderHotbar();return;}
-    if(info.needs>tools.pickTier){toast('Need '+PICK_TIERS[info.needs]+' to break '+info.name);return;}
+    if(!isCreative()&&info.needs>tools.pickTier){toast('Need '+PICK_TIERS[info.needs]+' to break '+info.name);return;}
     let drop=r.blockId;
     if(r.blockId===B.GRASS)drop=B.DIRT;
     inventory[drop]=(inventory[drop]||0)+1;
@@ -1673,19 +1940,19 @@
     const r=raycast(6);
     if(!r.hit)return;
     const bid=hotbarSlots[activeSlot];
-    if(bid===B.DIAMOND&&(inventory[B.DIAMOND]||0)>0){
+    if(bid===B.DIAMOND&&(isCreative()||(inventory[B.DIAMOND]||0)>0)){
       const fireFrame=detectFireFrame();
-      if(fireFrame){inventory[B.DIAMOND]--;activateFirePortal(fireFrame);renderHotbar();return;}
+      if(fireFrame){if(!isCreative())inventory[B.DIAMOND]--;activateFirePortal(fireFrame);renderHotbar();return;}
       const aetherFrame=detectAetherFrame();
-      if(aetherFrame){inventory[B.DIAMOND]--;activateAetherPortal(aetherFrame);renderHotbar();return;}
+      if(aetherFrame){if(!isCreative())inventory[B.DIAMOND]--;activateAetherPortal(aetherFrame);renderHotbar();return;}
     }
-    if(!inventory[bid]||inventory[bid]<=0){toast('No '+BLOCK_INFO[bid].name.toLowerCase()+' to place');return;}
+    if(!isCreative()&&(!inventory[bid]||inventory[bid]<=0)){toast('No '+BLOCK_INFO[bid].name.toLowerCase()+' to place');return;}
     const px=r.x+r.face[0], py=r.y+r.face[1], pz=r.z+r.face[2];
     if(getBlock(px,py,pz)!==B.AIR)return;
     const feetX=Math.floor(player.pos.x),feetY=Math.floor(player.pos.y),feetZ=Math.floor(player.pos.z);
     if(px===feetX&&pz===feetZ&&(py===feetY||py===feetY+1))return;
     setBlock(px,py,pz,bid);
-    inventory[bid]--;
+    if(!isCreative())inventory[bid]--;
     rebuildMesh(); renderHotbar();
     if(waitingForPuzzleSolve)checkPuzzleSolved();
   }
@@ -1733,6 +2000,7 @@
     document.getElementById('cc-lose-icon').textContent='⏰';
     document.getElementById('cc-lose-title').textContent="Time's up!";
     document.getElementById('cc-lose-msg').textContent='The quest was tough!';
+    worldLost();
     loseEl.style.display='flex';
   }
   function formatTime(s){const m=Math.floor(s/60),sec=Math.floor(s%60);return m+':'+(sec<10?'0':'')+sec;}
@@ -1757,9 +2025,13 @@
     move.addScaledVector(right,mx);
     if(move.lengthSq()>0){const len=move.length();const sc=Math.min(1,len)*speed;move.normalize().multiplyScalar(sc);}
     player.vel.x=move.x; player.vel.z=move.z;
-    player.vel.y-=22*dt;
-    if(player.vel.y<-30)player.vel.y=-30;
-    if((keys['KeyC']||jumpHeld)&&player.onGround)player.vel.y=8.2;
+    if(player.flying){
+      player.vel.y=((keys['KeyC']||jumpHeld)?7:0)-((keys['ShiftLeft']||keys['ShiftRight']||downHeld)?7:0);
+    } else {
+      player.vel.y-=22*dt;
+      if(player.vel.y<-30)player.vel.y=-30;
+      if((keys['KeyC']||jumpHeld)&&player.onGround)player.vel.y=8.2;
+    }
     collide(player.pos,player.vel,dt);
     if(currentRealm==='overworld'&&player.pos.y<-5){player.pos.set(0.5,16,0.5);player.vel.set(0,0,0);}
     if(currentRealm==='aether'&&player.pos.y<-5)teleportTo('overworld');
@@ -1818,7 +2090,7 @@
       else if(demonBoss.hp===15)document.getElementById('cc-boss').style.display='none';
     }
     const timerEl=document.getElementById('cc-timer');
-    timerEl.textContent='⏰ '+formatTime(timeLeft);
+    timerEl.textContent=isCreative()?'🎨 No time limit':'⏰ '+formatTime(timeLeft);
     if(timeLeft<60){timerEl.style.background='rgba(220,40,40,0.85)';}
     else if(timeLeft<5*60){timerEl.style.background='rgba(255,170,68,0.85)';timerEl.style.color='#4a2c00';}
     else{timerEl.style.background='rgba(0,0,0,0.55)';timerEl.style.color='#fff';}
@@ -1909,7 +2181,7 @@
           const fb = {x:fx, y:fy, z:fz, vx:ddx*speed, vy:ddy*speed, vz:ddz*speed, life:2.5};
           spawnFireballMesh(fb);
           fireballs.push(fb);
-          e.cooldown = 2 + Math.random()*1.5;
+          e.cooldown = (2 + Math.random()*1.5) * (isHardcore() ? 0.5 : 1);
         }
       } else if (e.kind === 'angel') {
         // Gentle floating bob
