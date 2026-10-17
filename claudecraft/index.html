@@ -116,6 +116,7 @@
       <div id="cc-hearts" style="margin-top: 3px; font-size: 14px;">❤️❤️❤️</div>
       <div id="cc-pos" style="font-size: 11px;">x: 0  y: 0  z: 0</div>
       <div id="cc-seed" style="font-size: 10px; opacity: 0.75;"></div>
+      <div id="cc-biome" style="font-size: 11px; font-weight: 600;"></div>
       <div id="cc-near" style="margin-top: 3px; padding: 2px 5px; background: rgba(74, 222, 128, 0.8); color: #042c1f; border-radius: 4px; display: none; font-weight: 500; font-size: 11px;">✓ Near crafting table</div>
       <div id="cc-portal-hint" style="margin-top: 3px; padding: 2px 5px; background: rgba(196, 168, 255, 0.85); color: #1a1033; border-radius: 4px; display: none; font-weight: 500; font-size: 11px;">✨ Aether portal ready → place diamond!</div>
       <div id="cc-fireportal-hint" style="margin-top: 3px; padding: 2px 5px; background: rgba(255, 90, 50, 0.9); color: #fff; border-radius: 4px; display: none; font-weight: 500; font-size: 11px;">🔥 Fire portal ready → place diamond!</div>
@@ -343,7 +344,8 @@
     CRAFTING:11,OBSIDIAN:12,BEDROCK:13,GLOW:14,PORTAL:16,
     CLOUD:17,AETHER_GRASS:18,CRYSTAL:19,RUINSTONE:20,AETHERSTONE:21,CHEST:22,BOSS:23,
     FIRE_PORTAL:24,NETHERSTONE:25,LAVA:26,FIRE:27,DEMON:28,FIRECHEST:29,
-    MILK:30,HONEY:31,HONEYCOMB:32,MILKCLOUD:33,HONEYTREE:34,GUARDIAN:35,WOLF:36,CAT:37
+    MILK:30,HONEY:31,HONEYCOMB:32,MILKCLOUD:33,HONEYTREE:34,GUARDIAN:35,WOLF:36,CAT:37,
+    SAND:38,CACTUS:39,SNOW_GRASS:40,SNOW:41,SPRUCE_LOG:42,SPRUCE_LEAF:43,SANDSTONE:44
   };
   const BLOCK_INFO = {
     [B.GRASS]:{name:'Grass',colors:{top:0x6abe30,side:0x8B5A2B,bot:0x8B5A2B},needs:0},
@@ -381,7 +383,14 @@
     [B.HONEYTREE]:{name:'Honey tree',colors:{top:0xd97f1f,side:0xb56b15,bot:0x8a5008},needs:1},
     [B.GUARDIAN]:{name:'Wise Guardian',color:0xffe066,needs:99},
     [B.WOLF]:{name:'Wolf',color:0xb8b8b8,needs:99},
-    [B.CAT]:{name:'Cat',color:0xff9933,needs:99}
+    [B.CAT]:{name:'Cat',color:0xff9933,needs:99},
+    [B.SAND]:{name:'Sand',color:0xe3d59a,needs:0},
+    [B.CACTUS]:{name:'Cactus',colors:{top:0x7cb85a,side:0x3f8f3a,bot:0x7cb85a},needs:0},
+    [B.SNOW_GRASS]:{name:'Snowy grass',colors:{top:0xe4ebf4,side:0x8B5A2B,bot:0x8B5A2B},needs:0},
+    [B.SNOW]:{name:'Snow',color:0xe4ebf4,needs:0},
+    [B.SPRUCE_LOG]:{name:'Spruce log',colors:{top:0x6b4a2a,side:0x3d2a18,bot:0x6b4a2a},needs:0},
+    [B.SPRUCE_LEAF]:{name:'Spruce needles',color:0x2c5a38,needs:0},
+    [B.SANDSTONE]:{name:'Sandstone',colors:{top:0xe8dca8,side:0xd6c486,bot:0xe8dca8},needs:1}
   };
   const PICK_TIERS = ['Hands','Wooden pick','Stone pick','Iron pick','Diamond pick'];
   const SWORD_TIERS = ['No sword','Wood sword','Stone sword','Iron sword','Gold sword','Diamond sword'];
@@ -466,13 +475,16 @@
   // generating the four realms, and SEED_OX/OZ/ORE shift the overworld's terrain,
   // trees and ores (the Far Lands stay pinned to the real 1000-block line).
   function mulberry32(a){return function(){a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
-  let worldSeed=0, rand=Math.random, SEED_OX=0, SEED_OZ=0, SEED_ORE=0;
+  let worldSeed=0, rand=Math.random, SEED_OX=0, SEED_OZ=0, SEED_ORE=0, BIO_X=0, BIO_Z=0;
   function seedWorld(seed){
     worldSeed=seed|0;
     rand=mulberry32(worldSeed);
     SEED_OX=Math.floor(rand()*20000)-10000;
     SEED_OZ=Math.floor(rand()*20000)-10000;
     SEED_ORE=rand()*1000;
+    // A separate stream, so adding biomes didn't shift any of rand()'s later draws
+    const br=mulberry32(worldSeed^0x5bd1e995);
+    BIO_X=Math.floor(br()*40000)-20000; BIO_Z=Math.floor(br()*40000)-20000;
   }
   // Numbers are used as-is; any other text is hashed, so "dragons" is a seed too
   function parseSeed(text){
@@ -493,9 +505,46 @@
   // Everything here is a pure function of x,z so a chunk comes out the same
   // whenever it is generated. The long, gentle sine adds rolling hills so the
   // endless terrain doesn't repeat the same bumps forever.
-  const heightAt=(x,z)=>{const sx=x+SEED_OX, sz=z+SEED_OZ;return Math.floor(8+noise(sx,sz)*3+Math.sin(sx*0.021+1.3)*Math.cos(sz*0.017)*3);};
+  // ===== BIOMES =====
+  // Three slow, seeded fields — temperature, moisture and ruggedness — each with
+  // features a couple of hundred blocks across, decide the biome of every column.
+  const BIOME={PLAINS:0,FOREST:1,DESERT:2,TAIGA:3,MOUNTAINS:4};
+  const BIOME_NAMES=['🌾 Plains','🌳 Forest','🏜️ Desert','🌲 Snowy Taiga','⛰️ Mountains'];
+  function biomeField(x,z,k){
+    x+=BIO_X+k*1013; z+=BIO_Z+k*577;
+    return (Math.sin(x*0.011+Math.cos(z*0.007)*1.7)+Math.sin(z*0.013-Math.cos(x*0.009)*1.3)+Math.sin((x+z)*0.006+k))/3;
+  }
+  // 0 on the lowlands, rising smoothly to 1 in the heart of a mountain range
+  const mountainLift=(x,z)=>Math.min(1,Math.max(0,(biomeField(x,z,3)-0.3)/0.25));
+  function biomeAt(x,z){
+    if(mountainLift(x,z)>0.5)return BIOME.MOUNTAINS;
+    const t=biomeField(x,z,1), m=biomeField(x,z,2);
+    if(t>0.3&&m<0.1)return BIOME.DESERT;
+    if(t<-0.3)return BIOME.TAIGA;
+    if(m>0.2)return BIOME.FOREST;
+    return BIOME.PLAINS;
+  }
+  const SNOW_LINE=23, ROCK_LINE=19;
+  const heightAt=(x,z)=>{
+    const sx=x+SEED_OX, sz=z+SEED_OZ;
+    const base=8+noise(sx,sz)*3+Math.sin(sx*0.021+1.3)*Math.cos(sz*0.017)*3;
+    // The lift ramps in gradually, so foothills rise out of whatever biome is next door
+    const peaks=mountainLift(x,z)*(9+(noise(sx*1.7,sz*1.7)+1.3)*3.5);
+    return Math.floor(Math.min(base+peaks,WORLD_HEIGHT-5));
+  };
   const isFarLands=(x,z)=>Math.abs(x)>=FAR_LANDS||Math.abs(z)>=FAR_LANDS;
-  const treeAt=(x,z)=>!isFarLands(x,z)&&rnd3(x+SEED_OX,z+SEED_OZ,7)<0.02;
+  // What grows at a column, if anything: 'oak', 'spruce' or 'cactus'
+  function treeAt(x,z){
+    if(isFarLands(x,z))return null;
+    const r=rnd3(x+SEED_OX,z+SEED_OZ,7);
+    switch(biomeAt(x,z)){
+      case BIOME.PLAINS: return r<0.006?'oak':null;
+      case BIOME.FOREST: return r<0.045?'oak':null;
+      case BIOME.TAIGA: return r<0.03?'spruce':null;
+      case BIOME.DESERT: return r<0.008?'cactus':null;
+      default: return r<0.012&&heightAt(x,z)<ROCK_LINE?'spruce':null;
+    }
+  }
 
   // The Far Lands: the generator "overflows" into towering walls of stacked,
   // holey strata. Like the real thing they are stretched out along the axis you
@@ -530,9 +579,17 @@
         }
         continue;
       }
-      const h=heightAt(x,z);
-      for(let y=0;y<=h;y++)a[idx(x,y,z)]=y===0?B.BEDROCK:y===h?B.GRASS:y>h-3?B.DIRT:B.STONE;
+      const h=heightAt(x,z), biome=biomeAt(x,z);
+      let top=B.GRASS, under=B.DIRT, deep=3;
+      if(biome===BIOME.DESERT){top=B.SAND;under=B.SAND;deep=4;}
+      else if(biome===BIOME.TAIGA)top=B.SNOW_GRASS;
+      else if(h>=ROCK_LINE){top=h>=SNOW_LINE?B.SNOW:B.STONE;under=B.STONE;}   // bare peaks
+      for(let y=0;y<=h;y++){
+        a[idx(x,y,z)]=y===0?B.BEDROCK:y===h?top:y>h-deep?under
+          :(biome===BIOME.DESERT&&y>h-7)?B.SANDSTONE:B.STONE;
+      }
       for(let y=1;y<h-2;y++){
+        if(a[idx(x,y,z)]!==B.STONE)continue;
         const r=Math.abs(Math.sin(x*7.3+y*3.1+z*1.7+SEED_ORE)*9999)%1;
         if(r<0.008)a[idx(x,y,z)]=B.DIAMOND;
         else if(r<0.035)a[idx(x,y,z)]=B.GOLD;
@@ -544,17 +601,35 @@
     // Trees rooted up to 2 blocks outside this chunk can still drop leaves into it.
     // All trunks go in before any leaves, so the result doesn't depend on chunk order.
     const roots=[];
+    const TRUNK={oak:B.WOOD,spruce:B.SPRUCE_LOG,cactus:B.CACTUS};
     for(let tx=x0-2;tx<x0+CHUNK+2;tx++)for(let tz=z0-2;tz<z0+CHUNK+2;tz++){
-      if(treeAt(tx,tz))roots.push([tx,heightAt(tx,tz)+1,tz,4+Math.floor(rnd3(tx+SEED_OX,tz+SEED_OZ,8)*2)]);
+      const kind=treeAt(tx,tz);
+      if(!kind)continue;
+      const r=rnd3(tx+SEED_OX,tz+SEED_OZ,8);
+      const th=kind==='cactus'?1+Math.floor(r*3):kind==='spruce'?6+Math.floor(r*2):4+Math.floor(r*2);
+      roots.push([tx,heightAt(tx,tz)+1,tz,th,kind]);
     }
-    for(const [tx,by,tz,th] of roots)for(let y=0;y<th;y++)if(inside(tx,by+y,tz))a[idx(tx,by+y,tz)]=B.WOOD;
-    for(const [tx,by,tz,th] of roots){
+    for(const [tx,by,tz,th,kind] of roots)for(let y=0;y<th;y++)if(inside(tx,by+y,tz))a[idx(tx,by+y,tz)]=TRUNK[kind];
+    const leaf=(lx,ly,lz,v)=>{if(inside(lx,ly,lz)&&a[idx(lx,ly,lz)]===B.AIR)a[idx(lx,ly,lz)]=v;};
+    for(const [tx,by,tz,th,kind] of roots){
       const top=by+th;
+      if(kind==='cactus')continue;
+      if(kind==='spruce'){
+        // A cone: a single tip, then rings alternating between radius 1 and 2 down the trunk
+        for(let ly=top;ly>=by+2;ly--){
+          const d=top-ly, rad=d===0?0:d===1?1:(d%2===0?2:1);
+          for(let dx=-rad;dx<=rad;dx++)for(let dz=-rad;dz<=rad;dz++){
+            if(rad===2&&Math.abs(dx)===2&&Math.abs(dz)===2)continue;
+            leaf(tx+dx,ly,tz+dz,B.SPRUCE_LEAF);
+          }
+        }
+        leaf(tx,top+1,tz,B.SPRUCE_LEAF);
+        continue;
+      }
       for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++)for(let dy=-1;dy<=1;dy++){
         if(Math.abs(dx)===2&&Math.abs(dz)===2)continue;
         if(dy===1&&(Math.abs(dx)+Math.abs(dz))>2)continue;
-        const lx=tx+dx,ly=top+dy,lz=tz+dz;
-        if(inside(lx,ly,lz)&&a[idx(lx,ly,lz)]===B.AIR)a[idx(lx,ly,lz)]=B.LEAF;
+        leaf(tx+dx,top+dy,tz+dz,B.LEAF);
       }
     }
     // The obsidian pillar dungeon, stamped over whatever was there
@@ -839,7 +914,14 @@
     for(let y=0;y<TEX;y++)for(let x=0;x<TEX;x++){
       const r=(s)=>rnd3(id*3+kind,x+y*TEX,s);
       let c=base, f=0.88+r(0)*0.24;
-      if((id===B.GRASS||id===B.AETHER_GRASS)&&side&&(y<2||(y===2&&r(1)<0.5)))c=info.colors.top;
+      if((id===B.GRASS||id===B.AETHER_GRASS||id===B.SNOW_GRASS)&&side&&(y<2||(y===2&&r(1)<0.5)))c=info.colors.top;
+      else if(id===B.SAND){f=0.93+r(0)*0.12;if(r(3)<0.1)f*=0.86;}
+      else if(id===B.SNOW||(id===B.SNOW_GRASS&&kind===0))f=0.9+r(0)*0.1;
+      else if(id===B.SANDSTONE){if(side)f*=(y%3===0)?0.84:1.02;else f=0.94+r(0)*0.1;}
+      else if(id===B.CACTUS){
+        if(side){if(x%3===1)f*=0.8;if(x%3===0&&y%3===1)c=0xe8e0b0;}   // ribs and spines
+        else if(x===0||y===0||x===7||y===7)f*=0.75;
+      }
       else if(ORES.includes(id)){
         // Hand-placed clumps, lit from the top-left: 3 highlight, 2 body, 1 shadow
         // Shifted (not mirrored) per ore so the light still comes from the top-left
@@ -849,11 +931,11 @@
       }
       else if([B.STONE,B.DIRT,B.NETHERSTONE].includes(id)){if(r(3)<0.12)f*=0.72;}
       else if(id===B.BEDROCK)f=0.5+r(0)*0.9;
-      else if(id===B.WOOD||id===B.HONEYTREE){
+      else if(id===B.WOOD||id===B.HONEYTREE||id===B.SPRUCE_LOG){
         if(side)f*=(x%3===0)?0.78:1;
         else f*=(Math.floor(Math.max(Math.abs(x-3.5),Math.abs(y-3.5)))%2)?0.84:1.06;
       }
-      else if(id===B.LEAF){if(r(4)<0.25)f*=0.6;}
+      else if(id===B.LEAF||id===B.SPRUCE_LEAF){if(r(4)<0.25)f*=0.6;}
       else if(id===B.CRAFTING){
         if(kind===0){if(x%4===0||y%4===0)f*=0.7;}
         else if(x===0||x===7||y===0||y===7)f*=0.7;
@@ -912,8 +994,9 @@
         const f=FACES[face];
         const nx=x+f.dir[0], ny=y+f.dir[1], nz=z+f.dir[2];
         const neighbor=world.get(nx,ny,nz);
-        if(neighbor!==B.AIR&&neighbor!==B.LEAF&&neighbor!==B.PORTAL&&neighbor!==B.FIRE_PORTAL&&neighbor!==B.MILK&&neighbor!==B.HONEY)continue;
-        if(neighbor===B.LEAF&&blockId===B.LEAF)continue;
+        const leafy=neighbor===B.LEAF||neighbor===B.SPRUCE_LEAF;
+        if(neighbor!==B.AIR&&!leafy&&neighbor!==B.PORTAL&&neighbor!==B.FIRE_PORTAL&&neighbor!==B.MILK&&neighbor!==B.HONEY)continue;
+        if(leafy&&(blockId===B.LEAF||blockId===B.SPRUCE_LEAF))continue;
         const [u0,u1,v0,v1]=tileUV(blockId,face);
         const faceUV=[[u0,v1],[u1,v1],[u1,v0],[u0,v0]];
         let shade=1;
@@ -1194,7 +1277,7 @@
     const outside=currentRealm==='overworld';
     sunMesh.visible=moonMesh.visible=stars.visible=outside;
     const dayEl=document.getElementById('cc-daytime');
-    if(!outside){sun.intensity=0.85;ambient.intensity=0.45;dayEl.style.display='none';return;}
+    if(!outside){sun.intensity=0.85;ambient.intensity=0.45;dayEl.style.display='none';document.getElementById('cc-biome').textContent='';return;}
     const L=daylight(), h=sunHeight(), t=dayTime/DAY_LENGTH;
     const dusk=Math.max(0,1-Math.abs(h-0.05)/0.25);   // orange glow while the sun is near the horizon
     skyCol.copy(SKY_NIGHT).lerp(SKY_DAY,L).lerp(SKY_DUSK,dusk*0.75);
@@ -2191,7 +2274,8 @@
     if(r.blockId===B.HONEY){inventory[B.HONEY]=(inventory[B.HONEY]||0)+1;toast('🍯 Sweet honey!');achievements.taste=true;checkAchievements();renderHotbar();return;}
     if(!isCreative()&&info.needs>tools.pickTier){toast('Need '+PICK_TIERS[info.needs]+' to break '+info.name);return;}
     let drop=r.blockId;
-    if(r.blockId===B.GRASS)drop=B.DIRT;
+    if(r.blockId===B.GRASS||r.blockId===B.SNOW_GRASS)drop=B.DIRT;
+    if(r.blockId===B.SPRUCE_LOG)drop=B.WOOD;   // so spruce counts toward wooden recipes
     inventory[drop]=(inventory[drop]||0)+1;
     setBlock(r.x,r.y,r.z,B.AIR);
     rebuildMesh(); renderHotbar(); checkAchievements();
@@ -2224,7 +2308,7 @@
     rebuildMesh(); renderHotbar();
     if(waitingForPuzzleSolve)checkPuzzleSolved();
   }
-  function isSolid(x,y,z){const b=getBlock(x,y,z);return b!==B.AIR&&b!==B.LEAF&&b!==B.PORTAL&&b!==B.FIRE_PORTAL&&b!==B.LAVA&&b!==B.MILK&&b!==B.HONEY;}
+  function isSolid(x,y,z){const b=getBlock(x,y,z);return b!==B.AIR&&b!==B.LEAF&&b!==B.SPRUCE_LEAF&&b!==B.PORTAL&&b!==B.FIRE_PORTAL&&b!==B.LAVA&&b!==B.MILK&&b!==B.HONEY;}
   function collide(pos,vel,dt){
     const newPos=pos.clone();
     const tryMove=(axis)=>{
@@ -2310,6 +2394,9 @@
       // Stream the infinite world in around the player, a couple of chunks a frame
       chunkCenter.x=player.pos.x; chunkCenter.z=player.pos.z;
       updateChunks(2);
+      const biomeName=isFarLands(px,pz)?'🌌 Far Lands':BIOME_NAMES[biomeAt(px,pz)];
+      const biomeEl=document.getElementById('cc-biome');
+      if(biomeEl.textContent!==biomeName)biomeEl.textContent=biomeName;
       if(!achievements.farlands&&isFarLands(px,pz)){
         achievements.farlands=true;
         toast('🌌 You reached the FAR LANDS! The world is breaking apart...',5500);
