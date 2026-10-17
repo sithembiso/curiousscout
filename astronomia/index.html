@@ -6773,6 +6773,40 @@ const GAL_SUBSTEPS = 3;         // per frame — galaxy orbits are slow and smoo
    stops the arms winding themselves into mush after two turns. */
 const GAL_SOFT = 0.55;
 
+/* A galaxy's clouds. aSize is the puff's radius in Gm; it is projected to
+   pixels here and capped, because a puff filling the whole screen thousands of
+   times over would cost far more than it shows. A puff too small to resolve
+   dims with its area instead of shrinking past a pixel, so a far-off galaxy
+   fades to the faint smudge it should be rather than a crisp spray of dots. */
+const GAL_VERT = `
+  attribute vec3 aCol;
+  attribute float aSize;
+  uniform float uScale;
+  varying vec3 vCol;
+  varying float vA;
+  void main() {
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mv;
+    float px = aSize * uScale / max(-mv.z, 1e-9);
+    vCol = aCol;
+    vA = aSize > 0.0 ? min(1.0, px * px / 9.0) : 0.0;
+    gl_PointSize = aSize > 0.0 ? clamp(px, 3.0, 240.0) : 0.0;
+  }`;
+
+const GAL_FRAG = `
+  uniform float uGain;
+  varying vec3 vCol;
+  varying float vA;
+  void main() {
+    vec2 q = gl_PointCoord * 2.0 - 1.0;
+    float d2 = dot(q, q);
+    if (d2 > 1.0) discard;
+    // gaussian, pinned to zero at the rim so no puff shows an edge
+    float a = (exp(-d2 * 3.2) - 0.0408) / 0.9592;
+    gl_FragColor = vec4(vCol * uGain, a * vA);
+  }`;
+const GAL_GAIN = 0.03;
+
 const galx = {
   pos: null, vel: null, col: null, siz: null, own: null,
   free: [], live: 0, geo: null, pts: null, dirty: false
@@ -6793,11 +6827,13 @@ function initGalaxyStars() {
   geo.setAttribute('aCol', new THREE.BufferAttribute(galx.col, 3));
   geo.setAttribute('aSize', new THREE.BufferAttribute(galx.siz, 1));
   galx.geo = geo;
-  // Screen-fixed point size, so the stars stay stars however far you zoom in —
-  // fly into a galaxy and it opens out into individual specks, as it should.
+  // Each test particle is drawn as a soft puff of glowing gas sized in WORLD
+  // units, not as a speck: thousands of them overlap into continuous clouds —
+  // a bright bulge, arms of blue starlight and pink nebulae, tails that read as
+  // streamers of gas rather than a spray of dots.
   galx.pts = new THREE.Points(geo, new THREE.ShaderMaterial({
-    uniforms: { uMap: { value: TEX_GLOW }, uDpr: { value: VIEW.dpr } },
-    vertexShader: FX_VERT, fragmentShader: FX_FRAG,
+    uniforms: { uScale: { value: 1 }, uGain: { value: GAL_GAIN } },
+    vertexShader: GAL_VERT, fragmentShader: GAL_FRAG,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
   }));
   galx.pts.frustumCulled = false;
@@ -6876,7 +6912,9 @@ function seedGalaxyStars(b) {
       th = rng() * TAU;
       h = gauss() * r * 0.55;                       // a fat, round bulge
       c = mix(BULGE, [1, 1, 1], Math.pow(1 - r / (0.22 * R), 2) * 0.7);
-      s = 1.1 + Math.pow(rng(), 2) * 1.5;
+      // a quarter of the puffs in a twentieth of the area: keep each one faint
+      c = [c[0] * 0.45, c[1] * 0.45, c[2] * 0.45];
+      s = R * (0.05 + rng() * 0.07);
     } else {
       r = (0.14 + Math.sqrt(rng()) * 0.86) * R;
       const t = r / R;
@@ -6885,10 +6923,13 @@ function seedGalaxyStars(b) {
       h = gauss() * (0.012 + t * 0.020) * R;        // a thin disc
       const onArm = clamp(1 - Math.abs(spread) / (0.2 + t * 0.4), 0, 1);
       c = mix(DISC, ARM, onArm);
-      if (onArm > 0.55 && rng() < 0.15) c = mix(c, HII, 0.85);
-      const dim = 0.42 + onArm * 0.8;
+      // Star-forming knots are small, tight and bright; the rest is broad haze.
+      const knot = onArm > 0.55 && rng() < 0.15;
+      if (knot) c = mix(c, HII, 0.85);
+      const dim = (0.42 + onArm * 0.8) * (knot ? 3.2 : 1);
       c = [c[0] * dim, c[1] * dim, c[2] * dim];
-      s = 0.9 + Math.pow(rng(), 2.4) * 1.8;
+      s = knot ? R * (0.012 + rng() * 0.014)
+        : R * (0.03 + rng() * 0.05) * (0.8 + t * 0.6) * (1 + (1 - onArm) * 1.6);   // between the arms, broad faint haze
     }
 
     const ct = Math.cos(th), st = Math.sin(th);
@@ -7097,7 +7138,9 @@ function updateGalaxies() {
     if (b.parts.dot) b.parts.dot.visible = false;
   }
   if (galx.pts) {
-    galx.pts.material.uniforms.uDpr.value = VIEW.dpr;
+    // world radius -> pixels at unit distance
+    galx.pts.material.uniforms.uScale.value =
+      VIEW.h * VIEW.dpr / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
     if (galx.dirty) {
       galx.geo.attributes.position.needsUpdate = true;
       galx.geo.attributes.aCol.needsUpdate = true;
