@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>ClaudeCraft 0.6 - Demons & Angels</title>
+<title>ClaudeCraft 0.7 - Biomes of Darkness</title>
 <style>
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #87CEEB; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; user-select: none; touch-action: none; }
   #cc-root { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
@@ -18,30 +18,32 @@
   <div id="cc-release" style="position: absolute; inset: 0; background: rgba(40, 25, 5, 0.92); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 30; padding: 20px;">
     <div style="background: linear-gradient(135deg, #ffd866, #ffaa44); color: #2a1a00; max-width: 540px; width: 100%; border-radius: 16px; padding: 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.5); max-height: 90%; overflow-y: auto;">
       <div style="text-align: center; margin-bottom: 14px;">
-        <div style="font-size: 38px; margin-bottom: 4px;">😈👼</div>
-        <div style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">Version 0.6 is here!</div>
-        <div style="font-size: 14px; font-weight: 600; color: #8a4a00;">Demons & Angels 😈👼</div>
+        <div style="font-size: 38px; margin-bottom: 4px;">🌲🌑</div>
+        <div style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">Version 0.7 is here!</div>
+        <div style="font-size: 14px; font-weight: 600; color: #8a4a00;">Biomes of Darkness 🏜️🌲⛰️🌙</div>
       </div>
       <div style="background: rgba(255,255,255,0.45); border-radius: 12px; padding: 14px; margin-bottom: 14px;">
-        <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #4a2400;">✨ WHAT'S NEW IN 0.6</div>
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #4a2400;">✨ WHAT'S NEW IN 0.7</div>
         <ul style="margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6;">
-          <li><b>😈 MINI DEMONS</b> in the Underworld — they shoot fireballs at you from far away! Watch out!</li>
-          <li><b>⚔️ Kill demons with a sword</b> — a stone sword takes them out in one hit</li>
-          <li><b>👼 ANGELS</b> in the Aether — they float and drift around peacefully</li>
-          <li><b>💚 Angels heal you</b> — stand near one and you'll get a heart back every 2 seconds!</li>
-          <li><b>🏆 2 new achievements:</b> Slay a demon, get healed by an angel</li>
+          <li><b>🌍 AN ENDLESS WORLD</b> — the Overworld never ends, and 1,000 blocks out it breaks into the <b>Far Lands</b> 🌌</li>
+          <li><b>🏜️ BIOMES</b> — plains, forests, deserts, snowy taiga and towering mountains</li>
+          <li><b>🏘️ VILLAGES</b> with friendly villagers and chests full of food, supplies and weapons 🍞⚔️</li>
+          <li><b>🌙 DAY &amp; NIGHT</b> every 5 minutes — and at night the <b>ZOMBIES</b> come out 🧟</li>
+          <li><b>💾 WORLDS &amp; SEEDS</b> — save several worlds, pick any seed, play <b>Creative</b> 🎨 or <b>Hardcore</b> 💀</li>
+          <li><b>🧱 8×8 block textures</b>, <b>/tp</b> and other commands, food, and 5 new achievements</li>
+          <li><b>🌑 Don't go too far.</b> Something is out there.</li>
         </ul>
       </div>
       <div style="font-size: 11px; opacity: 0.75; text-align: center; margin-bottom: 14px;">
-        Previous: 0.5 (Pets) · 0.4 (Swords) · 0.3 (Milk & Honey) · 0.2 (Underworld) · 0.1 (Aether)
+        Previous: 0.6 (Demons & Angels) · 0.5 (Pets) · 0.4 (Swords) · 0.3 (Milk & Honey) · 0.2 (Underworld) · 0.1 (Aether)
       </div>
-      <button id="cc-release-close" style="display: block; width: 100%; background: #4a1a00; color: #ffd866; border: none; padding: 12px; font-size: 15px; font-weight: 600; border-radius: 10px; cursor: pointer;">Let's play! ⚔️🥛🍯</button>
+      <button id="cc-release-close" style="display: block; width: 100%; background: #4a1a00; color: #ffd866; border: none; padding: 12px; font-size: 15px; font-weight: 600; border-radius: 10px; cursor: pointer;">Let's play! 🌲🌙🧟</button>
     </div>
   </div>
 
   <div id="cc-start" style="position: absolute; inset: 0; background: rgba(0,0,0,0.78); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 20; padding: 20px; text-align: center; overflow-y: auto;">
     <div style="font-size: 30px; font-weight: 500; letter-spacing: 2px; margin-bottom: 4px;">CLAUDECRAFT</div>
-    <div style="font-size: 17px; color: #ffd866; font-weight: 500; margin-bottom: 6px;">😈👼 0.6 — Demons & Angels! 👼😈</div>
+    <div style="font-size: 17px; color: #ffd866; font-weight: 500; margin-bottom: 6px;">🌲🌑 0.7 — Biomes of Darkness! 🌑🌲</div>
     <div style="font-size: 12px; color: #ffaa44; margin-bottom: 4px;">⏰ 30 minute challenge — FOUR worlds!</div>
     <div style="font-size: 12px; color: #8be0ff; margin-bottom: 12px;">🌍 The Overworld never ends — walk 1,000 blocks out to find the Far Lands 🌌</div>
     <div style="font-size: 12px; opacity: 0.85; margin-bottom: 12px; max-width: 540px; line-height: 1.6; text-align: left;">
@@ -59,10 +61,10 @@
       <b>Commands:</b> T or / (or 💬) · /tp x y z · /tp x z · /tp spawn · /help<br>
       <b>Mobile:</b> joystick · tap-drag to look · ⛏️🧱⬆️🛠️ buttons
     </div>
-    <div id="cc-ver-badge" style="font-size:11px;color:#4ade80;background:rgba(74,222,128,0.15);border:1px solid #4ade80;padding:4px 10px;border-radius:6px;margin-bottom:10px;font-weight:600;">🎮 Playing version 0.6 — Demons & Angels</div>
+    <div id="cc-ver-badge" style="font-size:11px;color:#4ade80;background:rgba(74,222,128,0.15);border:1px solid #4ade80;padding:4px 10px;border-radius:6px;margin-bottom:10px;font-weight:600;">🎮 Playing version 0.7 — Biomes of Darkness</div>
     <button id="cc-play" style="background: linear-gradient(135deg, #4ade80, #16a34a); color: #042c1f; border: none; padding: 14px 36px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer; margin-bottom: 12px;">🌍 Play — choose a world</button>
     <div style="display: flex; gap: 8px;">
-      <button id="cc-show-release" style="background: transparent; color: #4ade80; border: 1px solid #4ade80; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">📋 What's New in 0.6</button>
+      <button id="cc-show-release" style="background: transparent; color: #4ade80; border: 1px solid #4ade80; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">📋 What's New in 0.7</button>
       <button id="cc-settings-btn" style="background: transparent; color: #4ade80; border: 1px solid #4ade80; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">⚙️ Settings</button>
     </div>
   </div>
@@ -233,7 +235,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function(){
-  const CURRENT_VERSION = '0.6';
+  const CURRENT_VERSION = '0.7';
 
   // ===== VERSION SWITCHER =====
   // Player can pick which version of the game to play. Older versions disable newer features.
@@ -243,9 +245,10 @@
     {v:'0.3', name:'Milk & Honey', desc:'+ Land of Milk & Honey, 3 Puzzles, GOD title'},
     {v:'0.4', name:'Swords', desc:'+ Craft swords from any ore'},
     {v:'0.5', name:'Pets', desc:'+ Wolves & cats you can tame'},
-    {v:'0.6', name:'Demons & Angels', desc:'+ Fireball-shooting demons in Underworld, healing angels in Aether'}
+    {v:'0.6', name:'Demons & Angels', desc:'+ Fireball-shooting demons in Underworld, healing angels in Aether'},
+    {v:'0.7', name:'Biomes of Darkness', desc:'+ Endless world, Far Lands, biomes, villages, day & night, zombies, seeds & game modes'}
   ];
-  let selectedVersion = '0.6';
+  let selectedVersion = '0.7';
   try {
     const saved = localStorage.getItem('cc_play_version');
     if (saved && VERSIONS.some(x => x.v === saved)) selectedVersion = saved;
