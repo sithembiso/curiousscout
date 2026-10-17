@@ -55,6 +55,7 @@
       <b>Keyboard:</b> WASD · C jump · click break/place · 1-9 · E craft · P pause<br>
       <b>Creative:</b> double-tap C (or ⬆️) to fly · C up · Shift down<br>
       <b>Night:</b> every 5 minutes the sun sets and zombies come out 🧟 — hit them, or hide!<br>
+      <b>Villages:</b> click villagers to say hello · open chests for food, supplies &amp; weapons · F eats<br>
       <b>Commands:</b> T or / (or 💬) · /tp x y z · /tp x z · /tp spawn · /help<br>
       <b>Mobile:</b> joystick · tap-drag to look · ⛏️🧱⬆️🛠️ buttons
     </div>
@@ -124,11 +125,12 @@
     </div>
 
     <div style="position: absolute; top: 8px; right: 8px; font-size: 12px; text-align: right; line-height: 1.5;">
-      <div style="font-weight: 500; margin-bottom: 2px;">Achievements <span id="cc-ach-count">0/26</span></div>
+      <div style="font-weight: 500; margin-bottom: 2px;">Achievements <span id="cc-ach-count">0/28</span></div>
       <div id="cc-ach-list" style="font-size: 10px; opacity: 0.85; max-height: 200px; overflow: hidden;"></div>
     </div>
 
     <button id="cc-pause-btn" style="position: absolute; top: 8px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.65); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 4px 12px; border-radius: 6px; cursor: pointer; pointer-events: auto; font-size: 12px; font-weight: 500;">⏸️ Pause</button>
+    <button id="cc-eat-btn" title="Eat (F)" style="display: none; position: absolute; top: 8px; left: calc(50% + 95px); background: rgba(0,0,0,0.65); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 4px 10px; border-radius: 6px; cursor: pointer; pointer-events: auto; font-size: 12px; font-weight: 500;">🍞 Eat</button>
     <button id="cc-cmd-btn" title="Commands (T or /)" style="position: absolute; top: 8px; left: calc(50% + 50px); background: rgba(0,0,0,0.65); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 4px 10px; border-radius: 6px; cursor: pointer; pointer-events: auto; font-size: 12px; font-weight: 500;">💬</button>
 
     <div style="position: absolute; top: 50%; left: 50%; width: 16px; height: 16px; transform: translate(-50%,-50%); pointer-events: none;">
@@ -182,7 +184,7 @@
   <!-- ===== COMMAND BAR (T or /) ===== -->
   <div id="cc-cmd" style="position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); width: min(500px, 92%); display: none; flex-direction: column; gap: 4px; z-index: 12;">
     <div id="cc-cmd-out" style="background: rgba(0,0,0,0.7); color: #e8f4ff; font-family: monospace; font-size: 12px; line-height: 1.5; padding: 6px 10px; border-radius: 6px; white-space: pre-wrap; display: none;"></div>
-    <input id="cc-cmd-in" autocomplete="off" spellcheck="false" placeholder="/tp x y z  ·  /tp spawn  ·  /time night  ·  /help" style="width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.35); background: rgba(0,0,0,0.75); color: white; font-family: monospace; font-size: 14px; outline: none;">
+    <input id="cc-cmd-in" autocomplete="off" spellcheck="false" placeholder="/tp x y z  ·  /locate village  ·  /time night  ·  /help" style="width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.35); background: rgba(0,0,0,0.75); color: white; font-family: monospace; font-size: 14px; outline: none;">
   </div>
 
   <div id="cc-pause" style="position: absolute; inset: 0; background: rgba(0,0,0,0.78); display: none; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 11; text-align: center;">
@@ -345,7 +347,8 @@
     CLOUD:17,AETHER_GRASS:18,CRYSTAL:19,RUINSTONE:20,AETHERSTONE:21,CHEST:22,BOSS:23,
     FIRE_PORTAL:24,NETHERSTONE:25,LAVA:26,FIRE:27,DEMON:28,FIRECHEST:29,
     MILK:30,HONEY:31,HONEYCOMB:32,MILKCLOUD:33,HONEYTREE:34,GUARDIAN:35,WOLF:36,CAT:37,
-    SAND:38,CACTUS:39,SNOW_GRASS:40,SNOW:41,SPRUCE_LOG:42,SPRUCE_LEAF:43,SANDSTONE:44
+    SAND:38,CACTUS:39,SNOW_GRASS:40,SNOW:41,SPRUCE_LOG:42,SPRUCE_LEAF:43,SANDSTONE:44,
+    PLANKS:45,COBBLESTONE:46,PATH:47,GLASS:48,VCHEST:49,VCHEST_EMPTY:50
   };
   const BLOCK_INFO = {
     [B.GRASS]:{name:'Grass',colors:{top:0x6abe30,side:0x8B5A2B,bot:0x8B5A2B},needs:0},
@@ -390,7 +393,13 @@
     [B.SNOW]:{name:'Snow',color:0xe4ebf4,needs:0},
     [B.SPRUCE_LOG]:{name:'Spruce log',colors:{top:0x6b4a2a,side:0x3d2a18,bot:0x6b4a2a},needs:0},
     [B.SPRUCE_LEAF]:{name:'Spruce needles',color:0x2c5a38,needs:0},
-    [B.SANDSTONE]:{name:'Sandstone',colors:{top:0xe8dca8,side:0xd6c486,bot:0xe8dca8},needs:1}
+    [B.SANDSTONE]:{name:'Sandstone',colors:{top:0xe8dca8,side:0xd6c486,bot:0xe8dca8},needs:1},
+    [B.PLANKS]:{name:'Planks',color:0xb8945a,needs:0},
+    [B.COBBLESTONE]:{name:'Cobblestone',color:0x7d7d7d,needs:1},
+    [B.PATH]:{name:'Dirt path',colors:{top:0xa58554,side:0x8B5A2B,bot:0x8B5A2B},needs:0},
+    [B.GLASS]:{name:'Glass',color:0xcfeeff,needs:0},
+    [B.VCHEST]:{name:'Village chest',colors:{top:0xa0702e,side:0x8a5a22,bot:0x8a5a22},needs:0},
+    [B.VCHEST_EMPTY]:{name:'Empty chest',colors:{top:0x80592a,side:0x6e481c,bot:0x6e481c},needs:0}
   };
   const PICK_TIERS = ['Hands','Wooden pick','Stone pick','Iron pick','Diamond pick'];
   const SWORD_TIERS = ['No sword','Wood sword','Stone sword','Iron sword','Gold sword','Diamond sword'];
@@ -535,7 +544,7 @@
   const isFarLands=(x,z)=>Math.abs(x)>=FAR_LANDS||Math.abs(z)>=FAR_LANDS;
   // What grows at a column, if anything: 'oak', 'spruce' or 'cactus'
   function treeAt(x,z){
-    if(isFarLands(x,z))return null;
+    if(isFarLands(x,z)||villagesNear(x,z,VILLAGE_R).length)return null;
     const r=rnd3(x+SEED_OX,z+SEED_OZ,7);
     switch(biomeAt(x,z)){
       case BIOME.PLAINS: return r<0.006?'oak':null;
@@ -560,6 +569,110 @@
     }
     // Thinning out with height leaves a ragged skyline instead of a flat roof
     return d>-0.35+y*0.03;
+  }
+
+  // ===== VILLAGES =====
+  // The world is split into VILLAGE_CELL-sized cells; each has one seeded spot
+  // that holds a village about half the time, if it lands in plains, desert or
+  // taiga. A village is a plaza with a lamp post, four paths out, and small
+  // houses beside the paths with a door facing them — each house holds a
+  // crafting table and a chest. Everything is a pure function of the seed, so
+  // each chunk stamps its own slice of any village that overlaps it.
+  const VILLAGE_CELL=160, VILLAGE_R=28;
+  const villageCache=new Map();
+  const VSTYLE={
+    [BIOME.PLAINS]:{name:'plains',log:B.WOOD,wall:B.PLANKS,roof:B.WOOD,path:B.PATH,robe:0x7a5230},
+    [BIOME.DESERT]:{name:'desert',log:B.SANDSTONE,wall:B.SANDSTONE,roof:B.SANDSTONE,path:B.SANDSTONE,robe:0xd9c27a},
+    [BIOME.TAIGA]:{name:'taiga',log:B.SPRUCE_LOG,wall:B.PLANKS,roof:B.SPRUCE_LOG,path:B.PATH,robe:0x3d5a80}
+  };
+  function getVillage(cx,cz){
+    const k=cx+','+cz;
+    if(villageCache.has(k))return villageCache.get(k);
+    const h=n=>rnd3(cx*1.37+BIO_X*0.001+n,cz*2.11+BIO_Z*0.001,11+n);
+    let v=null;
+    if(h(0)<0.55){
+      const x=cx*VILLAGE_CELL+40+Math.floor(h(1)*(VILLAGE_CELL-80));
+      const z=cz*VILLAGE_CELL+40+Math.floor(h(2)*(VILLAGE_CELL-80));
+      const style=VSTYLE[biomeAt(x,z)];
+      const nearPillar=pillar&&Math.abs(pillar.x-x)<45&&Math.abs(pillar.z-z)<45;
+      if(style&&mountainLift(x,z)<0.15&&!nearPillar&&!isFarLands(x-40,z-40)&&!isFarLands(x+40,z+40)){
+        v=planVillage(k,x,z,style,mulberry32(Math.floor(h(3)*1e9)));
+      }
+    }
+    villageCache.set(k,v);
+    return v;
+  }
+  function planVillage(key,x,z,style,rng){
+    const houses=[], paths=[];
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const px=dz?1:0, pz=dx?1:0;          // across the path
+      const len=12+Math.floor(rng()*10);
+      for(let i=3;i<=len;i++)for(let w=-1;w<=1;w++)paths.push([x+dx*i+px*w,z+dz*i+pz*w]);
+      // Up to two houses per path, 8 apart, alternating sides at random
+      for(const d of [10,18]){
+        if(d>len+2||rng()<0.25)continue;
+        const sd=rng()<0.5?1:-1;
+        const hx=x+dx*d+px*sd*5, hz=z+dz*d+pz*sd*5;
+        houses.push({x:hx,z:hz,y:heightAt(hx,hz),door:[-px*sd,-pz*sd]});
+      }
+    }
+    return {key,x,z,y:heightAt(x,z),style,houses,paths,villagers:Math.min(6,2+Math.ceil(houses.length/2))};
+  }
+  function villagesNear(x,z,r){
+    const out=[];
+    for(let cx=Math.floor((x-r)/VILLAGE_CELL);cx<=Math.floor((x+r)/VILLAGE_CELL);cx++)
+      for(let cz=Math.floor((z-r)/VILLAGE_CELL);cz<=Math.floor((z+r)/VILLAGE_CELL);cz++){
+        const v=getVillage(cx,cz);
+        if(v&&Math.abs(v.x-x)<r&&Math.abs(v.z-z)<r)out.push(v);
+      }
+    return out;
+  }
+  // put(x,y,z,block) is clipped to the chunk being generated
+  function stampVillage(v,put){
+    const st=v.style;
+    // Level a column at height fy: fill below with cobblestone, clear the air above
+    const flatten=(fx,fz,fy,top,clear)=>{
+      const g=heightAt(fx,fz);
+      for(let yy=g+1;yy<fy;yy++)put(fx,yy,fz,B.COBBLESTONE);
+      put(fx,fy,fz,top);
+      for(let yy=fy+1;yy<=Math.max(g,fy+clear);yy++)put(fx,yy,fz,B.AIR);
+    };
+    for(const [px,pz] of v.paths){
+      const g=heightAt(px,pz);
+      put(px,g,pz,st.path);
+      for(let yy=g+1;yy<=g+3;yy++)put(px,yy,pz,B.AIR);
+    }
+    for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++)flatten(v.x+dx,v.z+dz,v.y,B.COBBLESTONE,4);
+    for(let yy=1;yy<=3;yy++)put(v.x,v.y+yy,v.z,st.log);
+    put(v.x,v.y+4,v.z,B.GLOW);
+    for(const h of v.houses){
+      const by=h.y, [ddx,ddz]=h.door;
+      for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++){
+        const x=h.x+dx, z=h.z+dz, ex=Math.abs(dx)===2, ez=Math.abs(dz)===2;
+        flatten(x,z,by,ex||ez?B.COBBLESTONE:B.PLANKS,6);
+        if(ex||ez){
+          for(let yy=1;yy<=3;yy++)put(x,by+yy,z,ex&&ez?st.log:st.wall);
+          // The middle of each wall gets a window — or the door, on the side facing the path
+          if((ex&&dz===0)||(ez&&dx===0)){
+            if((ex&&Math.sign(dx)===ddx)||(ez&&Math.sign(dz)===ddz)){put(x,by+1,z,B.AIR);put(x,by+2,z,B.AIR);}
+            else put(x,by+2,z,B.GLASS);
+          }
+        }
+        put(x,by+4,z,st.roof);
+        if(Math.abs(dx)<=1&&Math.abs(dz)<=1)put(x,by+5,z,st.roof);
+      }
+      put(h.x,by+4,h.z,B.GLOW);                              // ceiling lamp
+      put(h.x-ddx+ddz,by+1,h.z-ddz+ddx,B.CRAFTING);           // back corners:
+      put(h.x-ddx-ddz,by+1,h.z-ddz-ddx,B.VCHEST);             // table and chest
+    }
+  }
+  function spawnVillagers(v){
+    for(let i=0;i<v.villagers;i++){
+      const a=i/v.villagers*Math.PI*2;
+      entities.push({id:'v'+v.key+':'+i, kind:'villager', realm:'overworld',
+        x:v.x+0.5+Math.cos(a)*2, y:v.y+1, z:v.z+0.5+Math.sin(a)*2,
+        home:{x:v.x+0.5,z:v.z+0.5}, robe:v.style.robe, vx:0, vz:0, vy:0, kx:0, kz:0, wanderT:i*0.4, walkT:0});
+    }
   }
 
   function genOverworldChunk(cx,cz){
@@ -631,6 +744,11 @@
         if(dy===1&&(Math.abs(dx)+Math.abs(dz))>2)continue;
         leaf(tx+dx,top+dy,tz+dz,B.LEAF);
       }
+    }
+    // Villages, then their villagers — who arrive with the chunk that holds the plaza
+    for(const v of villagesNear(x0+8,z0+8,8+VILLAGE_R)){
+      stampVillage(v,(x,y,z,b)=>{if(inside(x,y,z))a[idx(x,y,z)]=b;});
+      if((v.x>>4)===cx&&(v.z>>4)===cz)spawnVillagers(v);
     }
     // The obsidian pillar dungeon, stamped over whatever was there
     if(pillar){
@@ -943,7 +1061,19 @@
       else if(BRICKS.includes(id)){if(y%4===3||x===(Math.floor(y/4)%2?4:0))f*=0.65;}
       else if(id===B.OBSIDIAN){if(r(5)<0.15)c=0x5a3a8a;}
       else if(id===B.GLOW)f=(x===0||y===0||x===7||y===7)?0.8:((x+y)%3===0?1.15:1);
-      else if(id===B.CHEST||id===B.FIRECHEST){
+      else if(id===B.PLANKS){
+        // Boards four pixels tall, with staggered seams
+        if(y%4===3)f*=0.72;
+        else if(x===(Math.floor(y/4)%2?5:1))f*=0.8;
+      }
+      else if(id===B.COBBLESTONE){f=0.8+r(0)*0.35;if(r(9)<0.3)f*=0.7;}
+      else if(id===B.PATH){if(side&&y<1)c=info.colors.top;else if(r(3)<0.15)f*=0.85;}
+      else if(id===B.GLASS){
+        if(x===0||y===0||x===7||y===7)c=0xf2fbff;
+        else if(x===y||x===y+1)f*=1.12;
+        else f=0.95;
+      }
+      else if(id===B.CHEST||id===B.FIRECHEST||id===B.VCHEST||id===B.VCHEST_EMPTY){
         if(x===0||x===7||y===0||y===7||(side&&y===2))f*=0.65;
         if(side&&x>=3&&x<=4&&y>=2&&y<=3)c=0xeeeeee;
       }
@@ -1224,11 +1354,38 @@
     return g;
   }
 
+  function createVillagerMesh(robeColor) {
+    const g = new THREE.Group();
+    const robe = new THREE.MeshLambertMaterial({color: robeColor});
+    const trim = new THREE.MeshLambertMaterial({color: new THREE.Color(robeColor).multiplyScalar(0.7)});
+    const skin = new THREE.MeshLambertMaterial({color: 0xc8946a});
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.0, 0.35), robe);
+    body.position.y = 0.5; g.add(body);
+    const arms = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 0.25), trim);   // folded in front
+    arms.position.set(0, 0.8, 0.25); g.add(arms);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.5, 0.45), skin);
+    head.position.y = 1.25; g.add(head);
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.12), skin);
+    nose.position.set(0, 1.18, 0.28); g.add(nose);
+    const eyeMat = new THREE.MeshBasicMaterial({color: 0x2f6b2f});
+    for (const ex of [-0.1, 0.1]) {
+      const e = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.03), eyeMat);
+      e.position.set(ex, 1.3, 0.23); g.add(e);
+    }
+    return g;
+  }
+  function meshFor(e) {
+    if (e.kind === 'demon') return createDemonMesh();
+    if (e.kind === 'zombie') return createZombieMesh();
+    if (e.kind === 'villager') return createVillagerMesh(e.robe);
+    return createAngelMesh();
+  }
+
   function rebuildEntityMeshes() {
     while (entityMeshGroup.children.length) entityMeshGroup.remove(entityMeshGroup.children[0]);
     entities.forEach(e => {
       if (e.realm !== currentRealm) { e.mesh = null; return; }
-      const m = e.kind === 'demon' ? createDemonMesh() : e.kind === 'zombie' ? createZombieMesh() : createAngelMesh();
+      const m = meshFor(e);
       m.position.set(e.x, e.y, e.z);
       entityMeshGroup.add(m);
       e.mesh = m;
@@ -1322,6 +1479,101 @@
     entities.push(e);
     const m=createZombieMesh(); m.position.set(e.x,e.y,e.z); entityMeshGroup.add(m); e.mesh=m;
   }
+  // Walk a ground-bound mob by (mvx,mvz) plus any knockback: blocked by walls,
+  // hops one-block steps, and falls under gravity.
+  function moveGrounded(e,mvx,mvz,dt){
+    const decay=Math.max(0,1-6*dt);
+    e.kx*=decay; e.kz*=decay;
+    const nx=e.x+(mvx+e.kx)*dt, nz=e.z+(mvz+e.kz)*dt;
+    const fy=Math.floor(e.y), bx=Math.floor(nx), bz=Math.floor(nz);
+    if(!isSolid(bx,fy,bz)&&!isSolid(bx,fy+1,bz)){e.x=nx;e.z=nz;}
+    else if(e.vy===0&&!isSolid(bx,fy+1,bz)&&!isSolid(bx,fy+2,bz))e.vy=7;   // hop a one-block step
+    e.vy=Math.max(-20,e.vy-22*dt);
+    let ny=e.y+e.vy*dt;
+    if(e.vy<=0&&isSolid(Math.floor(e.x),Math.floor(ny),Math.floor(e.z))){ny=Math.floor(ny)+1;e.vy=0;}
+    else if(e.vy>0&&isSolid(Math.floor(e.x),Math.floor(ny+1.8),Math.floor(e.z))){ny=e.y;e.vy=0;}
+    e.y=ny;
+  }
+
+  // ===== VILLAGERS =====
+  // They potter about their plaza, turn to look at you, and the first time you
+  // talk to each one (click it) it hands over a gift.
+  function updateVillager(e,dt,dx,dz,distXZ){
+    if(distXZ>90){e.mesh.visible=false;return;}
+    e.mesh.visible=true;
+    e.wanderT-=dt;
+    if(e.wanderT<=0){
+      const hx=e.home.x-e.x, hz=e.home.z-e.z, hd=Math.hypot(hx,hz);
+      if(hd>14){e.vx=hx/hd*1.2;e.vz=hz/hd*1.2;}                // strayed: head home
+      else if(Math.random()<0.4){e.vx=0;e.vz=0;}                // stand and think
+      else{const a=Math.random()*Math.PI*2;e.vx=Math.cos(a)*1.1;e.vz=Math.sin(a)*1.1;}
+      e.wanderT=1.5+Math.random()*2.5;
+    }
+    moveGrounded(e,e.vx,e.vz,dt);
+    if(e.y<-5){e.y=WORLD_HEIGHT;e.x=e.home.x;e.z=e.home.z;e.vy=0;}
+    if(Math.abs(e.vx)+Math.abs(e.vz)>0.05)e.mesh.rotation.y=Math.atan2(e.vx,e.vz);
+    else if(distXZ<6)e.mesh.rotation.y=Math.atan2(dx,dz);
+  }
+  const VILLAGER_GIFTS=[[B.IRON,3,'Iron'],[B.GOLD,2,'Gold'],[B.COAL,5,'Coal'],['bread',3,'🍞 Bread'],['apple',3,'🍎 Apples'],[B.DIAMOND,1,'💎 Diamond']];
+  const VILLAGER_LINES=['🧑‍🌾 "Hrmm."','🧑‍🌾 "Mind the zombies after dark!"','🧑‍🌾 "Lovely weather for mining."','🧑‍🌾 "Hrmm hrmm. Safe travels."'];
+  const giftedVillagers=new Set();
+  function talkToVillager(e){
+    if(giftedVillagers.has(e.id)){toast(VILLAGER_LINES[Math.floor(Math.random()*VILLAGER_LINES.length)]);return;}
+    giftedVillagers.add(e.id);
+    let hsh=0;
+    for(const ch of String(e.id))hsh=(hsh*31+ch.charCodeAt(0))|0;
+    const [item,n,name]=VILLAGER_GIFTS[Math.abs(hsh)%VILLAGER_GIFTS.length];
+    inventory[item]=(inventory[item]||0)+n;
+    renderHotbar(); renderFood(); checkAchievements();
+    toast('🧑‍🌾 "Welcome, traveller! Take these." +'+n+' '+name,4500);
+  }
+
+  // ===== VILLAGE CHESTS & FOOD =====
+  // Each house's chest is filled from its own position and the seed: always
+  // food, one or two kinds of supplies, often a sword or iron armor, rarely a
+  // diamond. Opening it swaps in an empty chest (which the save remembers).
+  function openVillageChest(x,y,z){
+    const rng=mulberry32((x*73856093)^(y*19349663)^(z*83492791)^worldSeed);
+    const got=[];
+    const add=(item,n,label)=>{inventory[item]=(inventory[item]||0)+n;got.push('+'+n+' '+label);};
+    if(rng()<0.6)add('bread',2+Math.floor(rng()*3),'🍞 Bread');
+    else add('apple',2+Math.floor(rng()*3),'🍎 Apples');
+    const supplies=[[B.WOOD,4,8,'Wood'],[B.COAL,3,6,'Coal'],[B.IRON,2,4,'Iron'],[B.GOLD,1,3,'Gold'],[B.STONE,6,12,'Stone']];
+    for(let i=0,n=1+Math.floor(rng()*2);i<n;i++){
+      const sp=supplies[Math.floor(rng()*supplies.length)];
+      add(sp[0],sp[1]+Math.floor(rng()*(sp[2]-sp[1]+1)),sp[3]);
+    }
+    if(rng()<0.12)add(B.DIAMOND,1,'💎 Diamond');
+    const w=rng();
+    if(w<0.45){
+      const tier=w<0.06?5:w<0.22?3:2;            // diamond, iron or stone sword
+      if(tools.swordTier<tier){tools.swordTier=tier;got.push('⚔️ '+SWORD_TIERS[tier]);}
+      else add(B.IRON,2,'Iron');
+    } else if(w<0.6&&!armor.iron){armor.iron=true;got.push('🛡️ Iron armor');}
+    setBlock(x,y,z,B.VCHEST_EMPTY);
+    rebuildMesh(); renderHotbar(); renderTools(); renderArmor(); renderFood();
+    toast('📦 '+got.join(' · '),6000);
+    if(!achievements.villageChest){achievements.villageChest=true;renderAchievements();}
+    checkAchievements();
+  }
+  function renderFood(){
+    const n=(inventory.bread||0)+(inventory.apple||0);
+    const btn=document.getElementById('cc-eat-btn');
+    btn.style.display=n>0&&!isCreative()?'block':'none';
+    btn.textContent='🍞 Eat ('+n+')';
+  }
+  // Bread or an apple: +1 heart
+  function eatFood(){
+    if(isCreative()||gameOver)return;
+    const item=(inventory.bread||0)>0?'bread':(inventory.apple||0)>0?'apple':null;
+    if(!item){toast('🍽️ You have no food — try a village chest!');return;}
+    if(playerHearts>=3){toast('❤️ You\'re already at full health');return;}
+    inventory[item]--;
+    playerHearts++;
+    renderHearts(); renderFood();
+    toast(item==='bread'?'🍞 Yum! +1 ❤️':'🍎 Crunchy! +1 ❤️');
+  }
+
   // Returns true when the zombie should be removed
   function updateZombie(e,dt,dx,dz,distXZ){
     if(distXZ>64||e.y<-5)return true;              // left far behind
@@ -1337,17 +1589,7 @@
       if(e.wanderT<=0){e.vx=(Math.random()-0.5)*1.2;e.vz=(Math.random()-0.5)*1.2;e.wanderT=2+Math.random()*2;}
       mvx=e.vx; mvz=e.vz;
     }
-    const decay=Math.max(0,1-6*dt);
-    e.kx*=decay; e.kz*=decay;
-    const nx=e.x+(mvx+e.kx)*dt, nz=e.z+(mvz+e.kz)*dt;
-    const fy=Math.floor(e.y), bx=Math.floor(nx), bz=Math.floor(nz);
-    if(!isSolid(bx,fy,bz)&&!isSolid(bx,fy+1,bz)){e.x=nx;e.z=nz;}
-    else if(e.vy===0&&!isSolid(bx,fy+1,bz)&&!isSolid(bx,fy+2,bz))e.vy=7;   // hop a one-block step
-    e.vy=Math.max(-20,e.vy-22*dt);
-    let ny=e.y+e.vy*dt;
-    if(e.vy<=0&&isSolid(Math.floor(e.x),Math.floor(ny),Math.floor(e.z))){ny=Math.floor(ny)+1;e.vy=0;}
-    else if(e.vy>0&&isSolid(Math.floor(e.x),Math.floor(ny+1.8),Math.floor(e.z))){ny=e.y;e.vy=0;}
-    e.y=ny;
+    moveGrounded(e,mvx,mvz,dt);
 
     const moving=Math.abs(mvx)+Math.abs(mvz)>0.05;
     if(moving){e.walkT+=dt*8;e.mesh.rotation.y=Math.atan2(mvx,mvz);}
@@ -1403,7 +1645,9 @@
     {id:'demonKill',label:'😈 Slay a mini demon',check:()=>achievements.demonKill},
     {id:'angelHeal',label:'👼 Get healed by an angel',check:()=>achievements.angelHeal},
     {id:'farlands',label:'🌌 Reach the Far Lands',check:()=>achievements.farlands},
-    {id:'zombieKill',label:'🧟 Slay a zombie',check:()=>achievements.zombieKill}
+    {id:'zombieKill',label:'🧟 Slay a zombie',check:()=>achievements.zombieKill},
+    {id:'village',label:'🏘️ Find a village',check:()=>achievements.village},
+    {id:'villageChest',label:'📦 Loot a village chest',check:()=>achievements.villageChest}
   ];
 
   function checkAchievements(){
@@ -1545,6 +1789,7 @@
     if(e.code==='KeyP'){e.preventDefault();paused?resumeGame():pauseGame();return;}
     if(paused)return;
     if((e.code==='KeyT'||e.code==='Slash')&&hudEl.style.display==='block'&&!gameOver){e.preventDefault();openCommand(e.code==='Slash'?'/':'');return;}
+    if(e.code==='KeyF'){eatFood();return;}
     if(e.code==='KeyE'){e.preventDefault();if(craftEl.style.display==='flex')craftEl.style.display='none';else{craftEl.style.display='flex';renderCraft();}}
     if(e.code==='ArrowLeft'){e.preventDefault();activeSlot=(activeSlot-1+hotbarSlots.length)%hotbarSlots.length;renderHotbar();}
     if(e.code==='ArrowRight'){e.preventDefault();activeSlot=(activeSlot+1)%hotbarSlots.length;renderHotbar();}
@@ -1684,7 +1929,8 @@
       time:timeLeft, hearts:playerHearts, realm:currentRealm,
       pos:[player.pos.x,player.pos.y,player.pos.z], yaw:player.yaw, pitch:player.pitch,
       hotbar:hotbarSlots.slice(), aetherHp:aetherBoss?aetherBoss.hp:null, demonHp:demonBoss?demonBoss.hp:null,
-      tamed:pets.map(p=>p.tamed), slain:[...slainEntities], flying:player.flying, dayTime
+      tamed:pets.map(p=>p.tamed), slain:[...slainEntities], flying:player.flying, dayTime,
+      gifted:[...giftedVillagers]
     };
     activeWorld.lastPlayed=Date.now();
     persistWorlds();
@@ -1719,6 +1965,7 @@
     aether.m.clear(); underworld.m.clear(); milkhoney.m.clear();
     pillar=null; dungeonHeartPos=null; aetherBoss=null; demonBoss=null; guardianPos=null;
     entities.length=0; pets.length=0; slainEntities.clear(); edits.clear();
+    giftedVillagers.clear(); villageCache.clear();
     while(fireballGroup.children.length)fireballGroup.remove(fireballGroup.children[0]);
     fireballs.length=0;
     for(const o of [inventory,armor,achievements])for(const k in o)delete o[k];
@@ -1748,6 +1995,7 @@
       if(aetherBoss&&st.aetherHp!=null)aetherBoss.hp=st.aetherHp;
       if(demonBoss&&st.demonHp!=null)demonBoss.hp=st.demonHp;
       (st.tamed||[]).forEach((t,i)=>{if(pets[i])pets[i].tamed=t;});
+      for(const id of st.gifted||[])giftedVillagers.add(id);
       for(const id of st.slain||[]){
         slainEntities.add(id);
         const j=entities.findIndex(e=>e.id===id);
@@ -1767,7 +2015,7 @@
     const modeEl=document.getElementById('cc-mode');
     modeEl.textContent=MODES[gameMode].label; modeEl.style.color=MODES[gameMode].color;
     document.getElementById('cc-seed').textContent='🌱 '+world.name+' · seed '+world.seed;
-    renderHotbar(); renderTools(); renderArmor(); renderAchievements(); renderHearts();
+    renderHotbar(); renderTools(); renderArmor(); renderAchievements(); renderHearts(); renderFood();
   }
 
   function beginPlay(){
@@ -1886,10 +2134,24 @@
     const cmd=(parts[0]||'').toLowerCase(), args=parts.slice(1);
     if(!cmd)return true;
     if(cmd==='help'){
-      cmdSay('/tp x y z     teleport (e.g. /tp 100 20 -50)\n/tp x z       teleport to the surface\n/tp ~ ~10 ~   ~ means "where I am now", plus or minus\n/tp spawn     back to 0, 0\n/seed         show this world\'s seed\n/time night   day · noon · sunset · night · midnight\nT or / opens this bar · Esc closes it');
+      cmdSay('/tp x y z     teleport (e.g. /tp 100 20 -50)\n/tp x z       teleport to the surface\n/tp ~ ~10 ~   ~ means "where I am now", plus or minus\n/tp spawn     back to 0, 0\n/seed         show this world\'s seed\n/time night   day · noon · sunset · night · midnight\n/locate village   find the nearest village\nT or / opens this bar · Esc closes it');
       return false;
     }
     if(cmd==='seed'){cmdSay('Seed: '+worldSeed);return false;}
+    if(cmd==='locate'){
+      if((args[0]||'').toLowerCase()!=='village'){cmdSay('Usage: /locate village');return false;}
+      if(currentRealm!=='overworld'){cmdSay('Villages are only in the Overworld.');return false;}
+      const pcx=Math.floor(player.pos.x/VILLAGE_CELL), pcz=Math.floor(player.pos.z/VILLAGE_CELL);
+      let best=null, bd=Infinity;
+      for(let i=-6;i<=6;i++)for(let j=-6;j<=6;j++){
+        const v=getVillage(pcx+i,pcz+j);
+        if(!v)continue;
+        const d=Math.hypot(v.x-player.pos.x,v.z-player.pos.z);
+        if(d<bd){bd=d;best=v;}
+      }
+      cmdSay(best?`Nearest village (${best.style.name}): ${best.x} ${best.z} — ${Math.round(bd)} blocks away.\nTry /tp ${best.x} ${best.z}`:'No village within about 1000 blocks.');
+      return false;
+    }
     if(cmd==='time'){
       const when={day:0.05,noon:0.25,sunset:0.47,night:0.6,midnight:0.75}[(args[0]||'').toLowerCase()];
       if(when===undefined){cmdSay('Usage: /time day · noon · sunset · night · midnight');return false;}
@@ -1918,6 +2180,7 @@
     if(e.key==='Enter'){e.preventDefault();if(runCommand(cmdIn.value))closeCommand();else cmdIn.select();}
     else if(e.key==='Escape'){e.preventDefault();closeCommand();}
   });
+  document.getElementById('cc-eat-btn').addEventListener('click',()=>{if(!paused)eatFood();});
   document.getElementById('cc-cmd-btn').addEventListener('click',()=>{if(!paused&&!gameOver)openCommand('/');});
 
   document.getElementById('cc-quit-btn').addEventListener('click',()=>{
@@ -2141,11 +2404,12 @@
     // Check if player clicked a demon (kill it if holding sword)
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
-      if ((e.kind !== 'demon' && e.kind !== 'zombie') || e.realm !== currentRealm) continue;
-      const dx = e.x - origin.x, dy = (e.y + (e.kind === 'zombie' ? 1.0 : 0.6)) - origin.y, dz = e.z - origin.z;
+      if ((e.kind !== 'demon' && e.kind !== 'zombie' && e.kind !== 'villager') || e.realm !== currentRealm) continue;
+      const dx = e.x - origin.x, dy = (e.y + (e.kind === 'demon' ? 0.6 : 1.0)) - origin.y, dz = e.z - origin.z;
       const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
       if (dist > 5) continue;
       const dot = (dx*dir.x + dy*dir.y + dz*dir.z) / dist;
+      if (dot > 0.9 && e.kind === 'villager') { talkToVillager(e); return; }
       if (dot > 0.9 && e.kind === 'zombie') {
         // Fists do 1, swords their usual damage; every hit knocks it back
         const dmg = Math.max(1, SWORD_DAMAGE[tools.swordTier] || 0, tools.flameSword ? 5 : 0);
@@ -2238,6 +2502,8 @@
       else if(!achievements.puzzle3)startPuzzle(2);
       return;
     }
+    if(r.blockId===B.VCHEST){openVillageChest(r.x,r.y,r.z);return;}
+    if(r.blockId===B.VCHEST_EMPTY){toast('📦 This chest is empty.');return;}
     if(r.blockId===B.CHEST){
       inventory[B.AETHERSTONE]=(inventory[B.AETHERSTONE]||0)+5;
       inventory[B.DIAMOND]=(inventory[B.DIAMOND]||0)+3;
@@ -2274,7 +2540,7 @@
     if(r.blockId===B.HONEY){inventory[B.HONEY]=(inventory[B.HONEY]||0)+1;toast('🍯 Sweet honey!');achievements.taste=true;checkAchievements();renderHotbar();return;}
     if(!isCreative()&&info.needs>tools.pickTier){toast('Need '+PICK_TIERS[info.needs]+' to break '+info.name);return;}
     let drop=r.blockId;
-    if(r.blockId===B.GRASS||r.blockId===B.SNOW_GRASS)drop=B.DIRT;
+    if(r.blockId===B.GRASS||r.blockId===B.SNOW_GRASS||r.blockId===B.PATH)drop=B.DIRT;
     if(r.blockId===B.SPRUCE_LOG)drop=B.WOOD;   // so spruce counts toward wooden recipes
     inventory[drop]=(inventory[drop]||0)+1;
     setBlock(r.x,r.y,r.z,B.AIR);
@@ -2394,7 +2660,9 @@
       // Stream the infinite world in around the player, a couple of chunks a frame
       chunkCenter.x=player.pos.x; chunkCenter.z=player.pos.z;
       updateChunks(2);
-      const biomeName=isFarLands(px,pz)?'🌌 Far Lands':BIOME_NAMES[biomeAt(px,pz)];
+      const inVillage=villagesNear(px,pz,VILLAGE_R-4).length>0;
+      if(inVillage&&!achievements.village){achievements.village=true;toast('🏆 Find a village');renderAchievements();}
+      const biomeName=(isFarLands(px,pz)?'🌌 Far Lands':BIOME_NAMES[biomeAt(px,pz)])+(inVillage?' · 🏘️ Village':'');
       const biomeEl=document.getElementById('cc-biome');
       if(biomeEl.textContent!==biomeName)biomeEl.textContent=biomeName;
       if(!achievements.farlands&&isFarLands(px,pz)){
@@ -2504,7 +2772,9 @@
     let gone = null;
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
-      if (e.realm !== currentRealm || !e.mesh) continue;
+      if (e.realm !== currentRealm) continue;
+      // Villagers are born during world generation, before there's a scene to put them in
+      if (!e.mesh) { e.mesh = meshFor(e); e.mesh.position.set(e.x, e.y, e.z); entityMeshGroup.add(e.mesh); }
       const dx = player.pos.x - e.x, dz = player.pos.z - e.z;
       const distXZ = Math.sqrt(dx*dx + dz*dz);
       if (e.kind === 'demon') {
@@ -2541,6 +2811,8 @@
         }
       } else if (e.kind === 'zombie') {
         if (updateZombie(e, dt, dx, dz, distXZ)) (gone || (gone = [])).push(e);
+      } else if (e.kind === 'villager') {
+        updateVillager(e, dt, dx, dz, distXZ);
       } else if (e.kind === 'angel') {
         // Gentle floating bob
         e.floatT = (e.floatT||0) + dt;
