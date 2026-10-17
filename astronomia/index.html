@@ -2133,7 +2133,18 @@ const TYPES = {
   galaxy: {
     label: 'Galaxy', group: 'DISCS & GALAXIES', mass: 4.3e6 * M_SUN, rad: 0,
     kind: 'gal', spin: 6e6,
-    blurb: 'A hundred billion stars in a spiral. A real one is a hundred thousand light-years across — millions of times wider than this whole sandbox — so it is drawn far smaller than life, and only its heavy middle actually pulls on anything.'
+    blurb: 'A hundred billion stars in a spiral, built at its real size — tens of thousands of light-years across. Click any of its stars to lock on, then scroll in to visit it.'
+  },
+
+  /* ---- the biggest and smallest things there are ------------------------ */
+  singularity: {
+    label: 'Singularity', group: 'COSMIC', mass: 50 * M_SUN, rad: 0,
+    kind: 'bh', naked: true, spin: 0.01,
+    blurb: 'A point of infinite density with no event horizon to hide it — a "naked" singularity. It swallows anything that touches it. Press BIG BANG and it explodes into a brand-new universe.'
+  },
+  universe: {
+    label: 'Universe', group: 'COSMIC', mass: 0, rad: 0, kind: 'uni', spin: 1,
+    blurb: 'A whole universe in a bubble: a handful of galaxies flung apart by its own expansion. Press BIG CRUNCH and it falls back in on itself until all that is left is a singularity.'
   },
 
   /* ---- the real Solar System -------------------------------------------- */
@@ -2212,10 +2223,11 @@ const TYPES = {
   }
 };
 
-const GROUPS = ['STARS', 'PLANETS', 'MOONS & DEBRIS', 'EXOTIC', 'HYPOTHETICAL', 'DISCS & GALAXIES', 'SOLAR SYSTEM'];
+const GROUPS = ['STARS', 'PLANETS', 'MOONS & DEBRIS', 'EXOTIC', 'HYPOTHETICAL', 'DISCS & GALAXIES', 'COSMIC', 'SOLAR SYSTEM'];
 
 /* Representative swatch colour for each palette entry. */
 const SWATCH = {
+  singularity: '#ffffff', universe: '#c9a6ff',
   red_dwarf: '#ff7a52', sun_like: '#ffe9a8', blue_giant: '#b9d4ff', red_supergiant: '#ff8a5c',
   wolf_rayet: '#dff0ff', white_dwarf: '#e8f2ff', neutron_star: '#cfe4ff', brown_dwarf: '#a03a2c',
   terrestrial: '#4d96ff', super_earth: '#5aa870', ocean_world: '#2bb4d6', desert_world: '#c98a52',
@@ -2492,7 +2504,7 @@ function makeBody(type, pos, vel, overrides) {
 function visRadius(b) {
   if (b.kind === 'bh' || b.kind === 'wh') return b.r * 2.6 * settings.bodyScale * BH_VIS;
   // A remnant cloud is light-days across already; exaggerating it would be absurd.
-  if (b.kind === 'snr') return b.r;
+  if (b.kind === 'snr' || b.kind === 'uni') return b.r;
   // Deliberately NOT a galaxy's drawn size: that is a screen measurement (see
   // updateGalaxies) and letting it into the physics would give a galaxy a
   // capture radius and a Roche limit the width of the visible universe. What
@@ -5591,7 +5603,8 @@ function buildVisual(b) {
   b.obj = grp;
   b.parts = {};
 
-  if (b.kind === 'bh') buildHole(b, grp);
+  if (b.kind === 'bh' && def.naked) buildSingularity(b, grp);
+  else if (b.kind === 'bh') buildHole(b, grp);
   else if (b.kind === 'wh') buildWhiteHole(b, grp);
   else if (b.kind === 'gal') buildGalaxy(b, grp);
   else if (b.kind === 'gas') buildClump(b, grp);
@@ -5839,6 +5852,22 @@ function buildHole(b, grp) {
   disk.rotation.z = 0.2;
   grp.add(disk);
   b.parts.disk = disk;
+}
+
+/* No horizon, no disc: just the point itself, blazing, shifting through every
+   colour as the light leaving it is bent and stretched. */
+function buildSingularity(b, grp) {
+  const core = new THREE.Mesh(SPHERE_LO, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  grp.add(core);
+  b.parts.surf = core;
+  const g1 = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_GLOW, color: new THREE.Color(0xffffff), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  const g2 = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_HALO, color: new THREE.Color(0xc9a6ff), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  grp.add(g1); grp.add(g2);
+  b.parts.glow = g1; b.parts.halo = g2;
+  const photon = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_PHOTON, color: new THREE.Color(0xd8c4ff), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  grp.add(photon);
+  b.parts.photon = photon;
+  b.lightColor = new THREE.Color(0xffffff);
 }
 
 function buildWhiteHole(b, grp) {
@@ -6776,7 +6805,7 @@ function addSolidRing(b) {
  */
 
 /* Star slots shared across every galaxy in the scene. */
-const GAL_MAX = 34000;
+const GAL_MAX = 60000;
 const GAL_STARS = 11000;        // per galaxy, budget permitting
 const GAL_SUBSTEPS = 3;         // per frame — galaxy orbits are slow and smooth
 /* Softening as a fraction of the disc radius. It gives the inner disc a
@@ -7055,7 +7084,7 @@ function seedGalaxyStars(b) {
   const HII = [1.0, 0.44, 0.60];        // pink hydrogen where stars are forming
   const DISC = [0.52, 0.50, 0.66];
 
-  const want = Math.min(GAL_STARS, galx.free.length);
+  const want = Math.min(b.galN || GAL_STARS, galx.free.length);
   for (let i = 0; i < want; i++) {
     const k = galx.free.pop();
     const k3 = k * 3;
@@ -7371,6 +7400,255 @@ function placeGalaxyStars(S) {
   sm.instanceMatrix.needsUpdate = true;
   sm.instanceColor.needsUpdate = true;
   sm.material.uniforms.uTime.value = performance.now() / 1000;
+}
+
+/* ================================================================ universes */
+/*
+ * A universe is a bubble of space with galaxies in it, all flying apart. It is
+ * not a body — it has no mass of its own and feels nothing — but a duck-typed
+ * object like a supernova remnant, so it can be selected, followed, labelled
+ * and zoomed to. Its centre and size are worked out every frame from the
+ * galaxies it owns: it grows as they spread, and dies when they are gone.
+ *
+ * The expansion is just velocity: each galaxy is launched away from the centre
+ * at a speed proportional to its distance (Hubble's law), fast enough to beat
+ * their mutual gravity, so it carries on forever. BIG CRUNCH reverses it: the
+ * galaxies are steered back in, merge, and what is left becomes a singularity.
+ */
+const universes = [];
+let uniCount = 0;
+const UNI_R = 14 * GAL_R_MW;           // radius at birth, ~700,000 light-years
+const UNI_EXPAND = 2600;               // days for the bubble to double, early on
+const UNI_CRUNCH = 260;                // e-folding time of a crunch, in days
+
+const UNI_VERT = `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  varying vec3 vN;
+  varying vec3 vV;
+  varying vec3 vP;
+  void main() {
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vN = normalize(normalMatrix * normal);
+    vV = -mv.xyz;
+    vP = position;
+    gl_Position = projectionMatrix * mv;
+    #include <logdepthbuf_vertex>
+  }`;
+const UNI_FRAG = `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  uniform float uTime;
+  uniform float uFade;
+  varying vec3 vN;
+  varying vec3 vV;
+  varying vec3 vP;
+  vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
+  void main() {
+    #include <logdepthbuf_fragment>
+    float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
+    float rim = pow(f, 3.0);
+    // a soap-film shimmer that drifts over the skin
+    vec3 c = hue(vP.y * 0.8 + vP.x * 0.5 + uTime * 0.05 + rim * 0.6);
+    c = mix(c, vec3(0.75, 0.6, 1.0), 0.45);
+    gl_FragColor = vec4(c, (rim * 0.75 + 0.025) * uFade);
+  }`;
+
+function makeUniverse(at, vel, opts) {
+  const o = opts || {};
+  const rng = mulberry32((Math.random() * 1e9) | 0);
+  const u = {
+    kind: 'uni', alive: true, id: 'u' + (++uniCount),
+    name: o.name || (uniCount === 1 ? 'Universe' : 'Universe ' + uniCount),
+    // Born in a Big Bang, the bubble starts from nothing and grows with what
+    // is inside it.
+    type: 'universe', p: at.clone(), v: vel.clone(), r: UNI_R, R: o.bang ? 0 : UNI_R,
+    members: [], age: 0, crunch: false, flash: o.bang ? 0 : -1, seed: (rng() * 1e9) | 0,
+    v0: vel.clone()                      // its drift at birth, which a crunch hands back
+  };
+  /* Galaxies, scattered through the ball and each launched outwards by
+     Hubble's law — the further out, the faster it goes. */
+  const n = o.n || (6 + ((rng() * 4) | 0));
+  const H = 1 / UNI_EXPAND;
+  for (let i = 0; i < n; i++) {
+    const dir = new THREE.Vector3(rng() * 2 - 1, rng() * 2 - 1, rng() * 2 - 1);
+    if (dir.lengthSq() < 1e-4) dir.set(1, 0, 0);
+    dir.normalize();
+    const dist = UNI_R * (o.bang ? 0.12 + rng() * 0.18 : 0.25 + Math.cbrt(rng()) * 0.6);
+    const pos = at.clone().addScaledVector(dir, dist);
+    const v = vel.clone().addScaledVector(dir, dist * H * (o.bang ? 2.4 : 1));
+    if (sim.bodies.length >= MAX_BODIES) break;
+    const g = makeBody('galaxy', pos, v);
+    g.galR = GAL_R_MW * lerp(0.3, 0.8, rng());
+    g.galN = 3200;
+    g.m = galMassFor(g.galR);
+    g.galAxis = new THREE.Vector3(rng() * 2 - 1, rng() * 2 - 1, rng() * 2 - 1).normalize();
+    seedGalaxyStars(g);
+    g.universe = u.id;
+    u.members.push(g);
+  }
+
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 32), new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uFade: { value: 1 } },
+    vertexShader: UNI_VERT, fragmentShader: UNI_FRAG,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending
+  }));
+  mesh.frustumCulled = false;
+  mesh.renderOrder = -6;
+  scene.add(mesh);
+  u.mesh = mesh;
+  if (o.bang) {
+    // The flash: a ball of light, brightest through its middle, swelling out
+    // from the point. A mesh rather than a sprite — a sprite this many times
+    // wider than the camera's distance tears into wedges at the screen edge.
+    const fl = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), new THREE.ShaderMaterial({
+      uniforms: { uCol: { value: new THREE.Color(1, 1, 1) }, uOp: { value: 1 } },
+      vertexShader: UNI_VERT,
+      fragmentShader: `
+        #include <common>
+        #include <logdepthbuf_pars_fragment>
+        uniform vec3 uCol;
+        uniform float uOp;
+        varying vec3 vN;
+        varying vec3 vV;
+        void main() {
+          #include <logdepthbuf_fragment>
+          float c = abs(dot(normalize(vN), normalize(vV)));
+          gl_FragColor = vec4(uCol, pow(c, 2.2) * uOp);
+        }`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+    }));
+    fl.frustumCulled = false;
+    fl.renderOrder = 8;
+    scene.add(fl);
+    u.flashSprite = fl;
+  }
+  universes.push(u);
+  computeAccel();
+  return u;
+}
+
+function disposeUniverse(u) {
+  u.alive = false;
+  if (u.mesh) { scene.remove(u.mesh); u.mesh.geometry.dispose(); u.mesh.material.dispose(); }
+  if (u.flashSprite) { scene.remove(u.flashSprite); u.flashSprite.geometry.dispose(); u.flashSprite.material.dispose(); }
+  const i = universes.indexOf(u);
+  if (i >= 0) universes.splice(i, 1);
+  if (sim.selected === u) select(null);
+  if (sim.follow === u) sim.follow = null;
+}
+
+/** Remove a universe and everything in it. */
+function removeUniverse(u) {
+  for (const g of u.members) if (g.alive) removeBody(g);
+  compact();
+  disposeUniverse(u);
+}
+
+function clearUniverses() {
+  while (universes.length) disposeUniverse(universes[0]);
+}
+
+/** Cosmic events take thousands of days; make sure the clock is fast enough
+    to watch one happen. Never slows a clock that is already faster. */
+function cosmicPace() {
+  if (rateIdx < 7) { rateIdx = 7; sim.rate = RATES[rateIdx]; syncRate(); }
+  if (!sim.running) togglePlay();
+}
+
+/** A singularity goes off: in its place, a brand-new universe. */
+function bigBang(b) {
+  if (!b || !b.alive) return;
+  const at = b.p.clone(), vel = b.v.clone(), name = b.name;
+  select(null);
+  removeBody(b);
+  compact();
+  const u = makeUniverse(at, vel, { bang: true });
+  select(u);
+  sim.follow = u;
+  view.target.copy(at);
+  view.dist = UNI_R * 3.2;
+  cosmicPace();
+  toast('BIG BANG! ' + name + ' became ' + u.name + ' — ' + u.members.length + ' galaxies and counting.');
+}
+
+/** Turn the expansion round. */
+function bigCrunch(u) {
+  if (!u.alive || u.crunch) return;
+  u.crunch = true;
+  cosmicPace();
+  toast(u.name + ' has stopped expanding… and is falling back in on itself.');
+  renderInspector();
+}
+
+const _uc = new THREE.Vector3(), _uv = new THREE.Vector3();
+function updateUniverses(realDt, simDt) {
+  for (let i = universes.length - 1; i >= 0; i--) {
+    const u = universes[i];
+    u.members = u.members.filter(g => g.alive);
+    if (u.members.length === 0) {
+      toast(u.name + ' is empty, and its bubble has popped.');
+      disposeUniverse(u);
+      continue;
+    }
+    u.age += simDt;
+    // Centre and drift: the mass-weighted middle of what is left in it.
+    let M = 0;
+    _uc.set(0, 0, 0); _uv.set(0, 0, 0);
+    for (const g of u.members) { _uc.addScaledVector(g.p, g.m); _uv.addScaledVector(g.v, g.m); M += g.m; }
+    _uc.divideScalar(M); _uv.divideScalar(M);
+    u.p.copy(_uc); u.v.copy(_uv);
+    let far = 0, galR = 0;
+    for (const g of u.members) { far = Math.max(far, g.p.distanceTo(u.p)); galR = Math.max(galR, g.galR); }
+    // The skin sits a little beyond the outermost galaxy and never shrinks
+    // faster than it does, so it reads as the edge of space, not a balloon.
+    const want = far * 1.25 + galR * 1.6;
+    u.R = u.crunch ? want : Math.max(u.R, want);
+    u.r = u.R;
+
+    if (u.crunch && simDt > 0) {
+      // Steer every galaxy back to the middle, closing the gap by a fixed
+      // fraction each day: it converges without ever overshooting.
+      const k = Math.min(simDt / UNI_CRUNCH, 0.9) / Math.max(simDt, 1e-9);
+      for (const g of u.members) {
+        g.v.copy(u.v).addScaledVector(_uc.copy(u.p).sub(g.p), k);
+      }
+      if (far < galR * 0.6 || u.members.length === 1 && u.age > 0) {
+        const at = u.p.clone(), vel = u.v0.clone(), name = u.name;
+        for (const g of u.members) if (g.alive) removeBody(g);
+        compact();
+        disposeUniverse(u);
+        const s = makeBody('singularity', at, vel);
+        select(s);
+        sim.follow = s;
+        view.target.copy(at);
+        view.dist = Math.max(visRadius(s) * 60, 1e-3);
+        fx.form && fx.form(s, true);
+        toast('BIG CRUNCH! ' + name + ' collapsed into ' + s.name + '.');
+        continue;
+      }
+    }
+
+    u.mesh.position.copy(u.p);
+    u.mesh.scale.setScalar(u.R);
+    u.mesh.material.uniforms.uTime.value = performance.now() / 1000;
+    // Inside the bubble, the skin is all around you and should not wash out
+    // the view: fade it as the camera crosses in.
+    const inside = camera.position.distanceTo(u.p) / u.R;
+    u.mesh.material.uniforms.uFade.value = clamp((inside - 0.6) / 0.5, 0.15, 1);
+
+    if (u.flashSprite) {
+      u.flash += realDt;
+      const t = u.flash / 2.6;
+      if (t >= 1) { scene.remove(u.flashSprite); u.flashSprite.geometry.dispose(); u.flashSprite.material.dispose(); u.flashSprite = null; }
+      else {
+        u.flashSprite.position.copy(u.p);
+        u.flashSprite.scale.setScalar(UNI_R * (0.05 + t * 1.4));
+        u.flashSprite.material.uniforms.uOp.value = Math.pow(1 - t, 1.6);
+        u.flashSprite.material.uniforms.uCol.value.setHSL(0.10 - t * 0.1, 1, 0.9 - t * 0.35);
+      }
+    }
+  }
 }
 
 /** The galaxy star nearest a click, or -1. */
@@ -8737,7 +9015,8 @@ function gatherHoles() {
   if (!out) return 0;
   for (let i = 0; i < sim.bodies.length && n < 4; i++) {
     const b = sim.bodies[i];
-    if (b.kind !== 'bh') continue;
+    // A naked singularity has no horizon, so no shadow to paint.
+    if (b.kind !== 'bh' || TYPES[b.type].naked) continue;
     _proj.copy(b.p).project(camera);
     if (_proj.z < -1 || _proj.z > 1) continue;
     const dist = camera.position.distanceTo(b.p);
@@ -8771,7 +9050,7 @@ function renderFrame() {
 /* =================================================================== camera */
 
 const view = { target: new THREE.Vector3(), dist: 900, yaw: 0.75, pitch: 0.46, over: 0 };
-const MIN_DIST = 2e-4, MAX_DIST = 1e14;   // ~10 million light-years
+const MIN_DIST = 2e-4, MAX_DIST = 1e16;   // ~1 billion light-years
 /*
  * Past MAX_DIST the zoom carries on as a power of ten in view.over, out to a
  * camera distance of 10^1002 km. No floating-point number reaches that far
@@ -8815,7 +9094,7 @@ function applyCamera() {
   camera.near = Math.max(1e-6, view.dist * 1e-4);
   // Real-sized galaxies are ~10^12 Gm across: from inside one, looking at a
   // single star, the rest of it still has to be in range.
-  camera.far = Math.max(view.dist * 12, SKY_R * 2.2, galx.live > 0 ? 2e14 : 0);
+  camera.far = Math.max(view.dist * 12, SKY_R * 2.2, galx.live > 0 ? 2e17 : 0);
   camera.updateProjectionMatrix();
   if (skyGroup) skyGroup.position.copy(camera.position);
 }
@@ -9099,7 +9378,7 @@ function applyLanded(realDt) {
   _lLook.copy(_lFwd).multiplyScalar(Math.cos(land.pitch)).addScaledVector(up, Math.sin(land.pitch));
   camera.lookAt(_lEye.clone().add(_lLook));
   camera.near = Math.max(1e-9, h * 0.05);
-  camera.far = Math.max(SKY_R * 2.2, galx.live > 0 ? 2e14 : 0);
+  camera.far = Math.max(SKY_R * 2.2, galx.live > 0 ? 2e17 : 0);
   camera.updateProjectionMatrix();
   if (skyGroup) skyGroup.position.copy(_lEye);
   // Keep the orbit camera parked on this world, so taking off and every
@@ -9215,6 +9494,7 @@ function updateLabels() {
     const wpp = worldPerPixel(Math.max(camera.position.distanceTo(e.p), 1e-9));
     cands.push([2e9, e, clamp(e.r / wpp, 6, 90)]);
   }
+  for (const u of universes) cands.push([3e9, u, 14]);
   cands.sort((a, b) => b[0] - a[0]);
 
   // Bodies that sit on top of each other at this zoom (Earth and its Moon, a
@@ -9435,6 +9715,12 @@ function updateVisuals(realDt, simDt) {
 
     // ---- black holes
     if (p.disk) p.disk.rotation.z += realDt * 0.35;
+    if (def.naked && p.glow) {
+      const hue = (performance.now() / 6000 + b.seed * 1e-3) % 1;
+      p.glow.material.color.setHSL(hue, 0.9, 0.78);
+      p.halo.material.color.setHSL((hue + 0.33) % 1, 0.9, 0.62);
+      p.photon.material.color.setHSL((hue + 0.66) % 1, 0.8, 0.7);
+    }
     if (p.photon) p.photon.scale.setScalar(Math.max(r * 5.6, 16 * wpp));
 
     // ---- a world's appearance responds to how hot it is
@@ -9572,6 +9858,15 @@ function pickBody(sx, sy) {
     if (score < bestScore) { bestScore = score; best = b; }
   }
   if (best) return best;
+
+  // A universe is picked by its middle, like a galaxy — and only when there is
+  // nothing in it nearer the cursor.
+  for (const u of universes) {
+    _lp.copy(u.p).project(camera);
+    if (_lp.z < -1 || _lp.z > 1) continue;
+    const d = Math.hypot((_lp.x + 1) * 0.5 * VIEW.w - sx, (1 - _lp.y) * 0.5 * VIEW.h - sy);
+    if (d < 30) return u;
+  }
 
   // Only fall through to remnant clouds when nothing solid is under the cursor —
   // a cloud covers half the screen, and you still need to be able to click the
@@ -9772,6 +10067,14 @@ function dropArmed() {
   if (!input.armed || !input.placePos) return;
   if (sim.bodies.length >= MAX_BODIES) { toast('Universe is full — clear some bodies'); return; }
   const vel = velocityFromDrag();
+  if (TYPES[input.armed].kind === 'uni') {
+    const u = makeUniverse(input.placePos, vel);
+    select(u);
+    frameOn(u, 2.6);
+    sim.follow = u;
+    cosmicPace();
+    return;
+  }
   const b = makeBody(input.armed, input.placePos, vel);
   select(b);
   // A galaxy is tens of thousands of light-years wide: pull back to see it.
@@ -9800,7 +10103,9 @@ function onKey(e) {
       if (sim.selected) { sim.follow = sim.follow === sim.selected ? null : sim.selected; renderInspector(); }
       break;
     case 'Delete': case 'Backspace':
-      if (sim.selected && sim.selected.kind === 'snr') {
+      if (sim.selected && sim.selected.kind === 'uni') {
+        removeUniverse(sim.selected);
+      } else if (sim.selected && sim.selected.kind === 'snr') {
         const e = sim.selected;
         disperseCloud(e);
         e.alive = false;
@@ -10014,6 +10319,32 @@ function snPanelHTML(plan) {
  * twice: squeeze it and the middle gets hotter, and at ten million kelvin
  * hydrogen starts fusing whether you meant it to or not.
  */
+function renderUniverseInspector(u) {
+  const host = $('an-insp-body');
+  $('an-insp-h').textContent = 'UNIVERSE';
+  host.innerHTML =
+    '<div class="an-name-in" style="cursor:default;pointer-events:none">' + escAttr(u.name) + '</div>' +
+    '<div class="an-type">' + (u.crunch ? 'collapsing' : 'expanding') + '</div>' +
+    '<dl class="an-stats">' +
+    '<dt>Galaxies</dt><dd id="is-ug"></dd>' +
+    '<dt>Radius</dt><dd id="is-ur"></dd>' +
+    '<dt>Age</dt><dd id="is-ua"></dd>' +
+    '</dl>' +
+    (u.crunch ? '' : '<div class="an-row"><button id="is-crunch">BIG CRUNCH</button></div>') +
+    '<div class="an-row"><button id="is-ufollow">' + (sim.follow === u ? 'UNFOLLOW' : 'FOLLOW') +
+    '</button><button id="is-uzoom">ZOOM TO</button></div>' +
+    '<div class="an-row"><button id="is-udel" class="an-danger">REMOVE</button></div>' +
+    '<p class="an-note" style="margin-top:13px">' + TYPES.universe.blurb + ' Click any star in any of ' +
+    'its galaxies to lock on and fly in.</p>';
+  inspRefs = { ug: $('is-ug'), ur: $('is-ur'), ua: $('is-ua') };
+  const cr = $('is-crunch');
+  if (cr) cr.addEventListener('click', () => bigCrunch(u));
+  $('is-ufollow').addEventListener('click', () => { sim.follow = sim.follow === u ? null : u; renderInspector(); });
+  $('is-uzoom').addEventListener('click', () => { frameOn(u, 2.6); sim.follow = u; renderInspector(); });
+  $('is-udel').addEventListener('click', () => removeUniverse(u));
+  updateInspectorStats();
+}
+
 function renderCloudInspector(e) {
   const host = $('an-insp-body');
   const c = e.cloud || { mass: 0, n: 0, radius: 0 };
@@ -10593,6 +10924,7 @@ function renderInspector() {
     return;
   }
   if (b.kind === 'snr') { renderCloudInspector(b); return; }
+  if (b.kind === 'uni') { renderUniverseInspector(b); return; }
   if (b.kind === 'gal') { renderGalaxyInspector(b); return; }
   if (b.kind === 'gas') { renderClumpInspector(b); return; }
   const def = TYPES[b.type];
@@ -10640,6 +10972,7 @@ function renderInspector() {
     (land.b === b
       ? '<div class="an-row"><button id="is-land">TAKE OFF</button></div>'
       : landBlock(b) ? '' : '<div class="an-row"><button id="is-land">LAND</button></div>') +
+    (def.naked ? '<div class="an-row"><button id="is-bang">BIG BANG</button></div>' : '') +
     '<div class="an-row"><button id="is-shatter" class="an-danger">SHATTER</button><button id="is-del" class="an-danger">REMOVE</button></div>' +
     '<p style="font-size:11px;line-height:1.55;color:var(--ink-dim);margin-top:13px">' + def.blurb + '</p>';
 
@@ -10704,6 +11037,8 @@ function renderInspector() {
   const landBtn = $('is-land');
   if (landBtn) landBtn.addEventListener('click', () => { if (land.b === b) leaveSurface(); else landOn(b); });
   $('is-shatter').addEventListener('click', () => shatterBody(b));
+  const bang = $('is-bang');
+  if (bang) bang.addEventListener('click', () => bigBang(b));
   $('is-del').addEventListener('click', () => { select(null); removeBody(b); compact(); });
 
   updateInspectorStats();
@@ -10713,6 +11048,13 @@ function updateInspectorStats() {
   const b = sim.selected;
   if (!b || !b.alive || !inspRefs) return;
 
+  if (b.kind === 'uni') {
+    inspRefs.ug.textContent = b.members.length;
+    inspRefs.ur.textContent = fmtDist(b.R);
+    inspRefs.ua.textContent = b.age < 730 ? Math.round(b.age).toLocaleString() + ' days'
+      : (b.age / 365.25).toPrecision(3) + ' years';
+    return;
+  }
   if (b.kind === 'snr') {
     const c = b.cloud || { mass: 0, n: 0, radius: 0 };
     inspRefs.cmass.textContent = fmtMass(c.mass);
@@ -10746,7 +11088,8 @@ function updateInspectorStats() {
   }
 
   inspRefs.mass.textContent = fmtMass(b.m);
-  inspRefs.rad.textContent = b.kind === 'bh' ? fmtRadius(b.r) + ' (horizon)' : fmtRadius(b.r);
+  inspRefs.rad.textContent = TYPES[b.type].naked ? '0 — a single point'
+    : b.kind === 'bh' ? fmtRadius(b.r) + ' (horizon)' : fmtRadius(b.r);
   inspRefs.den.textContent = b.kind === 'bh' ? '—' : fmtDensity(b.m, b.r);
   inspRefs.spd.textContent = fmtSpeed(b.v.length());
   inspRefs.tmp.textContent = b.kind === 'bh' ? '—' : Math.round(b.temp).toLocaleString() + ' K';
@@ -11589,6 +11932,7 @@ function clearAll() {
   clearParticles();
   clearGalaxyStars();
   clearSupernovae();
+  clearUniverses();
   clearDiscs();
   grewBodies.clear();
   pSources = [];
@@ -11636,7 +11980,7 @@ function saveUniverse() {
         // A galaxy is saved as its shape, not as six thousand star positions —
         // the disc is rebuilt fresh on load. A collision in progress is lost.
         gx: b.kind === 'gal'
-          ? { R: b.galR, arms: b.galArms, spin: b.galSpin, merged: b.galMerged || 0, P: b.galPeriod || 0,
+          ? { R: b.galR, arms: b.galArms, spin: b.galSpin, merged: b.galMerged || 0, P: b.galPeriod || 0, N: b.galN || 0,
               ax: b.galAxis ? b.galAxis.toArray() : null }
           : null,
         st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount, sy: b.shy ? 1 : 0,
@@ -11688,6 +12032,7 @@ function loadUniverse() {
       b.galR = s.gx.R; b.galArms = s.gx.arms; b.galSpin = s.gx.spin;
       b.galMerged = s.gx.merged || 0;
       if (s.gx.P) b.galPeriod = s.gx.P;
+      if (s.gx.N) b.galN = s.gx.N;
       if (s.gx.ax) b.galAxis = new V3().fromArray(s.gx.ax);
       seedGalaxyStars(b);
     }
@@ -11765,6 +12110,13 @@ function openHelp() {
     '<li>A <b>Protostar + Disc</b> is a star still being born, wrapped in the flat disc of gas and dust it is feeding from. Start time and the disc <b>condenses into planets</b>, one at a time — rock and small worlds on the warm side of the <b>ice line</b>, giants just beyond it, exactly the order our own Solar System came out in. Every planet takes its mass out of the disc, so once the disc is spent, that is that.</li>' +
     '<li>A <b>brown dwarf</b> is a failed star: heavier than any planet, too light to fuse hydrogen. Here one keeps contracting until it <b>lights up as a red dwarf</b> after a hundred years (change that in Settings). A real one never manages it — it just fades for trillions of years — so this one is for fun.</li>' +
     '<li>A <b>galaxy</b> is eleven thousand individual stars wrapped in glowing clouds of gas, and every one of them is really orbiting. Drop two and crash them together — that is what <b>Galaxy Collision</b> in Systems sets up.</li>' +
+    '</ul>' +
+    '<h3>SINGULARITIES AND UNIVERSES</h3>' +
+    '<ul>' +
+    '<li>A <b>Singularity</b> (under <b>Cosmic</b>) is a point of infinite density with no event horizon around it. It swallows anything that touches it, and it shimmers through every colour.</li>' +
+    '<li>Select it and press <b>BIG BANG</b>: it explodes into a brand-new <b>Universe</b> — a bubble of space with half a dozen galaxies in it, all flying apart as it expands. Time speeds up so you can watch.</li>' +
+    '<li>You can also drop a Universe straight from the palette. Click any star in any of its galaxies to lock on and fly in.</li>' +
+    '<li>Select a universe (click the middle of its bubble) and press <b>BIG CRUNCH</b>: the expansion turns round, the galaxies fall back together and merge, and the whole thing collapses into a single singularity — ready to go bang again.</li>' +
     '</ul>' +
     '<h3>CRASHING GALAXIES TOGETHER</h3>' +
     '<ul>' +
@@ -11934,6 +12286,7 @@ function loop(now) {
   const t0 = sim.time;
   advance(realDt);
   const simDt = sim.time - t0;
+  if (universes.length) updateUniverses(realDt, simDt);
 
   if (sim.follow) {
     galx.focus = -1;
