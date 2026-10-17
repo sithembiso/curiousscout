@@ -524,6 +524,7 @@
     <span>BODIES <b id="an-hud-bodies">0</b></span>
     <span><b id="an-hud-fps">60</b> FPS</span>
     <span id="an-hud-sn" style="display:none;color:#ffd166"></span>
+    <span id="an-hud-slow" style="display:none;color:#8be0ff">&#128034; SLOW-MO</span>
     <span class="an-scalebar" id="an-scalebar"><b id="an-scale-lbl">1 Gm</b><i></i></span>
   </div>
 
@@ -2280,7 +2281,10 @@ const settings = {
   terraYears: 4,         // years for a dead world to be terraformed from scratch
   discYears: 4,          // years between planets condensing out of a protoplanetary disc
   galMinPx: 1000,        // a galaxy is never drawn narrower than this on screen…
-  galMaxPx: 3000         // …nor wider than this
+  galMaxPx: 3000,        // …nor wider than this
+  slowmo: true,          // drop into slow motion whenever two real bodies collide
+  slowmoFactor: 10,      // …this many times slower
+  slowmoSecs: 4          // …for this many seconds of wall clock
 };
 
 /**
@@ -2611,11 +2615,37 @@ function step(dt) {
   updateSpin(dt);
 }
 
+/* ======================================================== slow-motion impacts */
+/*
+ * A collision is over in a frame or two at any sensible time rate, which is
+ * exactly when you most want to see it. So a real impact — two actual worlds or
+ * stars, not rubble settling or a knot of gas — drops the whole simulation into
+ * slow motion for a few seconds of wall clock, then eases back to full speed
+ * over the last second. A fresh impact during slow motion starts it over.
+ * Everything that runs on simulated time slows with it: the bodies, the debris,
+ * the vapour, the light curve. Only the wall-clock effects (flashes, a body
+ * sinking into another) keep their own pace.
+ */
+let slowmoLeft = 0;
+
+function triggerSlowmo(a, b) {
+  if (!settings.slowmo) return;
+  if (a.rubble || b.rubble || a.kind === 'gas' || b.kind === 'gas') return;
+  slowmoLeft = settings.slowmoSecs;
+}
+
+/** How fast simulated time runs right now, as a fraction of the chosen rate. */
+function slowmoScale() {
+  if (slowmoLeft <= 0) return 1;
+  const slow = 1 / Math.max(settings.slowmoFactor, 1);
+  return lerp(slow, 1, smoothstep(clamp(1 - slowmoLeft, 0, 1)));   // eases out over the final second
+}
+
 /** Advance the simulation by one rendered frame's worth of time. */
 function advance(frameSeconds) {
   refreshSources();
   if (!sim.running || sim.rate === 0) return;
-  const target = sim.rate * Math.min(frameSeconds, 0.05);
+  const target = sim.rate * Math.min(frameSeconds, 0.05) * slowmoScale();
   if (target <= 0) return;
   const safe = Math.max(1e-9, 0.025 * lastMinTdyn);
   const n = sim.bodies.length;
@@ -2677,6 +2707,7 @@ function impact(a, b) {
   // Already sinking into one another: the engulfment owns this pair, and the
   // collision test will go on reporting them every step until it is done.
   if ((b.sink && b.sink.host === a) || (a.sink && a.sink.host === b)) return false;
+  triggerSlowmo(a, b);
 
   // White holes never merge — they shove things away instead.
   if (a.kind === 'wh' || b.kind === 'wh') {
@@ -9946,6 +9977,11 @@ function openSettings() {
     tgl('st-grid', 'Placement grid', 'Show a measuring grid on the drop plane whenever something is armed.') +
     tgl('st-snap', 'Snap to the grid', 'Drop points land exactly on grid intersections, for laying things out neatly.') +
 
+    '<div class="an-sec">SLOW-MOTION COLLISIONS</div>' +
+    tgl('st-slowmo', 'Slow down collisions', 'When two worlds or stars hit, time drops to a crawl for a few seconds so you can watch the impact, then eases back.') +
+    sld('st-slowf', 'How much slower', 2, 50, 1, settings.slowmoFactor) +
+    sld('st-slows', 'For how long', 1, 15, 0.5, settings.slowmoSecs) +
+
     '<div class="an-sec">TIDES</div>' +
     '<p class="an-note">Inside the <b>Roche limit</b> a body cannot hold itself together against the pull of whatever it is orbiting. It does not simply pop: it is shaved away and squeezed hot first, and only then comes apart.</p>' +
     tgl('st-tidal', 'Tidal forces', 'Off, and nothing is ever torn at, however close it gets.') +
@@ -10052,6 +10088,9 @@ function openSettings() {
   bindTgl('st-lens', 'lensing');
   bindTgl('st-grid', 'grid');
   bindTgl('st-snap', 'gridSnap');
+  bindTgl('st-slowmo', 'slowmo', () => { if (!settings.slowmo) slowmoLeft = 0; });
+  bindSld('st-slowf', (v) => Math.round(v) + '× slower', (v) => { settings.slowmoFactor = v; });
+  bindSld('st-slows', (v) => v + ' seconds', (v) => { settings.slowmoSecs = v; });
 
   bindSld('st-striprate', (v) => v.toFixed(1) + '×', (v) => { settings.stripRate = v; });
 
@@ -10846,6 +10885,7 @@ function openHelp() {
     '<ul>' +
     '<li>Every body pulls on every other one with real Newtonian gravity, stepped with a leapfrog integrator that keeps orbits stable for thousands of years.</li>' +
     '<li>Masses, radii and distances are in real units — Earth masses, Earth radii and millions of kilometres. Drop Earth 149.6 million km from a Sun-like star and its year comes out at 365 days.</li>' +
+    '<li><b>Every real impact plays in slow motion</b> — time drops to a tenth for four seconds and then eases back, so you can see what happened. Change how slow and how long, or switch it off, in <b>Settings ▸ Slow-motion collisions</b>.</li>' +
     '<li><b>Slow collisions merge</b> and conserve momentum. <b>Fast ones shatter</b> both bodies into rubble — the test is impact speed against the pair\'s escape velocity.</li>' +
     '<li>Most of what a collision throws out is <b>not gravel — it is gas</b>. Two worlds hitting each other put in far more energy than it takes to melt rock, let alone boil it, so the plume of vapour that comes off outweighs the solid fragments by more than two to one. It is drawn in the same colours as a protoplanetary disc because it is the same stuff at the same temperatures: white-hot where it is fastest, then orange, then cold blue as it spreads and cools. That vapour is exactly where discs, rings and moons come from — ours came off the impact that made the Moon.</li>' +
     '<li>A collision also throws off <b>knots</b> — lumps big enough to click on and weigh. Most are still vapour, and about a third of them come off <b>solid</b>, because they never got hot enough to boil. Select a gas knot and the panel tells you which way it is going to go: below about four Moons of mass it spreads out and is gone, and above it gravity wins and it <b>pulls itself together into a world</b>. Drag its mass across that line and watch the answer change. This is not a made-up rule — it is how our own Moon was made, out of the wreckage of something the size of Mars hitting the young Earth.</li>' +
@@ -10943,6 +10983,8 @@ function updateHud(realDt) {
   const yr = Math.floor(sim.time / 365.25);
   const dy = Math.floor(sim.time - yr * 365.25);
   $('an-clock').innerHTML = 'Y ' + yr.toLocaleString() + '<br>D ' + dy;
+  const slowEl = $('an-hud-slow'), slowOn = slowmoLeft > 0 && sim.running;
+  if ((slowEl.style.display !== 'none') !== slowOn) slowEl.style.display = slowOn ? '' : 'none';
   $('an-scale-lbl').textContent = fmtDist(54 * worldPerPixel(view.dist));
 }
 
@@ -10961,6 +11003,7 @@ function loop(now) {
   const realDt = Math.min((now - lastFrame) / 1000, 0.1) || 0;
   lastFrame = now;
 
+  if (slowmoLeft > 0 && sim.running) slowmoLeft = Math.max(0, slowmoLeft - realDt);
   const t0 = sim.time;
   advance(realDt);
   const simDt = sim.time - t0;
