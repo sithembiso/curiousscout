@@ -9200,6 +9200,7 @@ function updateLabels() {
   const cands = [];
   for (const b of sim.bodies) {
     if (b === land.b) continue;           // you are standing on it
+    if (shyFar(b)) continue;              // no name tag until you have found it
     if (land.b && _tmpA.copy(b.p).sub(camera.position).normalize().dot(camera.up) < -0.03) continue;  // below your horizon
     const px = apparentPx(b);
     const score = (b === sim.selected || b === sim.follow)
@@ -9248,6 +9249,15 @@ function updateLabels() {
     const el = labelEls[i];
     if (el.style.display !== 'none') el.style.display = 'none';
   }
+}
+
+/* The Milky Way map hides the Solar System: its bodies carry `shy`, and until
+   the camera is within SHY_RANGE of one (about 1,300 AU — inside the Oort
+   cloud) it has no label, no marker and no more glare than any other star. */
+const SHY_RANGE = 2e5;
+function shyFar(b) {
+  return !!b.shy && b !== sim.selected && b !== sim.follow &&
+    camera.position.distanceTo(b.p) > SHY_RANGE;
 }
 
 function apparentPx(b) {
@@ -9373,18 +9383,21 @@ function updateVisuals(realDt, simDt) {
     if (p.disk) p.disk.visible = !tiny;
 
     const wpp = worldPerPixel(Math.max(camera.position.distanceTo(b.p), 1e-9));
+    const hiding = shyFar(b);
     if (p.dot) {
-      const show = tiny || def.star || b.kind === 'wh';
+      // A shy body far away gives itself away with nothing: a star is one more
+      // faint speck among the galaxy's, and its worlds are not marked at all.
+      const show = hiding ? def.star : (tiny || def.star || b.kind === 'wh');
       p.dot.visible = show;
       // Normally drawn over everything so nothing is ever lost; standing on a
       // world, the ground has to be allowed to hide a star that has set.
       p.dot.material.depthTest = !!land.b;
       if (show) {
-        const size = tiny ? 5.4 * wpp : Math.max(r * 2.2, 3.0 * wpp);
+        const size = hiding ? 2.2 * wpp : tiny ? 5.4 * wpp : Math.max(r * 2.2, 3.0 * wpp);
         p.dot.scale.setScalar(size);
         // Zoomed far out these dots are the only trace of a planet, so keep
         // them legible rather than fading them to nothing.
-        p.dot.material.opacity = tiny ? clamp(0.45 + px * 0.3, 0.45, 1) : 0.55;
+        p.dot.material.opacity = hiding ? 0.7 : tiny ? clamp(0.45 + px * 0.3, 0.45, 1) : 0.55;
       }
     }
 
@@ -9406,8 +9419,8 @@ function updateVisuals(realDt, simDt) {
 
     // ---- stars: glow scaled with a pixel floor so they never disappear
     if (p.glow) {
-      p.glow.scale.setScalar(Math.max(r * 3.4, 11 * wpp));
-      p.halo.scale.setScalar(Math.max(r * 9.5, 34 * wpp));
+      p.glow.scale.setScalar(Math.max(r * 3.4, (hiding ? 1.5 : 11) * wpp));
+      p.halo.scale.setScalar(Math.max(r * 9.5, (hiding ? 2 : 34) * wpp));
       // Glare is something you see from far away. Up close the halo is nine
       // times the star's own radius, so flying in would fill the whole screen
       // with additive white and bleach the photosphere into a featureless
@@ -11487,7 +11500,9 @@ const PRESETS = [
       const at = new V3(Math.cos(th) * r, 0, -Math.sin(th) * r);
       const vc = galVCirc(g.m, r, R * GAL_SOFT);
       const along = new V3(-Math.sin(th), 0, -Math.cos(th)).multiplyScalar(vc * g.galSpin);
+      const before = sim.bodies.length;
       buildSolarSystem(at, along);
+      for (let i = before; i < sim.bodies.length; i++) sim.bodies[i].shy = true;
       return g;
     }
   },
@@ -11624,7 +11639,7 @@ function saveUniverse() {
           ? { R: b.galR, arms: b.galArms, spin: b.galSpin, merged: b.galMerged || 0, P: b.galPeriod || 0,
               ax: b.galAxis ? b.galAxis.toArray() : null }
           : null,
-        st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount,
+        st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount, sy: b.shy ? 1 : 0,
         tf: b.terra, tfo: b.terraOn, wa: b.water,
         cl: b.kind === 'gas' ? { age: b.clumpAge, life: b.clumpLife } : null,
         // A protoplanetary disc is saved with its star, not on its own.
@@ -11677,6 +11692,7 @@ function loadUniverse() {
       seedGalaxyStars(b);
     }
     if (s.st != null) b.stripped = s.st;
+    if (s.sy) b.shy = true;
     if (s.m0 != null) b.m0 = s.m0;
     if (s.tn) {
       const c = hexRgb(s.tn);
