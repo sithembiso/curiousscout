@@ -57,7 +57,7 @@
         </ul>
       </div>
       <div style="font-size: 11px; opacity: 0.75; text-align: center; margin-bottom: 14px;">
-        Earlier versions: 0.6 (Demons & Angels) · 0.5 (Pets) · 0.4 (Swords) · 0.3 (Milk & Honey) · 0.2 (Underworld) · 0.1 (Aether)
+        Earlier versions: 0.6 (Demons & Angels) · 0.5 (Pets) · 0.4 (Swords) · 0.3 (Milk & Honey) · 0.2 (Underworld) · 0.1 (Aether) · 0.0 (Classic — just building)
       </div>
       <button id="cc-release-close" style="display: block; width: 100%; background: #4a1a00; color: #ffd866; border: none; padding: 12px; font-size: 15px; font-weight: 600; border-radius: 10px; cursor: pointer;">Let's play! 🌲🌙🧟</button>
     </div>
@@ -297,6 +297,7 @@
   // ===== VERSION SWITCHER =====
   // Player can pick which version of the game to play. Older versions disable newer features.
   const VERSIONS = [
+    {v:'0.0', name:'Classic', desc:'Where it all began: just the world and endless blocks to build with. No monsters, no timer, no quest — always daytime.'},
     {v:'0.1', name:'Aether', desc:'Just the Overworld + Aether portal + Guardian'},
     {v:'0.2', name:'Underworld', desc:'+ Fire portal, Underworld, Lava Demon, Flame Sword'},
     {v:'0.3', name:'Milk & Honey', desc:'+ Land of Milk & Honey, 3 Puzzles, GOD title'},
@@ -335,7 +336,9 @@
     pets: vAtLeast('0.5'),
     entities: vAtLeast('0.6'),
     topup: vAtLeast('0.7.1'),
-    v08: vAtLeast('0.8')
+    v08: vAtLeast('0.8'),
+    // 0.0 Classic: a pure building sandbox, before any of the adventure was added
+    classic: selectedVersion === '0.0'
   };
 
   const releaseEl = document.getElementById('cc-release');
@@ -629,7 +632,8 @@
   const edits=new Map();
   function setBlock(x,y,z,v){blocks.set(x,y,z,v);edits.set(currentRealm+':'+key(x,y,z),v);}
   let gameMode='survival';
-  const isCreative=()=>gameMode==='creative', isHardcore=()=>gameMode==='hardcore';
+  // Classic plays like creative: endless blocks, no damage, no clock
+  const isCreative=()=>FEAT.classic||gameMode==='creative', isHardcore=()=>!FEAT.classic&&gameMode==='hardcore';
   function setBlockIn(m,x,y,z,v){m.set(x,y,z,v);}
   function getBlockIn(m,x,y,z){return m.get(x,y,z);}
   function noise(x,z){return Math.sin(x*0.13+z*0.17)*0.5+Math.cos(x*0.07-z*0.11)*0.5+Math.sin(x*0.31+z*0.27)*0.3;}
@@ -756,6 +760,7 @@
     [BIOME.TAIGA]:{name:'taiga',log:B.SPRUCE_LOG,wall:B.PLANKS,roof:B.SPRUCE_LOG,path:B.PATH,robe:0x3d5a80}
   };
   function getVillage(cx,cz){
+    if(FEAT.classic)return null;
     const k=cx+','+cz;
     if(villageCache.has(k))return villageCache.get(k);
     const h=n=>rnd3(cx*1.37+BIO_X*0.001+n,cz*2.11+BIO_Z*0.001,11+n);
@@ -983,13 +988,13 @@
   }
 
   function generateOverworld(){
-    for(let attempt=0;attempt<100&&!pillar;attempt++){
+    for(let attempt=0;attempt<100&&!pillar&&!FEAT.classic;attempt++){
       const px=Math.floor((rand()-0.5)*WORLD_SIZE*0.8);
       const pz=Math.floor((rand()-0.5)*WORLD_SIZE*0.8);
       if(Math.abs(px)<15&&Math.abs(pz)<15)continue;
       pillar={x:px,y:heightAt(px,pz)+1,z:pz};
     }
-    dungeonHeartPos={x:pillar.x,y:pillar.y+5,z:pillar.z};
+    if(pillar)dungeonHeartPos={x:pillar.x,y:pillar.y+5,z:pillar.z};
     // The rest streams in as the player moves (see updateChunks)
     const R=RENDER_CHUNKS+1;
     for(let cx=-R;cx<=R;cx++)for(let cz=-R;cz<=R;cz++)if(!overworld.chunks.has(cx+','+cz))genOverworldChunk(cx,cz);
@@ -2087,7 +2092,7 @@
   const daylight=()=>Math.min(1,Math.max(0,(sunHeight()+0.1)/0.35));
   const isNight=()=>daylight()<0.2;
   function updateSky(dt){
-    dayTime=(dayTime+dt)%DAY_LENGTH;
+    dayTime=FEAT.classic?DAY_LENGTH*0.2:(dayTime+dt)%DAY_LENGTH;
     const outside=currentRealm==='overworld';
     sunMesh.visible=moonMesh.visible=stars.visible=outside;
     const dayEl=document.getElementById('cc-daytime');
@@ -2240,7 +2245,7 @@
   })();
   let watcherT=10, watcherAt=null;   // countdown to its next appearance; where you stood when it came
   function updateWatcher(dt){
-    const far=currentRealm==='overworld'&&!gameOver&&Math.hypot(player.pos.x,player.pos.z)>=WATCHER_DIST;
+    const far=!FEAT.classic&&currentRealm==='overworld'&&!gameOver&&Math.hypot(player.pos.x,player.pos.z)>=WATCHER_DIST;
     if(!far){watcher.visible=false;watcherAt=null;return;}
     if(watcher.visible){
       if(player.pos.distanceTo(watcherAt)>0.15){
@@ -2273,6 +2278,7 @@
   const ZOMBIE_CAP=8;
   let zombieId=100000, zombieSpawnT=0;
   function spawnZombies(dt){
+    if(FEAT.classic)return;
     if(currentRealm!=='overworld'||gameOver)return;
     zombieSpawnT-=dt;
     if(zombieSpawnT>0)return;
@@ -3242,6 +3248,13 @@
     document.getElementById('cc-down-btn').style.display=player.flying?'block':'none';
     const modeEl=document.getElementById('cc-mode');
     modeEl.textContent=MODES[gameMode].label; modeEl.style.color=MODES[gameMode].color;
+    if(FEAT.classic){
+      // Just the building blocks, endless — and nothing else on screen to worry about
+      hotbarSlots.splice(0,hotbarSlots.length,B.GRASS,B.DIRT,B.STONE,B.COBBLESTONE,B.PLANKS,B.WOOD,B.LEAF,B.SAND,B.GLASS);
+      modeEl.textContent='🧱 Classic'; modeEl.style.color='#ffd866';
+      for(const id of ['cc-tool','cc-armor','cc-craft-btn','cc-hearts','cc-eat-btn'])document.getElementById(id).style.display='none';
+      document.getElementById('cc-ach-count').parentElement.parentElement.style.display='none';
+    }
     document.getElementById('cc-seed').textContent='🌱 '+world.name+' · seed '+world.seed;
     renderHotbar(); renderTools(); renderArmor(); renderAchievements(); renderHearts(); renderFood();
   }
@@ -3250,6 +3263,7 @@
     startEl.style.display='none'; worldsEl.style.display='none';
     hudEl.style.display='block';
     timerRunning=!isCreative();
+    if(FEAT.classic)setTimeout(()=>toast('🧱 ClaudeCraft 0.0 — Classic. Just you, the world, and endless blocks. Build anything!',5500),400);
     if(!('ontouchstart' in window)||matchMedia('(pointer:fine)').matches)canvas.requestPointerLock();
   }
 
@@ -4219,7 +4233,7 @@
       else if(demonBoss.hp===15)document.getElementById('cc-boss').style.display='none';
     }
     const timerEl=document.getElementById('cc-timer');
-    timerEl.textContent=isCreative()?'🎨 No time limit':'⏰ '+formatTime(timeLeft);
+    timerEl.textContent=FEAT.classic?'🧱 Build anything':isCreative()?'🎨 No time limit':'⏰ '+formatTime(timeLeft);
     if(timeLeft<60){timerEl.style.background='rgba(220,40,40,0.85)';}
     else if(timeLeft<5*60){timerEl.style.background='rgba(255,170,68,0.85)';timerEl.style.color='#4a2c00';}
     else{timerEl.style.background='rgba(0,0,0,0.55)';timerEl.style.color='#fff';}
