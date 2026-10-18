@@ -123,6 +123,13 @@
   .an-rate { text-align: center; min-width: 86px; line-height: 1.25; }
   .an-rate b { display: block; font-family: "Orbitron", sans-serif; font-size: 13px; color: var(--accent2); }
   .an-rate span { font-size: 8.5px; text-transform: uppercase; letter-spacing: 1px; color: var(--ink-dim); }
+  .an-rate { cursor: text; }
+  .an-rate:hover b { text-decoration: underline dotted; }
+  .an-rate input { display: none; width: 132px; background: rgba(0,0,0,.35); border: 1px solid var(--accent2);
+    color: var(--ink); font: 12px "Orbitron", sans-serif; text-align: center; padding: 3px 4px; border-radius: 6px; }
+  .an-rate.typing b, .an-rate.typing span { display: none; }
+  .an-rate.typing input { display: block; }
+  .an-rate span.capped { color: #ffb36b; }
   .an-clock {
     font-family: "Press Start 2P", monospace; font-size: 8px; letter-spacing: 1px;
     color: #ffd166; padding: 0 6px 0 10px; border-left: 1px solid rgba(140,120,255,0.2);
@@ -502,7 +509,7 @@
     <div class="an-time panel">
       <button id="an-play" title="Play / pause (Space)">&#9654;</button>
       <button id="an-slower" title="Slower (,)">&laquo;</button>
-      <div class="an-rate"><b id="an-rate-val">1</b><span id="an-rate-unit">days / sec</span></div>
+      <div class="an-rate" id="an-rate" title="Click to type any speed — e.g. 1e-24 sec, 5 minutes, 100 years"><b id="an-rate-val">1</b><span id="an-rate-unit">days / sec</span><input id="an-rate-in" type="text" spellcheck="false" autocomplete="off" aria-label="Time speed"></div>
       <button id="an-faster" title="Faster (.)">&raquo;</button>
       <div class="an-clock" id="an-clock">Y 0<br>D 0</div>
     </div>
@@ -2702,7 +2709,10 @@ function slowmoScale() {
 function advance(frameSeconds) {
   refreshSources();
   if (!sim.running || sim.rate === 0) return;
-  const target = sim.rate * Math.min(frameSeconds, 0.05) * slowmoScale();
+  const frame = Math.min(frameSeconds, 0.05) * slowmoScale();
+  const target = Math.min(sim.rate, PHYS_MAX) * frame;
+  // whatever the orbits cannot follow is added to the clock and aging only
+  const beyond = Math.max(sim.rate - PHYS_MAX, 0) * frame;
   if (target <= 0) return;
   const safe = Math.max(1e-9, 0.025 * lastMinTdyn);
   const n = sim.bodies.length;
@@ -2714,8 +2724,9 @@ function advance(frameSeconds) {
   // Stellar evolution runs once per frame rather than per substep: a star's
   // life is measured in millions of years, so a fraction of a day either way
   // makes no difference at all.
-  if (snSet.aging) ageStars(target);
-  ripenBrownDwarfs(target);
+  if (beyond > 0) sim.time += beyond;
+  if (snSet.aging) ageStars(target + beyond);
+  ripenBrownDwarfs(target + beyond);
 
   /* Galaxy stars get their own capped substepping. There can be tens of
      thousands of them and their orbits are slow and smooth, so they neither
@@ -7883,7 +7894,7 @@ function clearUniverses() {
 /** Cosmic events take thousands of days; make sure the clock is fast enough
     to watch one happen. Never slows a clock that is already faster. */
 function cosmicPace() {
-  if (rateIdx < 7) { rateIdx = 7; sim.rate = RATES[rateIdx]; syncRate(); }
+  if (sim.rate < RATES[7]) setRate(RATES[7]);
   if (!sim.running) togglePlay();
 }
 
@@ -11918,6 +11929,24 @@ function updateInspectorStats() {
 
 const RATES = [0.02, 0.1, 0.5, 1, 4, 16, 64, 256, 1024, 4096];
 let rateIdx = 3;
+/* Any speed can be typed, from a trillionth of a trillionth of a second per
+   second up to 10^74 years per second. (All in days per second inside.) */
+const RATE_MIN = 1e-24 / 86400;
+const RATE_MAX = 1e74 * 365.25;
+/* Past this the orbits cannot be followed any more — even 64 substeps a frame
+   would each jump millions of years, and every world would simply be flung
+   away. Above it the clock, stellar aging and every cosmic event still run at
+   the full speed asked for; the motion runs as fast as it can be followed. */
+const PHYS_MAX = 1e12;
+
+/** Set the speed, in days per second, kept within the limits. */
+function setRate(r) {
+  sim.rate = clamp(r, RATE_MIN, RATE_MAX);
+  // keep the « » ladder roughly in step with a typed speed
+  rateIdx = 0;
+  for (let i = 0; i < RATES.length; i++) if (RATES[i] <= sim.rate * 1.0001) rateIdx = i;
+  syncRate();
+}
 
 function togglePlay() {
   sim.running = !sim.running;
@@ -11925,21 +11954,91 @@ function togglePlay() {
   if (sim.running) computeAccel();
 }
 
+/** « and »: the next preset up or down, and past either end, ×4 or ÷4. */
 function changeRate(d) {
-  rateIdx = clamp(rateIdx + d, 0, RATES.length - 1);
-  sim.rate = RATES[rateIdx];
-  syncRate();
+  const r = sim.rate;
+  let next;
+  if (d > 0) next = RATES.find(v => v > r * 1.0001) || r * 4;
+  else next = RATES.slice().reverse().find(v => v < r * 0.9999) || r / 4;
+  setRate(next);
+}
+
+const RATE_UNITS = [
+  [1 / 86400, 'sec'], [1 / 1440, 'min'], [1 / 24, 'hours'], [1, 'days'], [365.25, 'years']
+];
+/** How a speed is shown: the biggest unit it is at least one of. */
+function rateParts(r) {
+  let u = RATE_UNITS[0];
+  for (const x of RATE_UNITS) if (r >= x[0] * 0.9999) u = x;
+  const v = r / u[0];
+  const txt = v >= 1e6 || v < 0.01
+    ? v.toExponential(2).replace(/\.?0+e/, 'e').replace('e+', 'e')
+    : v.toPrecision(3).replace(/\.0+$|(\.\d*?)0+$/, '$1');
+  return [txt, u[1]];
 }
 
 function syncRate() {
-  const r = sim.rate;
-  if (r >= 365) {
-    $('an-rate-val').textContent = (r / 365.25).toPrecision(3).replace(/\.?0+$/, '');
-    $('an-rate-unit').textContent = 'years / sec';
-  } else {
-    $('an-rate-val').textContent = r < 1 ? r.toString() : Math.round(r).toString();
-    $('an-rate-unit').textContent = 'days / sec';
-  }
+  const [v, u] = rateParts(sim.rate);
+  $('an-rate-val').textContent = v;
+  const unit = $('an-rate-unit');
+  unit.textContent = u + ' / sec' + (sim.rate > PHYS_MAX ? ' · orbits capped' : '');
+  unit.classList.toggle('capped', sim.rate > PHYS_MAX);
+  unit.title = sim.rate > PHYS_MAX
+    ? 'The clock and stellar aging run at this speed. Orbits run at the fastest speed they can be followed — about ' +
+      rateParts(PHYS_MAX).join(' ') + ' per second.'
+    : '';
+}
+
+/* Words a typed speed may use, on top of the usual time units. */
+const RATE_WORDS = { 'week': 7, 'weeks': 7, 'month': 30.44, 'months': 30.44, 'decade': 3652.5, 'decades': 3652.5,
+  'century': 36525, 'centuries': 36525, 'millennium': 365250, 'millennia': 365250,
+  'kyr': 365250, 'myr': 365.25e6, 'gyr': 365.25e9, 'ms': 1 / 8.64e7, 'millisecond': 1 / 8.64e7, 'milliseconds': 1 / 8.64e7 };
+
+/** "100 years", "1e-24 sec/sec", "5 min a second" → days per second, or NaN. */
+function parseRate(text) {
+  let t = String(text).toLowerCase().trim()
+    .replace(/(\/|per|a|an|each)\s*(s|sec|secs|second|seconds)\s*$/, '').replace(/×\s*10\^?/g, 'e').trim();
+  const m = /^([-+]?(?:\d[\d,]*\.?\d*|\.\d+)(?:e[-+]?\d+)?)\s*(.*)$/.exec(t);
+  if (!m) return NaN;
+  const n = Number(m[1].replace(/,/g, ''));
+  let unit = m[2].trim();
+  if (!unit) unit = rateParts(sim.rate)[1];            // no unit: the one on show
+  if (unit === 'secs') unit = 'sec';
+  const f = RATE_WORDS[unit] != null ? RATE_WORDS[unit] : UNITS.time[unit];
+  return f != null && n > 0 && isFinite(n) ? n * f : NaN;
+}
+
+function bindRateInput() {
+  const box = $('an-rate'), inp = $('an-rate-in');
+  const open = () => {
+    if (box.classList.contains('typing')) return;
+    box.classList.add('typing');
+    inp.value = rateParts(sim.rate).join(' ');
+    inp.focus();
+    inp.select();
+  };
+  const close = (apply) => {
+    if (!box.classList.contains('typing')) return;
+    box.classList.remove('typing');
+    if (!apply) return;
+    const r = parseRate(inp.value);
+    if (!isFinite(r)) {
+      toast('Type a speed like "5 days", "1e-24 sec" or "100 years" (per second)');
+      return;
+    }
+    setRate(r);
+    if (r < RATE_MIN) toast('That is slower than anything can go — set to the slowest, 1e-24 sec per second.');
+    else if (r > RATE_MAX) toast('That is faster than anything can go — set to the fastest, 1e74 years per second.');
+    else toast('Time now runs at ' + rateParts(sim.rate).join(' ') + ' per second' +
+      (sim.rate > PHYS_MAX ? ' — too fast for orbits to follow, so they run at the fastest they can' : ''));
+  };
+  box.addEventListener('click', open);
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); close(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(false); }
+    e.stopPropagation();                               // typing must not trigger shortcuts
+  });
+  inp.addEventListener('blur', () => close(true));
 }
 
 /* ----------------------------------------------------------------- settings */
@@ -12582,7 +12681,7 @@ const PRESETS = [
       g.galAxis = new V3(0, 1, 0);
       seedGalaxyStars(g);
       sim.running = true;
-      rateIdx = 7; sim.rate = RATES[rateIdx]; syncRate();
+      setRate(RATES[7]);
       return g;
     }
   },
@@ -12646,7 +12745,7 @@ const PRESETS = [
       a.v.set(0, 0, -v * 0.5); b.v.set(0, 0, v * 0.5);
 
       sim.running = true;
-      rateIdx = 8; sim.rate = RATES[rateIdx]; syncRate();
+      setRate(RATES[8]);
       return a;
     }
   },
@@ -12730,7 +12829,7 @@ const SAVE_KEY = 'astronomia.save.v1';
 function saveUniverse() {
   try {
     const data = {
-      t: sim.time, settings: settings, sn: snSet, rateIdx: rateIdx,
+      t: sim.time, settings: settings, sn: snSet, rateIdx: rateIdx, rate: sim.rate,
       cam: { t: view.target.toArray(), d: view.dist, y: view.yaw, p: view.pitch },
       bodies: sim.bodies.map(b => ({
         ty: b.type, n: b.name, m: b.m, r: b.r, s: b.seed, sp: b.spin, ti: b.tilt, ag: b.age,
@@ -12818,7 +12917,8 @@ function loadUniverse() {
     view.target.fromArray(data.cam.t);
     view.dist = data.cam.d; view.yaw = data.cam.y; view.pitch = data.cam.p;
   }
-  if (data.rateIdx != null) { rateIdx = data.rateIdx; sim.rate = RATES[rateIdx]; syncRate(); }
+  if (data.rate != null) setRate(data.rate);
+  else if (data.rateIdx != null) setRate(RATES[data.rateIdx]);
   computeAccel();
   clearTrails();
   closeModal();
@@ -12909,6 +13009,7 @@ function openHelp() {
     '<div><kbd>Scroll</kbd></div><span>Zoom — the view spans from metres out to 10<sup>1002</sup> km, far past the edge of anything that could exist</span>' +
     '<div><kbd>Space</kbd></div><span>Start or stop time</span>' +
     '<div><kbd>,</kbd> <kbd>.</kbd></div><span>Slow down / speed up time</span>' +
+    '<div><kbd>Click</kbd></div><span>the speed to type any you like — from <b>1e-24 sec</b> to <b>1e74 years</b> per second, e.g. "5 minutes", "2 weeks", "3 Myr"</span>' +
     '<div><kbd>F</kbd></div><span>Lock the camera onto the selected body</span>' +
     '<div><kbd>Del</kbd></div><span>Remove the selected body</span>' +
     '<div><kbd>T</kbd> <kbd>L</kbd></div><span>Toggle trails / labels</span>' +
@@ -13028,7 +13129,11 @@ function updateHud(realDt) {
   }
   const yr = Math.floor(sim.time / 365.25);
   const dy = Math.floor(sim.time - yr * 365.25);
-  $('an-clock').innerHTML = 'Y ' + yr.toLocaleString() + '<br>D ' + dy;
+  // Past a billion years the day of the year means nothing (and doubles can no
+  // longer even tell the days apart), so show the years alone.
+  $('an-clock').innerHTML = yr < 1e9
+    ? 'Y ' + yr.toLocaleString() + '<br>D ' + dy
+    : 'Y ' + yr.toExponential(2).replace('e+', 'e') + '<br>&nbsp;';
   const slowEl = $('an-hud-slow'), slowOn = slowmoLeft > 0 && sim.running;
   if ((slowEl.style.display !== 'none') !== slowOn) slowEl.style.display = slowOn ? '' : 'none';
   $('an-scale-lbl').textContent = view.over > 0
@@ -13112,6 +13217,7 @@ function boot() {
   $('an-play').addEventListener('click', togglePlay);
   $('an-slower').addEventListener('click', () => changeRate(-1));
   $('an-faster').addEventListener('click', () => changeRate(1));
+  bindRateInput();
   $('an-btn-systems').addEventListener('click', openSystems);
   $('an-btn-settings').addEventListener('click', openSettings);
   $('an-btn-help').addEventListener('click', openHelp);
