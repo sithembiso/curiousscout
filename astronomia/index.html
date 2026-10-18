@@ -2235,6 +2235,60 @@ const TYPES = {
     blurb: 'The biggest thing in the Asteroid Belt — big enough to have pulled itself round, so it counts as a dwarf planet. It may hide a salty ocean under its crust.'
   },
 
+  /* ---- out past Neptune: dwarf planets and the most distant worlds known -- */
+  sol_haumea: {
+    label: 'Haumea', group: 'SOLAR SYSTEM', pname: 'Haumea', mass: 6.7e-4, rad: 0.128,
+    surf: 'ice', spin: 0.163, lumpy: 0.30, rings: { inner: 1.9, outer: 2.1, pal: [[200, 200, 205], [120, 120, 130]], tilt: 0.2, opacity: 0.5 },
+    opts: { pal: [[0, [190, 186, 182]], [1, [250, 250, 252]]] },
+    blurb: 'An egg-shaped dwarf planet spinning so fast — once every four hours — that it has been stretched out long. It has a ring and two moons.'
+  },
+  sol_makemake: {
+    label: 'Makemake', group: 'SOLAR SYSTEM', pname: 'Makemake', mass: 5.2e-4, rad: 0.112,
+    surf: 'ice', spin: 0.946, opts: { pal: [[0, [150, 96, 70]], [0.6, [208, 160, 128]], [1, [236, 214, 196]]] },
+    blurb: 'A reddish dwarf planet of frozen methane in the Kuiper Belt, named after the creator god of Rapa Nui (Easter Island).'
+  },
+  sol_quaoar: {
+    label: 'Quaoar', group: 'SOLAR SYSTEM', pname: 'Quaoar', mass: 2.0e-4, rad: 0.087,
+    surf: 'ice', spin: 0.74, rings: { inner: 7.0, outer: 7.4, pal: [[180, 170, 160], [110, 100, 92]], tilt: 0.1, opacity: 0.4 },
+    opts: { pal: [[0, [110, 70, 54]], [1, [196, 150, 126]]] },
+    blurb: 'A Kuiper Belt world with a ring far further out than a ring should be able to survive — nobody yet knows how it holds together.'
+  },
+  sol_gonggong: {
+    label: 'Gonggong', group: 'SOLAR SYSTEM', pname: 'Gonggong', mass: 2.9e-4, rad: 0.0965,
+    surf: 'ice', spin: 0.93, opts: { pal: [[0, [120, 46, 34]], [1, [210, 120, 96]]] },
+    blurb: 'One of the reddest worlds in the Solar System, on a long, tilted orbit out in the scattered disc.'
+  },
+  sol_eris: {
+    label: 'Eris', group: 'SOLAR SYSTEM', pname: 'Eris', mass: 0.0028, rad: 0.1825,
+    surf: 'ice', spin: 15.79, opts: { pal: [[0, [200, 200, 204]], [1, [254, 254, 255]]] },
+    blurb: 'The heaviest dwarf planet — heavier than Pluto. Finding it in 2005 is what got Pluto reclassified. It takes 559 years to go round the Sun once.'
+  },
+  sol_dysnomia: {
+    label: 'Dysnomia', group: 'MOONS OF THE PLANETS', pname: 'Dysnomia', mass: 1.3e-5, rad: 0.055,
+    surf: 'rock', spin: 15.79, opts: { dark: true, craters: 30 },
+    blurb: 'Eris\'s moon, named after its mother\'s daughter, the spirit of lawlessness.'
+  },
+  sol_sedna: {
+    label: 'Sedna', group: 'SOLAR SYSTEM', pname: 'Sedna', mass: 1.7e-4, rad: 0.078,
+    surf: 'ice', spin: 0.43, opts: { pal: [[0, [110, 34, 24]], [0.6, [176, 70, 46]], [1, [218, 120, 90]]] },
+    blurb: 'One of the most distant things known in the Solar System. Its orbit swings out to 937 times as far as Earth and takes 11,400 years — the last time it was where it is now, the Ice Age was ending.'
+  },
+  sol_vp113: {
+    label: '2012 VP113', group: 'SOLAR SYSTEM', pname: '2012 VP113', mass: 5e-5, rad: 0.047,
+    surf: 'ice', spin: 0.5, opts: { pal: [[0, [120, 70, 58]], [1, [200, 150, 130]]] },
+    blurb: 'Nicknamed "Biden" from its code letters VP. Like Sedna it never comes close to Neptune — something else must have flung it out there.'
+  },
+  sol_leleakuhonua: {
+    label: 'Leleākūhonua', group: 'SOLAR SYSTEM', pname: 'Leleākūhonua', mass: 2e-6, rad: 0.0173,
+    surf: 'ice', spin: 0.5, opts: { pal: [[0, [150, 120, 110]], [1, [220, 210, 200]]] },
+    blurb: '"The Goblin": a small world on one of the longest orbits known, reaching out more than 2,000 times Earth\'s distance from the Sun and taking 40,000 years.'
+  },
+  sol_proxima_b: {
+    label: 'Proxima b', group: 'SOLAR SYSTEM', pname: 'Proxima b', mass: 1.07, rad: 1.03,
+    surf: 'eyeball', spin: 11.19,
+    blurb: 'The nearest planet to us outside the Solar System — about Earth\'s size, in its star\'s habitable zone, 4.24 light-years away. Its star throws out fierce flares.'
+  },
+
   /* ---- the moons of the other planets, at their real masses and sizes ---- */
   sol_phobos: {
     label: 'Phobos', group: 'MOONS OF THE PLANETS', pname: 'Phobos', mass: 1.78e-9, rad: 0.00177,
@@ -2362,7 +2416,10 @@ const SWATCH = {
   sol_phobos: '#7a6a5c', sol_deimos: '#8c7c6c', sol_io: '#e8cf5a', sol_europa: '#e6dccb', sol_ganymede: '#9c9286',
   sol_callisto: '#6e665c', sol_titan: '#d89a44', sol_rhea: '#c9c7c2', sol_iapetus: '#8a8278', sol_dione: '#d2d2ce',
   sol_enceladus: '#f4f8ff', sol_mimas: '#b8b6b0', sol_titania: '#bab2aa', sol_oberon: '#8e8478', sol_ariel: '#d8d8d4',
-  sol_umbriel: '#6e6a66', sol_miranda: '#b0aea8', sol_triton: '#dcc6ba', sol_charon: '#9c948c'
+  sol_umbriel: '#6e6a66', sol_miranda: '#b0aea8', sol_triton: '#dcc6ba', sol_charon: '#9c948c',
+  sol_haumea: '#ecebee', sol_makemake: '#c99a7c', sol_quaoar: '#a8765e', sol_gonggong: '#b8604a',
+  sol_eris: '#f2f2f4', sol_dysnomia: '#6e6a66', sol_sedna: '#b8492e', sol_vp113: '#a8786a',
+  sol_leleakuhonua: '#c8b8ac', sol_proxima_b: '#b06a48'
 };
 
 const NAME_POOL = {
@@ -2623,7 +2680,7 @@ function makeBody(type, pos, vel, overrides) {
 function visRadius(b) {
   if (b.kind === 'bh' || b.kind === 'wh') return b.r * 2.6 * settings.bodyScale * BH_VIS;
   // A remnant cloud is light-days across already; exaggerating it would be absurd.
-  if (b.kind === 'snr' || b.kind === 'uni') return b.r;
+  if (b.kind === 'snr' || b.kind === 'uni' || b.kind === 'mark') return b.r;
   // Deliberately NOT a galaxy's drawn size: that is a screen measurement (see
   // updateGalaxies) and letting it into the physics would give a galaxy a
   // capture radius and a Roche limit the width of the visible universe. What
@@ -10363,6 +10420,7 @@ function updateLabels() {
     cands.push([2e9, e, clamp(e.r / wpp, 6, 90)]);
   }
   for (const u of universes) cands.push([3e9, u, 14]);
+  for (const m of marks) if (!shyFar(m)) cands.push([m.sub === 'probe' ? 1.2e9 : 1.1e9, m, 6]);
   cands.sort((a, b) => b[0] - a[0]);
 
   // Bodies that sit on top of each other at this zoom (Earth and its Moon, a
@@ -10727,6 +10785,13 @@ function pickBody(sx, sy) {
   }
   if (best) return best;
 
+  // Spacecraft and landmarks, by their markers.
+  for (const m of marks) {
+    if (shyFar(m)) continue;
+    _lp.copy(m.p).project(camera);
+    if (_lp.z < -1 || _lp.z > 1) continue;
+    if (Math.hypot((_lp.x + 1) * 0.5 * VIEW.w - sx, (1 - _lp.y) * 0.5 * VIEW.h - sy) < 14) return m;
+  }
   // A universe is picked by its middle, like a galaxy — and only when there is
   // nothing in it nearer the cursor.
   for (const u of universes) {
@@ -10973,7 +11038,9 @@ function onKey(e) {
       if (sim.selected) { sim.follow = sim.follow === sim.selected ? null : sim.selected; renderInspector(); }
       break;
     case 'Delete': case 'Backspace':
-      if (sim.selected && sim.selected.kind === 'uni') {
+      if (sim.selected && sim.selected.kind === 'mark') {
+        // landmarks are part of the scenery, not something to delete
+      } else if (sim.selected && sim.selected.kind === 'uni') {
         removeUniverse(sim.selected);
       } else if (sim.selected && sim.selected.kind === 'snr') {
         const e = sim.selected;
@@ -11806,6 +11873,7 @@ function renderInspector() {
   }
   if (b.kind === 'snr') { renderCloudInspector(b); return; }
   if (b.kind === 'uni') { renderUniverseInspector(b); return; }
+  if (b.kind === 'mark') { renderMarkInspector(b); return; }
   if (b.kind === 'gal') { renderGalaxyInspector(b); return; }
   if (b.kind === 'gas') { renderClumpInspector(b); return; }
   const def = TYPES[b.type];
@@ -11929,6 +11997,16 @@ function updateInspectorStats() {
   const b = sim.selected;
   if (!b || !b.alive || !inspRefs) return;
 
+  if (b.kind === 'mark') {
+    const d = b.p.distanceTo(b.host.p);
+    inspRefs.md.textContent = (d / AU).toFixed(d < 1000 * AU ? 1 : 0) + ' AU';
+    if (inspRefs.mv) inspRefs.mv.textContent = fmtSpeed(b.v);
+    if (inspRefs.ml) {
+      const h = d * 1e9 / 299792458 / 3600;
+      inspRefs.ml.textContent = h.toFixed(1) + ' hours';
+    }
+    return;
+  }
   if (b.kind === 'uni') {
     inspRefs.ug.textContent = b.members.length;
     inspRefs.ur.textContent = fmtDist(b.R);
@@ -12497,7 +12575,8 @@ function orbitBody(type, primary, a, opts) {
   const o = opts || {};
   const ang = o.ang != null ? o.ang : Math.random() * TAU;
   const ecc = o.ecc || 0;
-  const r0 = a * (1 + ecc);
+  // starts at aphelion, unless it is really near perihelion now (Sedna)
+  const r0 = a * (o.peri ? 1 - ecc : 1 + ecc);
   const dir = new V3(Math.cos(ang), 0, Math.sin(ang));
   const tan = new V3(-Math.sin(ang), 0, Math.cos(ang));
   if (o.inc) tan.applyAxisAngle(dir, o.inc);          // tilt at the node
@@ -12534,13 +12613,19 @@ const rE = (radiiEarth) => radiiEarth * R_EARTH;
  *   TROJANS    two swarms sharing Jupiter's orbit, 60° ahead and 60° behind
  *   KUIPER     the icy belt beyond Neptune, 30–50 AU, where Pluto lives
  */
-const BELT_MAX = 12000;
+const BELT_MAX = 16000;
 const belts = [];
 const beltx = { pos: null, col: null, siz: null, geo: null, pts: null };
 const BELT_KINDS = {
   main:   { n: 3600, a: [2.1, 3.3], inc: 0.20, col: [[0.62, 0.55, 0.48], [0.42, 0.40, 0.38], [0.72, 0.52, 0.40]] },
   trojan: { n: 1100, a: [0.96, 1.04], inc: 0.30, col: [[0.50, 0.40, 0.34], [0.40, 0.34, 0.30]] },
-  kuiper: { n: 3200, a: [30, 50], inc: 0.30, col: [[0.62, 0.70, 0.82], [0.70, 0.62, 0.58], [0.55, 0.62, 0.72]] }
+  kuiper: { n: 3200, a: [30, 50], inc: 0.30, col: [[0.62, 0.70, 0.82], [0.70, 0.62, 0.58], [0.55, 0.62, 0.72]] },
+  // icy bodies Neptune has kicked onto long, steep orbits
+  scattered: { n: 1500, a: [50, 150], inc: 0.75, log: true, col: [[0.60, 0.62, 0.70], [0.66, 0.52, 0.46]] },
+  /* A sphere, not a disc: a trillion comets in every direction out to
+     about 1.6 light-years. Nobody has seen it directly — it is known from the
+     long-period comets that fall in from it — so it is drawn faint. */
+  oort: { n: 5200, a: [2000, 100000], sphere: true, log: true, col: [[0.42, 0.50, 0.66], [0.50, 0.56, 0.66]] }
 };
 
 function makeBelt(host, kind, ref) {
@@ -12553,10 +12638,14 @@ function makeBelt(host, kind, ref) {
   for (let i = 0; i < n; i++) {
     // Kirkwood gaps: Jupiter has cleared narrow lanes out of the main belt
     let aAU;
-    do { aAU = lerp(spec.a[0], spec.a[1], kind === 'kuiper' ? Math.pow(rng(), 0.7) : rng()); }
+    do {
+      aAU = spec.log ? spec.a[0] * Math.pow(spec.a[1] / spec.a[0], rng())
+        : lerp(spec.a[0], spec.a[1], kind === 'kuiper' ? Math.pow(rng(), 0.7) : rng());
+    }
     while (kind === 'main' && [2.50, 2.82, 2.95].some(g => Math.abs(aAU - g) < 0.025));
     const a = kind === 'trojan' ? aAU : aAU * AU;     // trojans: a fraction of Jupiter's distance
-    const node = rng() * TAU, inc = (rng() + rng() - 1) * spec.inc;
+    const node = rng() * TAU;
+    const inc = spec.sphere ? Math.acos(2 * rng() - 1) : (rng() + rng() - 1) * spec.inc;
     const i3 = i * 3;
     b.u[i3] = Math.cos(node); b.u[i3 + 1] = 0; b.u[i3 + 2] = Math.sin(node);
     b.w[i3] = -Math.sin(node) * Math.cos(inc); b.w[i3 + 1] = Math.sin(inc); b.w[i3 + 2] = Math.cos(node) * Math.cos(inc);
@@ -12583,9 +12672,135 @@ function addSolarBelts(sun, jupiter) {
   makeBelt(sun, 'main');
   if (jupiter) makeBelt(sun, 'trojan', jupiter);
   makeBelt(sun, 'kuiper');
+  makeBelt(sun, 'scattered');
+  makeBelt(sun, 'oort');
+  addOutskirts(sun);
 }
 
-function clearBelts() { belts.length = 0; }
+function clearBelts() {
+  belts.length = 0;
+  for (const m of marks) disposeMark(m);
+  marks.length = 0;
+}
+
+/* --------------------------------------------------------------- landmarks */
+/*
+ * Things out there that are not worlds: the five spacecraft leaving the Solar
+ * System, the edge of the Sun's own bubble, and the Oort Cloud. Duck-typed
+ * like a supernova remnant so each can be labelled, clicked, followed and
+ * zoomed to, and each sits relative to its Sun, so it goes where the Sun goes.
+ *
+ * The probes are where they really are in late 2026 and fly outward at their
+ * real speeds (ecliptic longitude and latitude, AU, AU per year).
+ */
+const marks = [];
+const PROBES = [
+  ['Voyager 1', 255, 35, 170, 3.57, 1977,
+    'The farthest thing people have ever made. It left the Sun\'s bubble in 2012 and is now in interstellar space, still sending home a whisper from 23 hours away at the speed of light. It carries a golden record of sounds and pictures of Earth.'],
+  ['Voyager 2', 300, -34, 142, 3.20, 1977,
+    'The only spacecraft ever to visit Uranus and Neptune. It crossed into interstellar space in 2018, and it carries the same golden record as its twin.'],
+  ['Pioneer 10', 73, 3, 138, 2.53, 1972,
+    'The first spacecraft to cross the Asteroid Belt and fly past Jupiter. It went silent in 2003, heading towards the red star Aldebaran — it will get there in two million years.'],
+  ['Pioneer 11', 285, 13, 117, 2.35, 1973,
+    'The first visitor to Saturn. It has been silent since 1995, drifting towards the constellation Aquila. Both Pioneers carry a metal plaque with a drawing of who sent them.'],
+  ['New Horizons', 292, 2, 63, 2.85, 2006,
+    'Flew past Pluto in 2015 and the snowman-shaped Arrokoth in 2019, and is still working out in the Kuiper Belt.']
+];
+const HELIO_NOSE = 120, HELIO_TAIL = 380;   // AU: the heliopause, ahead and behind
+
+function eclipticDir(lonDeg, latDeg) {
+  const l = lonDeg * Math.PI / 180, b = latDeg * Math.PI / 180;
+  return new THREE.Vector3(Math.cos(b) * Math.cos(l), Math.sin(b), Math.cos(b) * Math.sin(l));
+}
+
+function addOutskirts(sun) {
+  for (const pr of PROBES) {
+    const m = { kind: 'mark', sub: 'probe', alive: true, host: sun, name: pr[0], blurb: pr[6],
+      dir: eclipticDir(pr[1], pr[2]), d0: pr[3] * AU, v: pr[4] * AU / 365.25, t0: sim.time, year: pr[5],
+      p: new THREE.Vector3(), r: 0.02 * AU };
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_GLOW, color: new THREE.Color(0x9dffb0),
+      blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+    sp.renderOrder = 6;
+    scene.add(sp);
+    m.sprite = sp;
+    marks.push(m);
+  }
+  // The Sun's bubble: blown out against the wind of interstellar gas, with a
+  // long tail behind. The nose points roughly where Voyager 1 went.
+  const nose = eclipticDir(255, 5);
+  const helio = { kind: 'mark', sub: 'place', alive: true, host: sun, name: 'Heliopause',
+    blurb: 'The edge of the Sun\'s own bubble. The solar wind blows outward from the Sun until, about 120 times Earth\'s distance out, it is stopped by the thin gas between the stars. Past this line you are in interstellar space — only the two Voyagers have crossed it.',
+    dir: nose, d0: HELIO_NOSE * AU, v: 0, t0: 0, p: new THREE.Vector3(), r: HELIO_NOSE * AU };
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 32), new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uFade: { value: 0.5 } },
+    vertexShader: UNI_VERT, fragmentShader: UNI_FRAG,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending
+  }));
+  mesh.frustumCulled = false;
+  mesh.renderOrder = -6;
+  // a sphere stretched along the tail and slid back so its nose sits at 120 AU
+  mesh.scale.set((HELIO_NOSE + HELIO_TAIL) / 2 * AU, HELIO_NOSE * 1.1 * AU, HELIO_NOSE * 1.1 * AU);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), nose.clone().negate());
+  scene.add(mesh);
+  helio.mesh = mesh;
+  helio.offset = nose.clone().multiplyScalar(-(HELIO_TAIL - HELIO_NOSE) / 2 * AU);
+  marks.push(helio);
+  marks.push({ kind: 'mark', sub: 'place', alive: true, host: sun, name: 'Oort Cloud',
+    blurb: 'A vast shell of perhaps a trillion icy comets surrounding the whole Solar System, from about 2,000 to 100,000 times Earth\'s distance — a third of the way to the next star. Nobody has ever seen it directly; we know it is there because of the long-period comets that fall in from it.',
+    dir: eclipticDir(120, 40), d0: 20000 * AU, v: 0, t0: 0, p: new THREE.Vector3(), r: 50000 * AU });
+}
+
+function disposeMark(m) {
+  m.alive = false;
+  if (m.sprite) { scene.remove(m.sprite); m.sprite.material.dispose(); }
+  if (m.mesh) { scene.remove(m.mesh); m.mesh.geometry.dispose(); m.mesh.material.dispose(); }
+  if (sim.selected === m) select(null);
+  if (sim.follow === m) sim.follow = null;
+}
+
+function updateMarks() {
+  for (let i = marks.length - 1; i >= 0; i--) {
+    const m = marks[i];
+    if (!m.host.alive) { disposeMark(m); marks.splice(i, 1); continue; }
+    m.shy = m.host.shy;
+    const d = m.d0 + m.v * Math.max(sim.time - m.t0, 0);
+    m.p.copy(m.host.p).addScaledVector(m.dir, d);
+    const far = camera.position.distanceTo(m.host.p);
+    const hidden = m.shy && far > SHY_RANGE && sim.selected !== m;
+    if (m.sprite) {
+      m.sprite.visible = !hidden;
+      m.sprite.position.copy(m.p);
+      m.sprite.scale.setScalar(6 * worldPerPixel(Math.max(camera.position.distanceTo(m.p), 1e-9)));
+    }
+    if (m.mesh) {
+      m.mesh.visible = !hidden && far < 1e6 * AU;
+      m.mesh.position.copy(m.host.p).add(m.offset);
+      m.mesh.material.uniforms.uTime.value = performance.now() / 1000;
+      // faint from inside, a glowing skin from outside
+      m.mesh.material.uniforms.uFade.value = far < HELIO_NOSE * AU ? 0.12 : 0.45;
+    }
+  }
+}
+
+function renderMarkInspector(m) {
+  const host = $('an-insp-body');
+  $('an-insp-h').textContent = m.sub === 'probe' ? 'SPACECRAFT' : 'SELECTED';
+  host.innerHTML =
+    '<div class="an-name-in" style="cursor:default;pointer-events:none">' + escAttr(m.name) + '</div>' +
+    '<div class="an-type">' + (m.sub === 'probe' ? 'launched ' + m.year : 'the edge of the Solar System') + '</div>' +
+    '<dl class="an-stats">' +
+    '<dt>From the Sun</dt><dd id="is-md"></dd>' +
+    (m.sub === 'probe' ? '<dt>Speed</dt><dd id="is-mv"></dd><dt>Light takes</dt><dd id="is-ml"></dd>' : '') +
+    '</dl>' +
+    '<div class="an-row"><button id="is-mfollow">' + (sim.follow === m ? 'UNFOLLOW' : 'FOLLOW') +
+    '</button><button id="is-mzoom">ZOOM TO</button></div>' +
+    '<p class="an-note" style="margin-top:13px">' + escAttr(m.blurb) + '</p>';
+  inspRefs = { md: $('is-md'), mv: $('is-mv'), ml: $('is-ml') };
+  $('is-mfollow').addEventListener('click', () => { sim.follow = sim.follow === m ? null : m; renderInspector(); });
+  $('is-mzoom').addEventListener('click', () => { frameOn(m, m.sub === 'probe' ? 400 : 3); sim.follow = m; renderInspector(); });
+  updateInspectorStats();
+}
+
 
 function updateBelts() {
   for (let i = belts.length - 1; i >= 0; i--) if (!belts[i].host.alive) belts.splice(i, 1);
@@ -12615,7 +12830,7 @@ function updateBelts() {
     const d = o.distanceTo(h);
     // From far away a belt is just glare piled on its star; and in the Milky
     // Way map it must not give the Sun away from across the galaxy.
-    const far = b.kind === 'kuiper' ? 50 * AU : 3.3 * AU;
+    const far = (b.kind === 'trojan' ? 5.5 : BELT_KINDS[b.kind].a[1]) * AU;
     if (d > far * 400 || (b.host.shy && d > SHY_RANGE && b.host !== sim.selected)) continue;
     const hx = h.x - o.x, hy = h.y - o.y, hz = h.z - o.z;
     let rJ = 0, thJ = 0;
@@ -12699,14 +12914,41 @@ function buildSolarSystem(c, v) {
     orbitBody(m[0], host, a, Object.assign({ ang: i * 1.37 + 0.6 }, m[3] || {}));
   });
 
-  // The belts of rubble left over from building the planets.
+  /* Out past Neptune, on their real tilted, stretched orbits:
+     [type, a (AU), eccentricity, inclination (°), extra] */
+  const FAR = [
+    ['sol_haumea', 43.1, 0.195, 28.2], ['sol_quaoar', 43.7, 0.04, 8.0],
+    ['sol_makemake', 45.4, 0.16, 29.0], ['sol_gonggong', 67.4, 0.50, 30.6],
+    ['sol_eris', 67.9, 0.436, 44.0], ['sol_vp113', 266, 0.69, 24.1],
+    ['sol_sedna', 506, 0.85, 11.9, { peri: true }], ['sol_leleakuhonua', 1090, 0.94, 11.7]
+  ];
+  FAR.forEach((f, i) => {
+    by[f[0]] = orbitBody(f[0], sun, f[1] * AU, Object.assign({ ang: i * 2.1 + 1.3, ecc: f[2], inc: f[3] * Math.PI / 180 }, f[4] || {}));
+  });
+  if (by.sol_eris) {
+    const clear = (by.sol_eris.r + TYPES.sol_dysnomia.rad * R_EARTH) * settings.bodyScale * 1.6;
+    orbitBody('sol_dysnomia', by.sol_eris, Math.max(0.0372, clear), { ang: 0.4 });
+  }
+
+  /* The next star system: Alpha Centauri, 4.37 light-years away — two
+     Sun-like stars 23 times Earth's distance apart, and Proxima, a red dwarf a
+     fifth of a light-year from them, with its planet. Only gravity's direction
+     towards our Sun is real here; the rest of the sky is not mapped. */
+  const ac = c.clone().addScaledVector(eclipticDir(239.5, -42.6), 4.37 * LY_GM);
+  const acA = makeBody('sun_like', ac.clone(), v.clone(), { name: 'Alpha Centauri A', mass: 1.1 * M_SUN });
+  orbitBody('sun_like', acA, 23.4 * AU, { ang: 0.7, ecc: 0.52, over: { name: 'Alpha Centauri B', mass: 0.907 * M_SUN } });
+  const prox = orbitBody('red_dwarf', acA, 13000 * AU, { ang: 2.2, inc: 0.6, over: { name: 'Proxima Centauri', mass: 0.122 * M_SUN } });
+  orbitBody('sol_proxima_b', prox, 0.0485 * AU, { ang: 1.0 });
+
+  // The belts of rubble left over from building the planets, and beyond them
+  // the spacecraft, the edge of the Sun's bubble and the Oort Cloud.
   addSolarBelts(sun, by.sol_jupiter);
   return sun;
 }
 
 const PRESETS = [
   {
-    name: 'The Solar System', desc: 'Our own eight planets at their real distances, on real orbital periods — with their major moons, Pluto and Ceres, the Asteroid Belt, Jupiter\'s Trojans and the Kuiper Belt.',
+    name: 'The Solar System', desc: 'Our own eight planets at their real distances, on real orbital periods — with their major moons, the dwarf planets, the Asteroid and Kuiper Belts, and everything known beyond: Sedna, the Voyagers, the heliopause, the Oort Cloud and Alpha Centauri.',
     dist: 3400,
     build() { buildSolarSystem(new V3(), new V3()); }
   },
@@ -13244,6 +13486,7 @@ function openHelp() {
     '</ul>' +
     '<h3>THE SOLAR SYSTEM</h3>' +
     '<p><b>The Solar System</b> map (and the Sun hidden in the Milky Way) has every planet with its major moons — Phobos and Deimos, Jupiter\'s Io, Europa, Ganymede and Callisto, Saturn\'s Titan, Rhea, Dione, Enceladus, Mimas and Iapetus, Uranus\'s five on their sideways orbits, Neptune\'s backwards Triton and Pluto\'s Charon — plus the dwarf planet Ceres. Thousands of rocks fill the <b>Asteroid Belt</b> between Mars and Jupiter (with the gaps Jupiter has cleared out of it), two swarms of <b>Trojan asteroids</b> ride 60° ahead of and behind Jupiter, and the icy <b>Kuiper Belt</b> rings everything beyond Neptune. Every moon can also be dropped on its own from <b>Moons of the Planets</b>.</p>' +
+    '<p>And everything known beyond it: the dwarf planets <b>Haumea</b> (egg-shaped, with a ring), <b>Makemake</b>, <b>Quaoar</b>, <b>Gonggong</b> and <b>Eris</b> with its moon Dysnomia; the <b>scattered disc</b>; the far-flung <b>Sedna</b>, <b>2012 VP113</b> and <b>Leleākūhonua</b> on orbits thousands of years long; the five spacecraft leaving us — <b>Voyager 1 and 2</b>, <b>Pioneer 10 and 11</b> and <b>New Horizons</b>, where they really are and flying outward at their real speeds (click one); the <b>heliopause</b>, the edge of the Sun\'s bubble; the <b>Oort Cloud</b> of comets reaching a third of the way to the stars; and, 4.37 light-years away, the next star system — <b>Alpha Centauri</b> A and B, and Proxima with its planet Proxima b.</p>' +
     '<h3>KINDS OF GALAXY</h3>' +
     '<ul>' +
     '<li><b>Galaxy</b> — a spiral, with a yellow bulge and blue arms.</li>' +
@@ -13453,6 +13696,7 @@ function loop(now) {
   updateVisuals(realDt, simDt);
   if (land.b) applyLanded(realDt);
   updateBelts();
+  if (marks.length) updateMarks();
   renderFrame();
   updateHud(realDt);
 
