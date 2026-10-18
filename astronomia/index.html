@@ -6372,7 +6372,7 @@ function buildHole(b, grp) {
   grp.add(shadow);
   b.parts.surf = shadow;
 
-  const photon = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_PHOTON, color: new THREE.Color(0xcfe0ff), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  const photon = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_PHOTON, color: new THREE.Color(0x8fb8ff), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
   grp.add(photon);
   b.parts.photon = photon;
 
@@ -6408,6 +6408,7 @@ const GAS_DISK_VERT = `
   attribute float aH;
   attribute float aSize;
   attribute vec3 aCol;
+  attribute float aArm;
   uniform float uTime;
   uniform float uScale;
   varying vec3 vCol;
@@ -6416,7 +6417,10 @@ const GAS_DISK_VERT = `
   varying float vTile;
   void main() {
     float om = 1.4 * pow(aR / 0.3, -1.5);
-    float a = aPhase + uTime * om;
+    // Gas in the arms turns with the spiral pattern, not on its own orbit, so
+    // the arms keep their shape instead of winding up into rings.
+    float a = aPhase + uTime * mix(om, 0.55, aArm)
+            + aArm * 0.06 * sin(uTime * om * 0.5 + aPhase * 13.0);
     vec3 p = vec3(cos(a) * aR, sin(a) * aR, aH);
     vec4 mv = modelViewMatrix * vec4(p, 1.0);
     gl_Position = projectionMatrix * mv;
@@ -6457,12 +6461,19 @@ function makeGasDisk() {
     const n = GAS_DISK_N, rng = mulberry32(0x9a5d15c);
     const aR = new Float32Array(n), aPh = new Float32Array(n), aH = new Float32Array(n);
     const aS = new Float32Array(n), aC = new Float32Array(n * 3), pos = new Float32Array(n * 3);
+    const aArm = new Float32Array(n);
     const HOT = [0.85, 0.95, 1.0], MID = [0.30, 0.58, 1.0], RIM = [0.10, 0.22, 0.85];
     for (let i = 0; i < n; i++) {
       // crowded towards the inner edge, where the gas is densest and hottest
       const r = 0.26 + Math.pow(rng(), 1.8) * 0.74;
       aR[i] = r;
-      aPh[i] = rng() * TAU;
+      /* Two thirds of it is gathered into two trailing spiral arms; the rest
+         is the smooth sheared haze between them. */
+      if (rng() < 0.66) {
+        aArm[i] = 1;
+        const arm = rng() < 0.5 ? 0 : Math.PI;
+        aPh[i] = arm - 2.6 * Math.log(r / 0.26) + (rng() + rng() - 1) * 0.32;
+      } else aPh[i] = rng() * TAU;
       aH[i] = (rng() + rng() + rng() - 1.5) * 0.04 * r;
       aS[i] = (0.035 + rng() * 0.07) * (0.6 + r);
       const t = (r - 0.26) / 0.74;
@@ -6477,6 +6488,7 @@ function makeGasDisk() {
     gasDiskGeo.setAttribute('aH', new THREE.BufferAttribute(aH, 1));
     gasDiskGeo.setAttribute('aSize', new THREE.BufferAttribute(aS, 1));
     gasDiskGeo.setAttribute('aCol', new THREE.BufferAttribute(aC, 3));
+    gasDiskGeo.setAttribute('aArm', new THREE.BufferAttribute(aArm, 1));
     if (!gasAtlas) gasAtlas = nebulaAtlas();
     gasDiskMat = new THREE.ShaderMaterial({
       uniforms: { uMap: { value: gasAtlas }, uTime: { value: 0 }, uScale: { value: 1 } },
@@ -6487,13 +6499,95 @@ function makeGasDisk() {
   }
   const disk = new THREE.Points(gasDiskGeo, gasDiskMat);
   disk.frustumCulled = false;
+  addJets(disk);
   return disk;
+}
+
+/* ------------------------------------------------------- jets and core glare */
+/*
+ * Gas spiralling in this fast is wound up in magnetic field, and some of it is
+ * flung out along the spin axis instead of falling in: two beams of plasma
+ * leaving at nearly the speed of light, one from each pole. Drawn as two open
+ * cones of additive light, brightest at the root and soft at the edges, with
+ * knots streaming outwards along them. Plus the glare of the innermost disc,
+ * too bright to look at.
+ *
+ * Children of the disc, so they share its size, tilt and visibility. Like the
+ * disc, one geometry and one material serve every hole in the scene.
+ */
+const JET_LEN = 2.8;          // in disc radii
+let jetGeo = null, jetMat = null;
+
+const JET_VERT = `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  varying float vY;
+  varying float vEdge;
+  void main() {
+    vY = uv.y;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vec3 n = normalize(normalMatrix * normal);
+    vEdge = abs(dot(n, normalize(-mv.xyz)));
+    gl_Position = projectionMatrix * mv;
+    #include <logdepthbuf_vertex>
+  }`;
+const JET_FRAG = `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  uniform float uTime;
+  varying float vY;
+  varying float vEdge;
+  void main() {
+    #include <logdepthbuf_fragment>
+    float along = pow(1.0 - vY, 1.7) * smoothstep(0.0, 0.03, vY);
+    float core = pow(vEdge, 2.2);
+    float knots = 0.72 + 0.28 * sin(vY * 38.0 - uTime * 5.0);
+    vec3 col = mix(vec3(0.9, 0.96, 1.0), vec3(0.25, 0.5, 1.0), smoothstep(0.0, 0.35, vY));
+    gl_FragColor = vec4(col, along * core * knots);
+  }`;
+
+function addJets(disk) {
+  if (!jetGeo) {
+    // Narrow at the pole, flaring as it goes; its root at the origin, along +z.
+    jetGeo = new THREE.CylinderGeometry(0.2, 0.012, JET_LEN, 28, 1, true);
+    jetGeo.translate(0, JET_LEN / 2, 0);
+    jetGeo.rotateX(Math.PI / 2);
+    jetMat = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 } },
+      vertexShader: JET_VERT, fragmentShader: JET_FRAG,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+    });
+    jetMat.userData.shared = true;
+  }
+  for (const dir of [1, -1]) {
+    const jet = new THREE.Mesh(jetGeo, jetMat);
+    jet.frustumCulled = false;
+    if (dir < 0) jet.rotation.x = Math.PI;
+    disk.add(jet);
+  }
+  // The inner disc's glare: a broad blue haze and a small white-hot heart.
+  const haze = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: TEX_HALO, color: new THREE.Color(0x5f8fff), opacity: 0.8,
+    blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+  }));
+  haze.scale.setScalar(1.1);
+  const heart = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: TEX_GLOW, color: new THREE.Color(0xe8f2ff), opacity: 1,
+    blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+    // Drawn over the horizon: the light of the far side of the disc is bent
+    // round the hole and floods the middle, so it shines through the shadow.
+    depthTest: false
+  }));
+  heart.renderOrder = 6;
+  heart.scale.setScalar(0.6);
+  disk.add(haze); disk.add(heart);
 }
 
 /** Once a frame: the shared disc clock and pixel scale. */
 function updateGasDisks() {
   if (!gasDiskMat) return;
   gasDiskMat.uniforms.uTime.value = performance.now() / 1000;
+  if (jetMat) jetMat.uniforms.uTime.value = gasDiskMat.uniforms.uTime.value;
   gasDiskMat.uniforms.uScale.value = VIEW.h * VIEW.dpr / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
 }
 
@@ -9187,7 +9281,9 @@ function scaleVisual(b) {
   // the peaks poke through the clouds and the world looks like it is wearing a
   // torn hat. `lift` is 0 for anything with no relief, so nothing else moves.
   const lift = reliefTop(b.type);
-  if (p.surf) p.surf.scale.setScalar(r);
+  // A hole's shadow is drawn small: the glare of the inner disc, bent round
+  // it, floods most of what would otherwise be a big black ball.
+  if (p.surf) p.surf.scale.setScalar(b.kind === 'bh' && p.disk ? r * HOLE_SHADOW : r);
   if (p.sea) p.sea.scale.setScalar(r * seaRadius(b));
   if (p.cloud) p.cloud.scale.setScalar(r * (1.018 + lift));
   if (p.atmo) p.atmo.scale.setScalar(r * (1.09 + lift));
@@ -9200,7 +9296,7 @@ function scaleVisual(b) {
   if (p.terraAtmo) p.terraAtmo.scale.setScalar(r * (1.09 + lift));
   if (p.ring && b.ringSpec) p.ring.scale.setScalar(r * b.ringSpec.outer);
   if (p.disk) p.disk.scale.setScalar(r * 7);
-  if (p.photon) p.photon.scale.setScalar(r * 5.6);
+  if (p.photon) p.photon.scale.setScalar(r * 5.6 * (p.disk ? HOLE_SHADOW : 1));
 }
 
 /* Held while dragging a slider, so a mid-drag transformation cannot rebuild the
@@ -10160,6 +10256,9 @@ function clearTrails() {
 
 /* ========================================================== lensing pass    */
 
+/* How big the black shadow is drawn, as a share of a hole's drawn radius. */
+const HOLE_SHADOW = 0.45;
+
 let rt = null, postScene = null, postCam = null, postMat = null, postOK = false;
 
 const LENS_FRAG = `
@@ -10186,7 +10285,8 @@ const LENS_FRAG = `
       dark = max(dark, smoothstep(rs * 1.04, rs * 0.92, r));
     }
     vec4 c = texture2D(tDiffuse, clamp(uv, vec2(0.001), vec2(0.999)));
-    gl_FragColor = vec4(c.rgb * (1.0 - dark), 1.0);
+    // Not quite black: the glare of the inner disc is smeared over the shadow.
+    gl_FragColor = vec4(c.rgb * (1.0 - dark * 0.8), 1.0);
   }`;
 
 const LENS_VERT = `
@@ -10231,7 +10331,7 @@ function gatherHoles() {
     if (_proj.z < -1 || _proj.z > 1) continue;
     const dist = camera.position.distanceTo(b.p);
     // shadow radius expressed in the same units as the vertical 0..1 screen axis
-    const rs = visRadius(b) / (dist * Math.tan(FOV * Math.PI / 360)) * 0.5;
+    const rs = visRadius(b) * (b.parts && b.parts.disk ? HOLE_SHADOW : 1) / (dist * Math.tan(FOV * Math.PI / 360)) * 0.5;
     if (rs < 0.0015 || rs > 3) continue;
     const sx = (_proj.x + 1) * 0.5, sy = (_proj.y + 1) * 0.5;
     if (sx < -1 || sx > 2 || sy < -1 || sy > 2) continue;
@@ -10953,7 +11053,7 @@ function updateVisuals(realDt, simDt) {
       p.halo.material.color.setHSL((hue + 0.33) % 1, 0.9, 0.62);
       p.photon.material.color.setHSL((hue + 0.66) % 1, 0.8, 0.7);
     }
-    if (p.photon) p.photon.scale.setScalar(Math.max(r * 5.6, 16 * wpp));
+    if (p.photon) p.photon.scale.setScalar(Math.max(r * 5.6 * (p.disk ? HOLE_SHADOW : 1), 16 * wpp));
 
     // ---- a world's appearance responds to how hot it is
     if (b.glowPulse) b.glowPulse = Math.max(0, b.glowPulse - realDt * 0.4);
