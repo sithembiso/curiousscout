@@ -2520,7 +2520,7 @@ const settings = {
   slowmoFactor: 10,      // …this many times slower
   slowmoSecs: 4,         // …for this many seconds of wall clock
   decay: true,           // orbits lose energy to gravitational waves and shrink
-  decayBoost: 1          // …this many times faster than in reality
+  decayBoost: 1e9        // …this many times faster than in reality
 };
 
 /**
@@ -14279,8 +14279,8 @@ function clearAll() {
 function loadPreset(p) {
   clearAll();
   sim.running = false;
-  // a map that speeds orbital decay up (Neutron Waltz) does it for itself only
-  settings.decayBoost = 1;
+  // a map that sets its own decay speed (Neutron Waltz) does it for itself only
+  settings.decayBoost = 1e9;
   p.build();
   view.target.set(0, 0, 0);
   view.dist = p.dist;
