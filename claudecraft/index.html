@@ -338,6 +338,9 @@
     entities: vAtLeast('0.6'),
     topup: vAtLeast('0.7.1'),
     v08: vAtLeast('0.8'),
+    // 0.7.1 only: past a billion blocks the land ends in an endless dark sea,
+    // and past a trillion there is nothing at all
+    abyss: selectedVersion === '0.7.1',
     // 0.7+: the Land of Milk & Honey is somewhere to explore, not a puzzle to solve
     explore: vAtLeast('0.7'),
     // 0.0 Classic: a pure building sandbox, before any of the adventure was added
@@ -605,21 +608,23 @@
     forEachBlock(fn){this.m.forEach((id,k)=>{const p=k.split(',');fn(+p[0],+p[1],+p[2],id);});}
   }
   // The overworld: one Uint8Array per chunk, generated the first time anything touches it.
-  // CHUNK is 16, so x>>4 / x&15 give the chunk and the position inside it (negatives too).
+  // CHUNK is 16. Chunk and in-chunk position use real division rather than >>4 / &15,
+  // because bit operations wrap past ±2 billion and the world goes further than that.
+  const cOf=(v)=>Math.floor(v/16), inC=(v)=>v-Math.floor(v/16)*16;
   class ChunkWorld{
     constructor(h,gen){this.h=h;this.gen=gen;this.chunks=new Map();this.dirty=new Set();}
     get(x,y,z){
       if(y<0||y>=this.h)return B.AIR;
-      const a=this.chunks.get((x>>4)+','+(z>>4));
-      return a?a[(y*CHUNK+(z&15))*CHUNK+(x&15)]:B.AIR;
+      const a=this.chunks.get(cOf(x)+','+cOf(z));
+      return a?a[(y*CHUNK+inC(z))*CHUNK+inC(x)]:B.AIR;
     }
     set(x,y,z,v){
       if(y<0||y>=this.h)return;
-      const cx=x>>4, cz=z>>4;
+      const cx=cOf(x), cz=cOf(z);
       const a=this.chunks.get(cx+','+cz)||this.gen(cx,cz);
-      a[(y*CHUNK+(z&15))*CHUNK+(x&15)]=v;
+      a[(y*CHUNK+inC(z))*CHUNK+inC(x)]=v;
       // A block on a chunk edge also changes which faces its neighbour draws
-      const lx=x&15, lz=z&15;
+      const lx=inC(x), lz=inC(z);
       this.dirty.add(cx+','+cz);
       if(lx===0)this.dirty.add((cx-1)+','+cz);
       if(lx===15)this.dirty.add((cx+1)+','+cz);
@@ -720,9 +725,17 @@
   };
   // 0.8: water fills every hollow up to sea level — lakes, rivers and seas
   const SEA=7;
+  // ===== THE END OF THE WORLD (0.7.1 only) =====
+  const OCEAN_AT=1e9, VOID_AT=1e12, ABYSS_SEA=20;
+  function abyssZone(x,z){
+    if(!FEAT.abyss)return null;
+    const d=Math.max(Math.abs(x),Math.abs(z));
+    return d>=VOID_AT?'void':d>=OCEAN_AT?'ocean':null;
+  }
   const isFarLands=(x,z)=>Math.abs(x)>=FAR_LANDS||Math.abs(z)>=FAR_LANDS;
   // What grows at a column, if anything: 'oak', 'spruce' or 'cactus'
   function treeAt(x,z){
+    if(abyssZone(x,z))return null;
     if(isFarLands(x,z)||villagesNear(x,z,VILLAGE_R).length)return null;
     if(FEAT.v08&&heightAt(x,z)<=SEA+1)return null;   // nothing grows in the water or on the beach
     const r=rnd3(x+SEED_OX,z+SEED_OZ,7);
@@ -767,6 +780,7 @@
   };
   function getVillage(cx,cz){
     if(FEAT.classic)return null;
+    if(abyssZone(cx*VILLAGE_CELL,cz*VILLAGE_CELL)||abyssZone((cx+1)*VILLAGE_CELL,(cz+1)*VILLAGE_CELL))return null;
     const k=cx+','+cz;
     if(villageCache.has(k))return villageCache.get(k);
     const h=n=>rnd3(cx*1.37+BIO_X*0.001+n,cz*2.11+BIO_Z*0.001,11+n);
@@ -860,7 +874,7 @@
   // chosen from the chunk and the seed so the same world has the same herds.
   // Sheep come in four colours (mostly white), and their wool matches.
   function spawnAnimals(cx,cz){
-    if(isFarLands(cx*CHUNK,cz*CHUNK))return;
+    if(isFarLands(cx*CHUNK,cz*CHUNK)||abyssZone(cx*CHUNK,cz*CHUNK)||abyssZone(cx*CHUNK+15,cz*CHUNK+15))return;
     const rng=mulberry32((cx*92837111)^(cz*689287499)^worldSeed^0x5eed);
     if(rng()>0.34)return;
     const biome=biomeAt(cx*CHUNK+8,cz*CHUNK+8);
@@ -888,6 +902,12 @@
     const idx=(x,y,z)=>(y*CHUNK+(z-z0))*CHUNK+(x-x0);
     const inside=(x,y,z)=>x>=x0&&x<x0+CHUNK&&z>=z0&&z<z0+CHUNK&&y>=0&&y<H;
     for(let x=x0;x<x0+CHUNK;x++)for(let z=z0;z<z0+CHUNK;z++){
+      const zone=abyssZone(x,z);
+      if(zone){
+        // The sea: bedrock, then water all the way up. The void: nothing.
+        if(zone==='ocean'){a[idx(x,0,z)]=B.BEDROCK;for(let y=1;y<=ABYSS_SEA;y++)a[idx(x,y,z)]=B.WATER;}
+        continue;
+      }
       if(isFarLands(x,z)){
         a[idx(x,0,z)]=B.BEDROCK;
         let depth=0;   // solid blocks since the last gap above
@@ -974,7 +994,7 @@
     // Villages, then their villagers — who arrive with the chunk that holds the plaza
     for(const v of villagesNear(x0+8,z0+8,8+VILLAGE_R)){
       stampVillage(v,(x,y,z,b)=>{if(inside(x,y,z))a[idx(x,y,z)]=b;});
-      if((v.x>>4)===cx&&(v.z>>4)===cz)spawnVillagers(v);
+      if(cOf(v.x)===cx&&cOf(v.z)===cz)spawnVillagers(v);
     }
     if(FEAT.topup)spawnAnimals(cx,cz);
     // The obsidian pillar dungeon, stamped over whatever was there
@@ -1565,7 +1585,8 @@
   // both judged from the cell the face looks out into. Water goes in its own
   // see-through mesh. Returns {solid, water}.
   const FULLBRIGHT=[B.PORTAL,B.FIRE_PORTAL,B.GLOW,B.BOSS,B.DEMON,B.LAVA,B.GUARDIAN,B.DARK_MATTER,B.HONEYPOT];
-  function buildGeometry(world,eachBlock,light){
+  function buildGeometry(world,eachBlock,light,origin){
+    const ox=origin?origin[0]:0, oz=origin?origin[1]:0;
     const bufs=[0,1].map(()=>({p:[],n:[],c:[],u:[],s:[],t:[],i:[],k:0}));
     const lit=(x,y,z,id)=>{
       if(!light)return [1,0];
@@ -1574,7 +1595,7 @@
     // One quad. `corners` are absolute positions; shade dims the sides as before.
     const quad=(b,corners,normal,uv,shade,sky,torch)=>{
       for(let q=0;q<4;q++){
-        b.p.push(corners[q][0],corners[q][1],corners[q][2]);
+        b.p.push(corners[q][0]-ox,corners[q][1],corners[q][2]-oz);
         b.n.push(normal[0],normal[1],normal[2]);
         b.c.push(shade,shade,shade);
         b.u.push(uv[q][0],uv[q][1]);
@@ -1725,8 +1746,9 @@
     const light=FEAT.v08?{sky:skyFrom(skyTopFinder(overworld)),torch:torchFrom(lightsAround(cx,cz))}:null;
     const geom=buildGeometry(overworld,fn=>{
       for(let i=0;i<a.length;i++)if(a[i])fn(x0+(i&15),i>>8,z0+((i>>4)&15),a[i]);
-    },light);
+    },light,[x0,z0]);
     const m=meshPair(geom);
+    m.position.set(x0,0,z0);
     chunkGroup.add(m);
     chunkMeshes.set(ck,m);
   }
@@ -1734,7 +1756,7 @@
   // are generated and meshed this call, so walking never stalls a frame.
   function updateChunks(budget){
     const R=RENDER_CHUNKS;
-    const pcx=Math.floor(chunkCenter.x)>>4, pcz=Math.floor(chunkCenter.z)>>4;
+    const pcx=cOf(Math.floor(chunkCenter.x)), pcz=cOf(Math.floor(chunkCenter.z));
     const want=[];
     for(let dx=-R-1;dx<=R+1;dx++)for(let dz=-R-1;dz<=R+1;dz++)want.push([dx*dx+dz*dz,pcx+dx,pcz+dz,Math.max(Math.abs(dx),Math.abs(dz))]);
     want.sort((p,q)=>p[0]-q[0]);
@@ -2239,7 +2261,7 @@
       const here=precipHere();
       if(currentRealm==='overworld'&&here!=='none')toast(weather==='rain'?(here==='snow'?'🌨️ It\'s starting to snow…':'🌧️ It\'s starting to rain…'):'🌤️ The '+(here==='snow'?'snow':'rain')+' has stopped.');
     }
-    const outside=currentRealm==='overworld'&&weather==='rain';
+    const outside=currentRealm==='overworld'&&weather==='rain'&&!abyssZone(player.pos.x,player.pos.z);
     const kind=outside?precipHere():'none';
     const k=Math.min(1,dt*0.6);
     rainAmt+=((kind==='rain'?1:0)-rainAmt)*k;
@@ -2409,6 +2431,31 @@
     if(!('ontouchstart' in window)||matchMedia('(pointer:fine)').matches)canvas.requestPointerLock();
   }
 
+  // ===== THE END OF THE WORLD: WHAT IT LOOKS LIKE =====
+  // A dead, grey sea under a sky with no sun and no stars, and close fog. Past
+  // a trillion blocks, not even that: black in every direction.
+  let wasAbyss=null;
+  function updateAbyss(zone){
+    if(zone!==wasAbyss){
+      if(zone==='ocean'&&wasAbyss===null)toast('🌊 …the land has ended.',5000);
+      if(zone==='void')toast('…',4000);
+      if(!zone&&wasAbyss){scene.fog.near=30;scene.fog.far=78;}
+      wasAbyss=zone;
+    }
+    entityMeshGroup.visible=!zone; petMeshGroup.visible=!zone;
+    if(!zone)return;
+    const col=zone==='void'?0x000000:0x1b2026;
+    scene.background.setHex(col); scene.fog.color.setHex(col);
+    scene.fog.near=zone==='void'?0:4; scene.fog.far=zone==='void'?4:42;
+    sunMesh.visible=moonMesh.visible=stars.visible=false;
+    sun.intensity=zone==='void'?0:0.12; ambient.intensity=zone==='void'?0.02:0.16;
+    const dayEl=document.getElementById('cc-daytime');
+    dayEl.style.display='inline-block'; dayEl.textContent='…';
+    const biomeEl=document.getElementById('cc-biome');
+    const name=zone==='void'?'':'🌊';
+    if(biomeEl.textContent!==name)biomeEl.textContent=name;
+  }
+
   // ===== THE WATCHER =====
   // Out past 999,999 blocks from spawn, something starts standing in the
   // distance — a tall black figure, just off to one side of where you're
@@ -2432,7 +2479,7 @@
   })();
   let watcherT=10, watcherAt=null;   // countdown to its next appearance; where you stood when it came
   function updateWatcher(dt){
-    const far=!FEAT.classic&&currentRealm==='overworld'&&!gameOver&&Math.hypot(player.pos.x,player.pos.z)>=WATCHER_DIST;
+    const far=!FEAT.classic&&currentRealm==='overworld'&&!gameOver&&Math.hypot(player.pos.x,player.pos.z)>=WATCHER_DIST&&!abyssZone(player.pos.x,player.pos.z);
     if(!far){watcher.visible=false;watcherAt=null;return;}
     if(watcher.visible){
       if(player.pos.distanceTo(watcherAt)>0.15){
@@ -2466,6 +2513,7 @@
   let zombieId=100000, zombieSpawnT=0;
   function spawnZombies(dt){
     if(FEAT.classic)return;
+    if(abyssZone(player.pos.x,player.pos.z))return;
     if(currentRealm!=='overworld'||gameOver)return;
     zombieSpawnT-=dt;
     if(zombieSpawnT>0)return;
@@ -2475,7 +2523,7 @@
     if(entities.filter(e=>e.kind==='zombie').length>=(isHardcore()?12:ZOMBIE_CAP))return;
     const ang=Math.random()*Math.PI*2, d=16+Math.random()*14;
     const x=Math.floor(player.pos.x+Math.cos(ang)*d), z=Math.floor(player.pos.z+Math.sin(ang)*d);
-    if(!overworld.chunks.has((x>>4)+','+(z>>4)))return;
+    if(!overworld.chunks.has(cOf(x)+','+cOf(z)))return;
     let y=-1;
     for(let yy=WORLD_HEIGHT-1;yy>0;yy--)if(isSolid(x,yy,z)){y=yy+1;break;}
     if(y<0||isSolid(x,y+1,z))return;
@@ -2506,7 +2554,7 @@
     if(!isNight()&&!under)return;
     const ang=Math.random()*Math.PI*2, d=under?8+Math.random()*10:16+Math.random()*14;
     const x=Math.floor(player.pos.x+Math.cos(ang)*d), z=Math.floor(player.pos.z+Math.sin(ang)*d);
-    if(!overworld.chunks.has((x>>4)+','+(z>>4)))return;
+    if(!overworld.chunks.has(cOf(x)+','+cOf(z)))return;
     let y=-1;
     if(under){
       // somewhere in the cave near your own height
@@ -3532,7 +3580,8 @@
   // /tp x y z, /tp x z (lands on the surface), ~ for relative (/tp ~ ~10 ~),
   // /tp spawn, /seed and /help — typed into the bar opened with T or /.
   const cmdEl=document.getElementById('cc-cmd'), cmdIn=document.getElementById('cc-cmd-in'), cmdOut=document.getElementById('cc-cmd-out');
-  const TP_LIMIT=1000000;
+  // 0.7.1 lets you go far enough to find out what lies past the edge
+  const TP_LIMIT=FEAT.abyss?1e13:1000000;
   function openCommand(prefill){
     for(const k in keys)keys[k]=false;   // don't keep walking while typing
     cmdEl.style.display='flex';
@@ -3551,9 +3600,10 @@
   // Put the player at x,z; y===null means "stand on the highest block there"
   function teleportPlayer(x,y,z){
     if(blocks===overworld){
-      const ck=(Math.floor(x)>>4)+','+(Math.floor(z)>>4);
-      if(!overworld.chunks.has(ck))genOverworldChunk(Math.floor(x)>>4,Math.floor(z)>>4);
+      const ck=cOf(Math.floor(x))+','+cOf(Math.floor(z));
+      if(!overworld.chunks.has(ck))genOverworldChunk(cOf(Math.floor(x)),cOf(Math.floor(z)));
     }
+    if(y===null&&blocks===overworld&&abyssZone(x,z)==='ocean')y=ABYSS_SEA+0.5;   // on the surface of the sea
     if(y===null){
       y=getHeight();
       for(let yy=getHeight()-1;yy>=0;yy--)if(isSolid(Math.floor(x),yy,Math.floor(z))){y=yy+1;break;}
@@ -4236,7 +4286,7 @@
     let changed=false;
     for(const k of [...crops]){
       const [x,y,z]=k.split(',').map(Number);
-      if(!overworld.chunks.has((x>>4)+','+(z>>4)))continue;
+      if(!overworld.chunks.has(cOf(x)+','+cOf(z)))continue;
       const id=getBlock(x,y,z);
       const stage=WHEATS.indexOf(id);
       if(stage<0||stage===3){crops.delete(k);continue;}
@@ -4264,7 +4314,7 @@
   // A light was added or removed: rebuild the chunks it reaches
   function relightAround(x,z){
     if(blocks!==overworld)return;
-    for(const [dx,dz] of [[0,0],[8,0],[-8,0],[0,8],[0,-8],[8,8],[-8,-8],[8,-8],[-8,8]])overworld.dirty.add(((x+dx)>>4)+','+((z+dz)>>4));
+    for(const [dx,dz] of [[0,0],[8,0],[-8,0],[0,8],[0,-8],[8,8],[-8,-8],[8,-8],[-8,8]])overworld.dirty.add(cOf(x+dx)+','+cOf(z+dz));
   }
 
   // ===== 0.8: FALLING AND DROWNING =====
@@ -4347,7 +4397,9 @@
     const dt=Math.min(0.05,(now-last)/1000);
     last=now;
     if(paused||puzzleEl.style.display==='flex'||releaseEl.style.display==='flex'){renderer.render(scene,camera);requestAnimationFrame(update);return;}
-    if(timerRunning&&!gameOver){timeLeft-=dt;if(timeLeft<=0){timeLeft=0;loseGame();}}
+    // 0.7.1: out past a billion blocks, the game stops — no clock, no time of day, nothing
+    const abyssHere=currentRealm==='overworld'?abyssZone(player.pos.x,player.pos.z):null;
+    if(timerRunning&&!gameOver&&!abyssHere){timeLeft-=dt;if(timeLeft<=0){timeLeft=0;loseGame();}}
     const speed=5.8;
     const forward=new THREE.Vector3(-Math.sin(player.yaw),0,-Math.cos(player.yaw));
     const right=new THREE.Vector3(Math.cos(player.yaw),0,-Math.sin(player.yaw));
@@ -4366,7 +4418,7 @@
     const fx0=Math.floor(player.pos.x), fz0=Math.floor(player.pos.z);
     const feetB=getBlock(fx0,Math.floor(player.pos.y+0.1),fz0), bodyB=getBlock(fx0,Math.floor(player.pos.y+1),fz0);
     const eyeB=getBlock(fx0,Math.floor(player.pos.y+player.eyeOffset),fz0);
-    const inWater=FEAT.v08&&(feetB===B.WATER||bodyB===B.WATER);
+    const inWater=(FEAT.v08||abyssHere==='ocean')&&(feetB===B.WATER||bodyB===B.WATER);
     const onLadder=FEAT.v08&&(LADDERS.includes(feetB)||LADDERS.includes(bodyB));
     const jumping=keys['KeyC']||jumpHeld;
     if(player.flying){
@@ -4391,7 +4443,9 @@
     const groundBefore=player.onGround;
     collide(player.pos,player.vel,dt);
     if(FEAT.v08)afterMove(inWater,onLadder,eyeB===B.WATER,groundBefore,dt);
-    if(currentRealm==='overworld'&&player.pos.y<-5){player.pos.set(0.5,16,0.5);player.vel.set(0,0,0);}
+    // In the void there is no bottom: you just keep falling through the dark
+    if(abyssHere==='void'&&player.pos.y<-5)player.pos.y+=60;
+    else if(currentRealm==='overworld'&&player.pos.y<-5){player.pos.set(0.5,16,0.5);player.vel.set(0,0,0);}
     if(currentRealm==='aether'&&player.pos.y<-5)teleportTo('overworld');
     if(currentRealm==='underworld'&&player.pos.y<-5)teleportTo('overworld');
     if(currentRealm==='milkhoney'&&player.pos.y<-5)teleportTo('overworld');
@@ -4462,7 +4516,7 @@
       else if(demonBoss.hp===15)document.getElementById('cc-boss').style.display='none';
     }
     const timerEl=document.getElementById('cc-timer');
-    timerEl.textContent=FEAT.classic?'🧱 Build anything':isCreative()?'🎨 No time limit':'⏰ '+formatTime(timeLeft);
+    timerEl.textContent=abyssHere?'⏸️ --:--':FEAT.classic?'🧱 Build anything':isCreative()?'🎨 No time limit':'⏰ '+formatTime(timeLeft);
     if(timeLeft<60){timerEl.style.background='rgba(220,40,40,0.85)';}
     else if(timeLeft<5*60){timerEl.style.background='rgba(255,170,68,0.85)';timerEl.style.color='#4a2c00';}
     else{timerEl.style.background='rgba(0,0,0,0.55)';timerEl.style.color='#fff';}
@@ -4634,8 +4688,9 @@
       }
     }
 
-    updateSky(dt);
+    updateSky(abyssHere?0:dt);
     updateWeather(dt);
+    updateAbyss(abyssHere);
     if(FEAT.v08){
       tintUnderwater();
       updateRainSound(currentRealm==='overworld'?rainAmt:0);
