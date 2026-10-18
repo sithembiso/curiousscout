@@ -2923,6 +2923,9 @@ function assignOrbitHosts(dt) {
     const sma = -mu / (2 * E);
     _ax.subVectors(b.p, best.p).cross(_ra.subVectors(b.v, best.v));
     const ecc = Math.sqrt(Math.max(0, 1 - _ax.lengthSq() / (mu * sma)));
+    // Something on a collision course, or falling nearly straight in, is not
+    // in an orbit that can be carried round — it must be stepped, so it hits.
+    if (ecc > 0.9 || sma * (1 - ecc) < (visRadius(b) + visRadius(best)) * 1.2) continue;
     const swing = TAU * Math.sqrt(sma * sma * sma / mu) * Math.pow(1 - Math.min(ecc, 0.95), 1.5);
     if (dt * ORBIT_STEPS > swing) b.rotHost = best;
   }
@@ -3353,7 +3356,8 @@ function beginEngulf(a, b, vImp, vEsc) {
   const T = clamp(0.40 + 1.30 * (rb / Math.max(ra, 1e-9)), ENGULF_MIN_SEC, ENGULF_MAX_SEC);
   const hole = clamp(Math.cbrt(b.m / Math.max(a.m, 1e-12)) * 1.5, 0.14, 1.1);
   b.sink = {
-    host: a, t: 0, T: T, vImp: vImp, vEsc: vEsc, dir: dir,
+    host: a, t: 0, T: T, vImp: vImp, vEsc: vEsc, dir: dir, spray: 0,
+    heat: impactHeatOf(a, b, vImp, vEsc),
     ra: ra, rb: rb, d0: ra + rb, d1: Math.max(ra - rb, 0),
     hole: hole, step: 0, bore: 0,
     // A mark from the very first moment of contact, barely open — the two
@@ -3362,6 +3366,83 @@ function beginEngulf(a, b, vImp, vEsc) {
   };
   fx.flash(b.p, rb * 2.4, [255, 200, 140], 0.45);
   return true;
+}
+
+/** A world-wide skin of molten rock: bright churning melt with darker veins. */
+function lavaTexture() {
+  const W = 512, H = 256, cv = newCanvas(W, H), ctx = cv.getContext('2d');
+  const img = ctx.createImageData(W, H), d = img.data;
+  const f = fbm(31337, 6, 3, 5, 0.55), g = fbm(4242, 14, 7, 3, 0.5);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const u = x / W, v = y / H;
+      const n = f(u, v), vein = Math.abs(g(u, v) - 0.5) * 2;
+      const k = clamp(0.5 + (n - 0.5) * 1.3, 0, 1) * (0.55 + 0.45 * smoothstep(clamp(vein * 1.6, 0, 1)));
+      const i = (y * W + x) * 4;
+      d[i] = d[i + 1] = d[i + 2] = 70 + 185 * k; d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+
+/* The colour of a world's surface heat, 0 (cool) to 1 (just hit). */
+const HEAT_RAMP = [
+  [0.00, [150, 30, 8]], [0.30, [255, 110, 26]], [0.60, [255, 196, 84]], [1.00, [255, 250, 228]]
+];
+
+/** How hot a hit leaves the whole surface, 0–1: a pebble nothing, a Theia white-hot. */
+function impactHeatOf(a, b, vImp, vEsc) {
+  const sev = clamp(vImp / Math.max(vEsc, 1e-9), 0.5, 2);
+  return clamp(Math.sqrt(b.m / Math.max(a.m + b.m, 1e-12)) * 2.4 * sev, 0, 1);
+}
+
+const SPLASH_RATE = 420;           // blobs per second of wall clock, for a big hit
+/** Glowing blobs from the contact ring of an impactor sinking into `a`. */
+function splashRing(a, b, s, x, dt) {
+  const heft = clamp(Math.sqrt(b.m / Math.max(a.m, 1e-12)) * 3, 0, 1);
+  s.spray += SPLASH_RATE * heft * dt;
+  let n = Math.min(Math.floor(s.spray), parts.free.length, 60);
+  if (n <= 0) return;
+  s.spray -= n;
+  // the ring where the surfaces cross, and a frame across it
+  const ra = s.ra, rc = Math.max(Math.sqrt(Math.max(ra * ra - x * x, 0)), s.rb * 0.25);
+  const ax = s.dir;
+  let e1 = new THREE.Vector3(0, 1, 0).cross(ax);
+  if (e1.lengthSq() < 1e-8) e1 = new THREE.Vector3(1, 0, 0).cross(ax);
+  e1.normalize();
+  const e2 = new THREE.Vector3().crossVectors(ax, e1);
+  const centre = a.p.clone().addScaledVector(ax, Math.max(x, 0));
+  const vEsc = s.vEsc, each = b.m * 0.0004;
+  for (let i = 0; i < n; i++) {
+    const k = parts.free.pop(), k3 = k * 3;
+    const th = rnd(0, TAU), c = Math.cos(th), sn = Math.sin(th);
+    const ox = e1.x * c + e2.x * sn, oy = e1.y * c + e2.y * sn, oz = e1.z * c + e2.z * sn;
+    // just clear of both bodies, so neither swallows it on the next step
+    const rr = rc + s.rb * rnd(0.15, 0.45);
+    const back = s.rb * rnd(0.0, 0.5);
+    parts.pos[k3] = centre.x + ox * rr + ax.x * back;
+    parts.pos[k3 + 1] = centre.y + oy * rr + ax.y * back;
+    parts.pos[k3 + 2] = centre.z + oz * rr + ax.z * back;
+    const out = vEsc * rnd(0.35, 0.95), up = vEsc * rnd(0.15, 0.7);
+    parts.vel[k3] = a.v.x + ox * out + ax.x * up;
+    parts.vel[k3 + 1] = a.v.y + oy * out + ax.y * up;
+    parts.vel[k3 + 2] = a.v.z + oz * out + ax.z * up;
+    const bs = rnd(12, 34);
+    parts.bsize[k] = bs; parts.size[k] = bs;
+    parts.m[k] = each;
+    parts.hot[k] = 1;
+    parts.crate[k] = COOL_IMPACT * 0.3;
+    parts.src[k] = -1;
+    const w = mix([255, 214, 120], [255, 252, 236], Math.random());
+    parts.warm[k3] = w[0] / 255; parts.warm[k3 + 1] = w[1] / 255; parts.warm[k3 + 2] = w[2] / 255;
+    parts.cool[k3] = 0.45; parts.cool[k3 + 1] = 0.22; parts.cool[k3 + 2] = 0.12;
+    parts.col[k3] = parts.warm[k3]; parts.col[k3 + 1] = parts.warm[k3 + 1]; parts.col[k3 + 2] = parts.warm[k3 + 2];
+    parts.on[k] = 1;
+    parts.live++;
+  }
+  b.m = Math.max(b.m - each * n, b.m * 0.5);
+  parts.dirty = true;
 }
 
 /** Advance every world currently sinking into another one. `dt` is in seconds. */
@@ -3401,6 +3482,12 @@ function updateEngulf(dt) {
     const cut = Math.sqrt(Math.max(s.ra * s.ra - x * x, 0)) / Math.max(s.rb, 1e-12);
     s.bore = Math.max(s.bore, clamp(cut, 0, 1));
     const grow = 0.5 * s.bore + 0.5 * s.t;
+
+    /* The splash: as it drives in, a curtain of glowing blobs bursts out of
+       the ring where the two surfaces meet — fanning outward and back the way
+       the impactor came — and the struck world starts to glow. */
+    splashRing(a, b, s, x, dt);
+    a.impactHeat = Math.max(a.impactHeat || 0, s.heat * smoothstep(s.t));
 
     // Re-cut on a fixed number of steps, because each one rebuilds the mesh.
     const step = Math.round(grow * ENGULF_STEPS);
@@ -3522,13 +3609,16 @@ function merge(a, b, vImp, vEsc, mark) {
   const natA = trueRadius(a.type, mTot);
   a.rFactor = natA > 0 ? a.r / natA : 1;
 
+  // Big soft blobs of glowing melt, white-hot to yellow, that stay lit a while.
   const thrown = ejectMass > 0
-    ? ejecta(com, vel, count, ejectMass, vEsc, [255, 190, 110], [96, 84, 76], visRadius(a), { speed: 1 })
+    ? ejecta(com, vel, count, ejectMass, vEsc, [255, 236, 176], [120, 70, 44], visRadius(a),
+      { speed: 1, sizeMin: 10, sizeMax: 30, cool: 0.35 })
     : 0;
   // The vapour plume: more mass and more of it than the rubble, because at
-  // these speeds rock does not chip, it boils.
+  // these speeds rock does not chip, it boils — a bright cloud round the world.
   const gas = ejectMass > 0
-    ? gasEjecta(com, vel, Math.round(count * 1.6), ejectMass * 2.4, vEsc, visRadius(a), { speed: 1.1 })
+    ? gasEjecta(com, vel, Math.round(count * 2.2), ejectMass * 2.4, vEsc, visRadius(a),
+      { speed: 0.8, sizeMin: 18, sizeMax: 52, warm: true })
     : 0;
   a.m = mTot - thrown - gas;
   if (gasMix) a.r = natRadius(a);
@@ -3565,6 +3655,8 @@ function merge(a, b, vImp, vEsc, mark) {
 
   // refreshVisual above rebuilt the parts, so the sea goes on after it.
   if (a.water > 0) setWater(a, a.water);
+  // The whole surface heated by the hit: white-hot after a Theia, cooling off.
+  a.impactHeat = Math.max(a.impactHeat || 0, impactHeatOf(a, b, vImp, vEsc));
   fx.flash(com, visRadius(a) * 4, [255, 210, 150], 0.7);
   toast(note + (clumped > 0 ? ' — knots of it flew off' : '') +
     (brought > 0.02 ? ' — and its water with it' : ''));
@@ -9173,7 +9265,7 @@ function updateLights() {
  * from O(P²) into O(P × M), which is what makes thousands of them affordable.
  */
 
-const P_MAX = 2400;
+const P_MAX = 5000;
 const P_SOURCES = 6;          // only the heaviest bodies pull on debris
 const P_MAX_STEPS = 20;       // substep ceiling per frame, for the cost bound
 const P_CULL = 1.4e5;         // Gm — debris past this has left the system
@@ -9383,6 +9475,7 @@ function updateForms(realDt) {
  */
 function ejecta(center, baseVel, count, totalMass, vEsc, hotCol, coolCol, radius, opts) {
   const o = opts || {};
+  const coolRate = COOL_IMPACT * (o.cool != null ? o.cool : 1);
   const n = Math.min(count, parts.free.length);
   if (n <= 0 || totalMass <= 0) return 0;
   const each = totalMass / n;
@@ -9419,7 +9512,7 @@ function ejecta(center, baseVel, count, totalMass, vEsc, hotCol, coolCol, radius
     parts.size[k] = bs;
     parts.m[k] = each;
     parts.hot[k] = 1;
-    parts.crate[k] = COOL_IMPACT;
+    parts.crate[k] = coolRate;
     parts.src[k] = -1;
 
     const w = mix(hotCol, [255, 255, 255], frac * rnd(0, 0.6));
@@ -9495,8 +9588,10 @@ function gasEjecta(center, baseVel, count, totalMass, vEsc, radius, opts) {
     parts.src[k] = -1;
 
     // The fastest gas is the hottest and sits at the white end of the ramp.
-    const w = ramp(DISC_RAMP, clamp(1 - frac + rnd(-0.12, 0.12), 0, 1));
-    const c = ramp(DISC_RAMP, clamp(0.86 + rnd(0, 0.14), 0, 1));
+    // Fresh impact vapour (o.warm) stays in the white-to-orange part of it.
+    const span = o.warm ? 0.42 : 1;
+    const w = ramp(DISC_RAMP, clamp((1 - frac + rnd(-0.12, 0.12)) * span, 0, 1));
+    const c = ramp(DISC_RAMP, o.warm ? clamp(0.4 + rnd(0, 0.1), 0, 1) : clamp(0.86 + rnd(0, 0.14), 0, 1));
     parts.warm[k3] = w[0] / 255; parts.warm[k3 + 1] = w[1] / 255; parts.warm[k3 + 2] = w[2] / 255;
     parts.cool[k3] = c[0] / 510; parts.cool[k3 + 1] = c[1] / 510; parts.cool[k3 + 2] = c[2] / 510;
     parts.col[k3] = parts.warm[k3]; parts.col[k3 + 1] = parts.warm[k3 + 1]; parts.col[k3 + 2] = parts.warm[k3 + 2];
@@ -10752,6 +10847,9 @@ function updateVisuals(realDt, simDt) {
 
     // ---- a world's appearance responds to how hot it is
     if (b.glowPulse) b.glowPulse = Math.max(0, b.glowPulse - realDt * 0.4);
+    // Heat from an impact soaks away over a month or two of simulated time
+    // (and never takes longer than half a minute on screen).
+    if (b.impactHeat && !b.sink) b.impactHeat = Math.max(0, b.impactHeat - Math.max(simDt / 50, realDt / 30));
     if (p.surf && b.baseColor && p.surf.material.isMeshStandardMaterial) {
       const mat = p.surf.material;
       const hot = clamp((b.temp - 900) / 1300, 0, 1);
@@ -10759,7 +10857,30 @@ function updateVisuals(realDt, simDt) {
       // A freshly transformed world glows from the heat of its own collapse.
       const pulse = b.glowPulse ? Math.pow(b.glowPulse, 0.7) : 0;
       const e = Math.max(base, hot * 0.85, pulse);
-      mat.emissive.setRGB(e, e * 0.28, e * 0.05);
+      // Impact heat runs white-hot to yellow to orange as it cools.
+      const h = b.impactHeat || 0;
+      mat.emissive.setRGB(Math.max(e, h * 1.1), Math.max(e * 0.28, h * lerp(0.35, 0.95, h)),
+        Math.max(e * 0.05, h * lerp(0.06, 0.7, h * h)));
+      /* The glow above only lights the rock, and on a world with sea, cloud and
+         air over it that hides it. A struck world glows all over, through all
+         of that — a whole surface of molten rock — so the heat also goes on as
+         a shell of churning melt, added on top: white-hot, then yellow, orange
+         and out. */
+      if (h > 0.01 && !tiny) {
+        if (!p.heatShell) {
+          p.heatShell = new THREE.Mesh(SPHERE, new THREE.MeshBasicMaterial({
+            map: cachedTexture('lava', lavaTexture), transparent: true, depthWrite: false,
+            blending: THREE.AdditiveBlending }));
+          p.heatShell.renderOrder = 9;          // after the sea and the clouds, or they paint over it
+          b.obj.add(p.heatShell);
+        }
+        const hc = ramp(HEAT_RAMP, h), boost = 0.5 + 1.6 * h;
+        p.heatShell.material.color.setRGB(hc[0] / 255 * boost, hc[1] / 255 * boost, hc[2] / 255 * boost);
+        // above the highest ground and the sea, or the oceans stay dark under it
+        p.heatShell.scale.setScalar(r * (Math.max(1 + reliefTop(b.type), b.water > 0 ? seaRadius(b) : 1) + 0.03));
+        p.heatShell.rotation.y = b.rot;
+        p.heatShell.visible = true;
+      } else if (p.heatShell) p.heatShell.visible = false;
       const cold = clamp((110 - b.temp) / 70, 0, 1) * 0.5;
       mat.color.copy(b.baseColor).lerp(FROST, cold);
       // A world that was born living and is now losing it goes brown first.
