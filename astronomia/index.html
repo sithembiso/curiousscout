@@ -2518,7 +2518,9 @@ const settings = {
   galMaxPx: 3000,        // …nor wider than this
   slowmo: true,          // drop into slow motion whenever two real bodies collide
   slowmoFactor: 10,      // …this many times slower
-  slowmoSecs: 4          // …for this many seconds of wall clock
+  slowmoSecs: 4,         // …for this many seconds of wall clock
+  decay: true,           // orbits lose energy to gravitational waves and shrink
+  decayBoost: 1          // …this many times faster than in reality
 };
 
 /**
@@ -2788,28 +2790,33 @@ function computeAccel() {
       // A satellite being carried round its host analytically (see
       // carryOrbits) gets that pull from the orbit itself, not from here — and
       // its tight orbit must not drag the step size down either.
-      if (bi.rotHost === bj || bj.rotHost === bi) continue;
+      // (They still collide, below — a decaying pair has to be able to meet.)
+      const carriedPair = bi.rotHost === bj || bj.rotHost === bi;
 
-      // Keeps the force finite when two objects are overlapping instead of
-      // blowing up. For a pair of ordinary bodies this is exactly 0.35·(rᵢ+rⱼ),
-      // as it always was.
-      const soft = softs[i] + softs[j];
-      const dd = d2 + soft * soft;
-      const d = Math.sqrt(dd);
-      const inv3 = 1 / (dd * d);
+      if (!carriedPair) {
+        // Keeps the force finite when two objects are overlapping instead of
+        // blowing up. For a pair of ordinary bodies this is exactly 0.35·(rᵢ+rⱼ),
+        // as it always was.
+        const soft = softs[i] + softs[j];
+        const dd = d2 + soft * soft;
+        const d = Math.sqrt(dd);
+        const inv3 = 1 / (dd * d);
 
-      // A white hole pushes instead of pulls.
-      const si = bi.kind === 'wh' ? -1 : 1;
-      const sj = bj.kind === 'wh' ? -1 : 1;
+        // A white hole pushes instead of pulls.
+        const si = bi.kind === 'wh' ? -1 : 1;
+        const sj = bj.kind === 'wh' ? -1 : 1;
 
-      const fi = gm * bj.m * inv3 * sj;
-      const fj = gm * bi.m * inv3 * si;
-      bi.a.x += dx * fi; bi.a.y += dy * fi; bi.a.z += dz * fi;
-      bj.a.x -= dx * fj; bj.a.y -= dy * fj; bj.a.z -= dz * fj;
+        const fi = gm * bj.m * inv3 * sj;
+        const fj = gm * bi.m * inv3 * si;
+        bi.a.x += dx * fi; bi.a.y += dy * fi; bi.a.z += dz * fi;
+        bj.a.x -= dx * fj; bj.a.y -= dy * fj; bj.a.z -= dz * fj;
 
-      // local dynamical time, used to pick a safe step size
-      const t2 = (dd * d) / (gm * (bi.m + bj.m) + 1e-12);
-      if (t2 < minT2) minT2 = t2;
+        if (settings.decay && si > 0 && sj > 0 && bi.kind !== 'gal' && bj.kind !== 'gal') gwDrag(bi, bj, d);
+
+        // local dynamical time, used to pick a safe step size
+        const t2 = (dd * d) / (gm * (bi.m + bj.m) + 1e-12);
+        if (t2 < minT2) minT2 = t2;
+      }
 
       let touch = ri + captureRadius(bj);
       // Falling together, a pair of neutron stars reaches hundreds of Gm per
@@ -2818,7 +2825,9 @@ function computeAccel() {
       // getting flung apart by the singular force instead of merging. Widening
       // the window by how far the pair closes in one step is a cheap swept
       // test that catches them properly.
-      if (ci && isCompact(bj)) {   // see COMPACT_SURF
+      // (Not for a carried pair: its positions are exact, and its long step
+      // would make the window wider than the whole orbit.)
+      if (ci && !carriedPair && isCompact(bj)) {   // see COMPACT_SURF
         const rvx = bj.v.x - bi.v.x, rvy = bj.v.y - bi.v.y, rvz = bj.v.z - bi.v.z;
         touch += Math.sqrt(rvx * rvx + rvy * rvy + rvz * rvz) * lastStepDt;
       }
@@ -2828,6 +2837,44 @@ function computeAccel() {
     }
   }
   lastMinTdyn = Math.sqrt(minT2);
+}
+
+/* ----------------------------------------------------------- orbital decay */
+/*
+ * Two masses going round each other shake space-time, and the ripples —
+ * gravitational waves — carry energy away, so the orbit slowly shrinks until
+ * they meet. For Earth and the Sun that would take 10^23 years; for two
+ * neutron stars a few hundred thousand kilometres apart, a few hundred
+ * thousand years; for the pair LIGO heard in 2017, the last 100 seconds. The
+ * rate is Peters' (1964) formula,
+ *     da/dt = −(64/5) G³ m₁ m₂ (m₁ + m₂) / (c⁵ a³)
+ * and it climbs as the fourth power of how close they get, so the spiral is
+ * slow, then fast, then over. Settings can switch it off or speed it up.
+ *
+ * In the integrator it is a drag on the pair's relative motion that removes
+ * exactly that power; for an orbit too fast to step (see carryOrbits) the
+ * same law shrinks the carried orbit directly.
+ */
+const gwBeta = (m1, m2) => {
+  const g = G * settings.gravity;
+  return 64 / 5 * g * g * g * m1 * m2 * (m1 + m2) / Math.pow(C_LIGHT, 5) * settings.decayBoost;
+};
+const _gv = new THREE.Vector3();
+function gwDrag(a, b, d) {
+  if (!(a.m > 0 && b.m > 0)) return;
+  const M = a.m + b.m, mu = a.m * b.m / M;
+  const g = G * settings.gravity;
+  // power radiated by a circular orbit of this size (the energy E = −G m₁m₂/2a)
+  const P = 32 / 5 * Math.pow(g, 4) * a.m * a.m * b.m * b.m * M / Math.pow(C_LIGHT, 5)
+    / Math.pow(d, 5) * settings.decayBoost;
+  _gv.subVectors(b.v, a.v);
+  const v = _gv.length();
+  if (v <= 0 || P <= 0) return;
+  // never take more than a fifth of the relative speed in one step
+  const acc = Math.min(P / (mu * v), 0.2 * v / Math.max(lastStepDt, 1e-12));
+  _gv.multiplyScalar(acc / v);                      // along the relative velocity
+  a.a.addScaledVector(_gv, b.m / M);
+  b.a.addScaledVector(_gv, -a.m / M);
 }
 
 /* ------------------------------------------------------------- integration */
@@ -2916,8 +2963,27 @@ function carryOrbits(dt) {
       _q.setFromAxisAngle(_ax, ang % TAU);
       b._rr.applyQuaternion(_q);
       b._rv.applyQuaternion(_q);
+      if (settings.decay) {
+        // Peters: a⁴ falls by 4β per unit time. A circular orbit's speed goes
+        // as 1/√a, so the velocity grows as the orbit shrinks.
+        const a = Math.sqrt(r2);
+        const a4 = a * a * a * a - 4 * gwBeta(H.m, b.m) * dt;
+        const meet = (captureRadius(H) + captureRadius(b)) * 0.5;
+        const an = a4 > Math.pow(meet, 4) ? Math.pow(a4, 0.25) : meet;
+        if (an < a) {
+          b._rr.multiplyScalar(an / a);
+          b._rv.multiplyScalar(Math.sqrt(a / an));
+        }
+      }
     }
     b.p.copy(H.p).add(b._rr);
+  }
+  // put each binary back either side of its centre of mass
+  for (const b of carried) {
+    if (!b._bin || !b.alive || !b.rotHost.alive) continue;
+    const H = b.rotHost, M = H.m + b.m;
+    H.p.addScaledVector(b._rr, -b.m / M);
+    b.p.copy(H.p).addScaledVector(b._rr, 1);
   }
 }
 
@@ -2925,17 +2991,41 @@ function carryOrbits(dt) {
    taken mid-step, the host's velocity is half a kick out, and that error
    piles up step after step until the satellite drifts loose. */
 function carryVelocities() {
-  for (const b of carried) if (b.alive && b.rotHost.alive) b.v.copy(b.rotHost.v).add(b._rv);
+  for (const b of carried) {
+    if (!b.alive || !b.rotHost.alive) continue;
+    const H = b.rotHost;
+    if (b._bin) {
+      H.v.addScaledVector(b._rv, -b.m / (H.m + b.m));
+      H._binSat = null;
+    }
+    b.v.copy(H.v).add(b._rv);
+  }
 }
 
 function step(dt) {
   const bs = sim.bodies;
   const h = dt * 0.5;
   lastStepDt = dt;
-  // Where every carried satellite stands relative to its host, before the step
+  /* A carried pair heavy on both sides — a binary — cannot treat the host as
+     fixed: the host swings round the barycentre too. So for the step the host
+     stands in for the pair's centre of mass, which is what actually follows a
+     smooth path; afterwards both are put back either side of it. */
   for (const b of carried) {
-    b._rr.copy(b.p).sub(b.rotHost.p);
-    b._rv.copy(b.v).sub(b.rotHost.v);
+    b._bin = b.m > 0.01 * b.rotHost.m && !b.rotHost._binSat;
+    if (!b._bin) continue;
+    const H = b.rotHost, M = H.m + b.m;
+    b._rr.copy(b.p).sub(H.p); b._rv.copy(b.v).sub(H.v);
+    H.p.addScaledVector(b._rr, b.m / M);
+    H.v.addScaledVector(b._rv, b.m / M);
+    H._binSat = b;
+  }
+  // Where every carried satellite stands relative to its host, before the step
+  // (a binary's was taken above, before its host became the centre of mass)
+  for (const b of carried) {
+    if (!b._bin) {
+      b._rr.copy(b.p).sub(b.rotHost.p);
+      b._rv.copy(b.v).sub(b.rotHost.v);
+    }
     b.rotHost._p0.copy(b.rotHost.p);
   }
   for (let i = 0; i < bs.length; i++) {
@@ -5332,7 +5422,13 @@ function updateSpin(dt) {
     if (!b.alive || b.kind !== 'body') continue;
     const period = Math.abs(b.spin);
 
-    if (period >= SPIN_SHED) { b.shedding = false; continue; }
+    /* It also has to beat its own break-up spin, 2π√(r³/GM): the 72 s line is
+       right for a world, but a neutron star holds together down to about a
+       millisecond, and treating a 1-second pulsar as flying apart shed its
+       mass as debris whose pull then kicked it across the sky. */
+    const br = Math.max(b.r, 1e-12);
+    const breakup = TAU * Math.sqrt(br * br * br / (G * settings.gravity * Math.max(b.m, 1e-12)));
+    if (period >= SPIN_SHED || period >= breakup) { b.shedding = false; continue; }
 
     // First step over the line: work out how much of it is core and cannot go.
     // A body already ground down to its core keeps the core mass it ended on,
@@ -12520,6 +12616,13 @@ const RATE_MAX = 1e74 * 365.25;
    the full speed asked for; the motion runs as fast as it can be followed. */
 const PHYS_MAX = 1e12;
 
+/** 3000000 → "3 million" */
+function fmtBoost(x) {
+  if (x >= 1e9) return (x / 1e9).toPrecision(2).replace(/\.0$/, '') + ' billion';
+  if (x >= 1e6) return (x / 1e6).toPrecision(2).replace(/\.0$/, '') + ' million';
+  return Math.round(x).toLocaleString();
+}
+
 /** Set the speed, in days per second, kept within the limits. */
 function setRate(r) {
   sim.rate = clamp(r, RATE_MIN, RATE_MAX);
@@ -12649,6 +12752,10 @@ function openSettings() {
     sld('st-slowf', 'How much slower', 2, 50, 1, settings.slowmoFactor) +
     sld('st-slows', 'For how long', 1, 15, 0.5, settings.slowmoSecs) +
 
+    '<div class="an-sec">ORBITAL DECAY</div>' +
+    '<p class="an-note">Orbiting masses radiate <b>gravitational waves</b>, lose energy and spiral together. At its real speed this only matters for very tight, heavy pairs — two neutron stars, two black holes — and even they take hundreds of thousands of years. Speed it up to watch any pair spiral in and collide.</p>' +
+    tgl('st-decay', 'Orbital decay', 'Off, and orbits never shrink on their own.') +
+    sld('st-decayb', 'Speed up the decay', 0, 9, 0.1, Math.log10(settings.decayBoost)) +
     '<div class="an-sec">TIDES</div>' +
     '<p class="an-note">Inside the <b>Roche limit</b> a body cannot hold itself together against the pull of whatever it is orbiting. It does not simply pop: it is shaved away and squeezed hot first, and only then comes apart.</p>' +
     tgl('st-tidal', 'Tidal forces', 'Off, and nothing is ever torn at, however close it gets.') +
@@ -12745,6 +12852,9 @@ function openSettings() {
   syncCol();
 
   bindTgl('st-tidal', 'tidal');
+  bindTgl('st-decay', 'decay');
+  bindSld('st-decayb', (v) => v < 0.05 ? 'real speed' : '×' + fmtBoost(Math.pow(10, v)),
+    (v) => { settings.decayBoost = Math.pow(10, v); });
   bindTgl('st-strip', 'strip');
   bindTgl('st-tideheat', 'tideHeat');
   bindTgl('st-auto', 'autoOrbit');
@@ -13531,11 +13641,17 @@ const PRESETS = [
     }
   },
   {
-    name: 'Neutron Waltz', desc: 'Two city-sized stellar corpses whipping around each other in hours.',
+    name: 'Neutron Waltz', desc: 'Two city-sized stellar corpses whipping around each other in hours — losing energy to gravitational waves, spiralling in, and colliding in a kilonova.',
     dist: 0.9,
     build() {
       binaryPair('neutron_star', 1.4 * M_SUN, 'neutron_star', 1.3 * M_SUN, 0.22);
+      /* For real this pair would take about a million years to merge. Sped up
+         four million times, the whole inspiral plays out in about half a
+         minute: slow at first, then faster and faster, then the crash. */
+      settings.decay = true;
+      settings.decayBoost = 4e6;
       sim.running = true;
+      setTimeout(() => toast('Orbital decay is sped up four million times — watch them spiral in'), 1500);
     }
   },
   {
@@ -13725,6 +13841,8 @@ function clearAll() {
 function loadPreset(p) {
   clearAll();
   sim.running = false;
+  // a map that speeds orbital decay up (Neutron Waltz) does it for itself only
+  settings.decayBoost = 1;
   p.build();
   view.target.set(0, 0, 0);
   view.dist = p.dist;
@@ -13909,6 +14027,8 @@ function openHelp() {
     '<p>And everything else a real galaxy holds: every kind of star — red dwarfs, Sun-like stars, blue giants, red giants and supergiants, Wolf–Rayet stars, brown dwarfs — and the remains of dead ones: <b>white dwarfs</b>, <b>neutron stars</b> and <b>black holes</b>. Most stars have <b>planets</b>: lock on to one and its orbits are drawn, and the worlds go round in time with the clock. Ancient <b>globular clusters</b> swarm round the halo, young <b>open clusters</b> sit on the arms, and at the very middle of every galaxy is a <b>supermassive black hole</b> with its glowing disc — select the galaxy and press <b>VISIT THE BLACK HOLE</b>.</p>' +
     '<h3>BARYCENTRES</h3>' +
     '<p>Two bodies orbit their shared <b>centre of mass</b>, not each other — so drop a star beside another and both swing round the point between them (marked with a small pink crosshair), instead of drifting off together. To build a system exactly where you want it, drop a <b>Barycentre</b> (under <b>Cosmic</b>) first. While it is selected, the first two bodies you drop near it become a binary circling that very point, and anything after that goes round the whole system — a planet with two suns. Press <b>DONE ADDING</b> to go back to dropping things normally.</p>' +
+    '<h3>ORBITAL DECAY</h3>' +
+    '<p>Two masses going round each other send out <b>gravitational waves</b>, and the energy they carry away makes the orbit shrink — slowly at first, then faster and faster — until the two collide. Two neutron stars do it in a <b>kilonova</b>; two black holes in a burst LIGO can hear from a billion light-years away. At real speed it takes hundreds of thousands of years even for them, so <b>Settings ▸ Orbital decay</b> lets you speed it up as much as a billion times (or switch it off). The <b>Neutron Waltz</b> map turns it up so the whole inspiral takes about half a minute.</p>' +
     '<h3>SINGULARITIES AND UNIVERSES</h3>' +
     '<ul>' +
     '<li>A <b>Singularity</b> (under <b>Cosmic</b>) is a point of infinite density with no event horizon around it. It swallows anything that touches it, and it shimmers through every colour.</li>' +
