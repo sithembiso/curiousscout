@@ -3903,7 +3903,7 @@ function updateTerraform(simDt) {
       refreshVisual(b);
     }
     if (before < 1 && b.terra >= 1) {
-      toast(b.name + ' is alive — oceans, air and all');
+      toast(b.name + ' is alive — air, weather and green land' + ((b.water || 0) > 0.05 ? '' : '. Now add the water.'));
       if (sim.selected === b && !inspectorLock) renderInspector();
     } else if (before > 0 && b.terra <= 0) {
       toast(b.name + ' could not hold on to it, and died back');
@@ -6336,8 +6336,18 @@ function buildTerraLayer(b, grp) {
   /* Built on the body's OWN relief geometry, not a plain sphere: the greenery
      has to follow the mountains it is growing on, or a terraformed Mars ends up
      with Olympus Mons sticking out through its new biosphere. */
+  /* All land: plains, forest, desert and snow, with no sea floor painted in.
+     The oceans are real water you pour in yourself (see bindTerra), and they
+     fill this world's OWN basins — so the seas sit where its low ground is,
+     not where some other planet's would be. */
+  const sv = b.seed % 3;
+  const skinTex = cachedTexture('terraskin:' + sv, () => {
+    const cv = newCanvas(512, 256);
+    SURFACE.terran(cv.getContext('2d'), 512, 256, mulberry32(hashStr('terraskin' + sv)), { sea: 0.02, caps: 0.1 });
+    return cv;
+  });
   const skin = new THREE.Mesh(reliefGeometry(b.type, b.seed), new THREE.MeshStandardMaterial({
-    map: surfaceTexture('terrestrial', b.seed),
+    map: skinTex,
     transparent: true, opacity: 0, roughness: 0.8, metalness: 0.02
   }));
   skin.scale.setScalar(1.004);
@@ -12150,8 +12160,20 @@ function terraHTML(b) {
     (b.terraOn ? 'STOP' : 'TERRAFORM') + '</button>' +
     (b.terraOn && b.terra < 1 && chk.ok ? '<button id="is-terra-now">FINISH IT</button>' : '') +
     '</div>';
+
+  /* Water does not come by itself: it is poured in by hand, a tenth of an ocean
+     at a time, and it fills the low ground first. */
+  if (b.terraOn && canHoldWater(b)) {
+    h += '<div class="an-field"><label>Oceans <b id="is-tfw-v">' + waterLabel(b) + '</b></label></div>' +
+      '<div class="an-row"><button id="is-tf-water">ADD WATER</button>' +
+      '<button id="is-tf-drain"' + ((b.water || 0) > 0.001 ? '' : ' disabled') + '>DRAIN</button></div>' +
+      '<p class="an-note">Pour the seas in yourself. They fill ' + escAttr(b.name) + '\'s own craters and ' +
+      'lowlands first, then creep up the coasts. Too cold and they freeze over.</p>';
+  }
   return h;
 }
+
+const waterLabel = (b) => (b.water || 0) <= 0.001 ? 'none' : Math.round(b.water * 100) + '%';
 
 function bindTerra(b) {
   const btn = $('is-terra');
@@ -12163,13 +12185,28 @@ function bindTerra(b) {
       renderInspector();
     });
   }
+  const pour = (dw) => {
+    if (!b.alive) return;
+    setWater(b, Math.round(((b.water || 0) + dw) * 100) / 100);
+    const v = $('is-tfw-v'); if (v) v.textContent = waterLabel(b);
+    const dr = $('is-tf-drain'); if (dr) dr.disabled = (b.water || 0) <= 0.001;
+    const sl = $('is-wat'); if (sl) { sl.value = Math.round((b.water || 0) * 100); const sv = $('is-wat-v'); if (sv) sv.textContent = waterLabel(b); }
+    updateInspectorStats();
+  };
+  const addW = $('is-tf-water');
+  if (addW) addW.addEventListener('click', () => {
+    pour(0.1);
+    toast((b.water >= 1 ? b.name + ' is drowned — water over the highest peaks' : 'Poured water onto ' + b.name));
+  });
+  const drain = $('is-tf-drain');
+  if (drain) drain.addEventListener('click', () => pour(-0.1));
   const now = $('is-terra-now');
   if (now) {
     now.addEventListener('click', () => {
       if (!terraCheck(b).ok) return;
       b.terra = 1;
       if (b.parts && !b.parts.terraSkin && !isLivingSurf(TYPES[b.type])) refreshVisual(b);
-      toast(b.name + ' is alive — oceans, air and all');
+      toast(b.name + ' is alive — air, weather and green land' + ((b.water || 0) > 0.05 ? '' : '. Now add the water.'));
       renderInspector();
     });
   }
@@ -12379,8 +12416,10 @@ function bindCustomise(b) {
   /* ---- water ---- */
   const wat = $('is-wat');
   if (wat) {
-    const showW = () => $('is-wat-v').textContent =
-      (b.water || 0) <= 0.001 ? 'none' : Math.round(b.water * 100) + '%';
+    const showW = () => {
+      $('is-wat-v').textContent = waterLabel(b);
+      const v = $('is-tfw-v'); if (v) v.textContent = waterLabel(b);
+    };
     showW();
     wat.addEventListener('input', () => {
       setWater(b, parseInt(wat.value, 10) / 100);
@@ -14274,7 +14313,7 @@ function openHelp() {
     '<li><b>Heavy enough.</b> Under about a twentieth of an Earth its gravity cannot hold an atmosphere down and the air leaks away into space. That is not a made-up rule — it is precisely why <b>Mars</b> is a frozen desert with a hundredth of our air pressure, despite once having rivers running across it.</li>' +
     '<li><b>Not too heavy.</b> Past about twenty Earths a rocky world starts holding on to hydrogen as well, and turns into a small Neptune with no surface at all to stand on.</li>' +
     '<li><b>The right heat.</b> Water has to be able to sit on the surface as a liquid: roughly 258 K to 348 K. This is the whole meaning of the <b>habitable zone</b>, and it is worked out from the real starlight falling on that world right now — so <b>moving a planet changes the answer</b>. Drag a frozen world inwards until the panel stops complaining and it will take.</li>' +
-    '<li>It is not instant and it is <b>not permanent</b>. Oceans fill, clouds gather and the land greens over across a few years, and the world only stays that way while those three things stay true. Shove it out past the snow line, or feed its star until it swells, and it browns off and dies — <b>twice as fast as it grew</b>, because ruining something is always quicker than building it.</li>' +
+    '<li>It is not instant and it is <b>not permanent</b>. Clouds gather and the land greens over across a few years — and the oceans are up to you: press <b>ADD WATER</b> to pour them in, and they fill the world\'s own craters and lowlands first — and the world only stays that way while those three things stay true. Shove it out past the snow line, or feed its star until it swells, and it browns off and dies — <b>twice as fast as it grew</b>, because ruining something is always quicker than building it.</li>' +
     '<li>The world underneath keeps its own name and its own kind. A terraformed Mars is still Mars, with the living layer laid over the top — and it is still Mars when it dies back.</li>' +
     '<li>Try <b>Terraforming</b> in Systems: four dead worlds around one star, and only one of them can be brought to life where it stands. The other three each fail for a different one of the three reasons.</li>' +
     '</ul>' +
