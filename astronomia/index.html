@@ -2150,6 +2150,10 @@ const TYPES = {
     kind: 'bh', naked: true, spin: 0.01,
     blurb: 'A point of infinite density with no event horizon to hide it — a "naked" singularity. It swallows anything that touches it. Press BIG BANG and it explodes into a brand-new universe.'
   },
+  barycentre: {
+    label: 'Barycentre', group: 'COSMIC', mass: 0, rad: 0, kind: 'bary', spin: 1,
+    blurb: 'A centre of mass, placed by hand. Drop one, then drop two stars near it: they become a binary circling exactly that point. Anything else you drop near it goes round the whole system.'
+  },
   universe: {
     label: 'Universe', group: 'COSMIC', mass: 0, rad: 0, kind: 'uni', spin: 1,
     blurb: 'A whole universe in a bubble: a handful of galaxies flung apart by its own expansion. Press BIG CRUNCH and it falls back in on itself until all that is left is a singularity.'
@@ -2394,7 +2398,7 @@ const GROUPS = ['STARS', 'PLANETS', 'MOONS & DEBRIS', 'EXOTIC', 'HYPOTHETICAL', 
 
 /* Representative swatch colour for each palette entry. */
 const SWATCH = {
-  singularity: '#ffffff', universe: '#c9a6ff',
+  singularity: '#ffffff', universe: '#c9a6ff', barycentre: '#7fe6ff',
   barred_galaxy: '#cfe0ff', elliptical_galaxy: '#ffd39a', irregular_galaxy: '#9fc4ff',
   ring_galaxy: '#a9c8ff', dwarf_galaxy: '#d9d0ff',
   red_dwarf: '#ff7a52', sun_like: '#ffe9a8', blue_giant: '#b9d4ff', red_supergiant: '#ff8a5c',
@@ -2680,7 +2684,7 @@ function makeBody(type, pos, vel, overrides) {
 function visRadius(b) {
   if (b.kind === 'bh' || b.kind === 'wh') return b.r * 2.6 * settings.bodyScale * BH_VIS;
   // A remnant cloud is light-days across already; exaggerating it would be absurd.
-  if (b.kind === 'snr' || b.kind === 'uni' || b.kind === 'mark') return b.r;
+  if (b.kind === 'snr' || b.kind === 'uni' || b.kind === 'mark' || b.kind === 'bary') return b.r;
   // Deliberately NOT a galaxy's drawn size: that is a screen measurement (see
   // updateGalaxies) and letting it into the physics would give a galaxy a
   // capture radius and a Roche limit the width of the visible universe. What
@@ -10559,6 +10563,7 @@ function updateLabels() {
   }
   for (const u of universes) cands.push([3e9, u, 14]);
   for (const m of marks) if (!shyFar(m)) cands.push([m.sub === 'probe' ? 1.2e9 : 1.1e9, m, 6]);
+  for (const B of barys) cands.push([1.3e9, B, 9]);
   cands.sort((a, b) => b[0] - a[0]);
 
   // Bodies that sit on top of each other at this zoom (Earth and its Moon, a
@@ -10923,6 +10928,12 @@ function pickBody(sx, sy) {
   }
   if (best) return best;
 
+  // Hand-placed barycentres, by their crosshairs.
+  for (const B of barys) {
+    _lp.copy(B.p).project(camera);
+    if (_lp.z < -1 || _lp.z > 1) continue;
+    if (Math.hypot((_lp.x + 1) * 0.5 * VIEW.w - sx, (1 - _lp.y) * 0.5 * VIEW.h - sy) < 14) return B;
+  }
   // Spacecraft and landmarks, by their markers.
   for (const m of marks) {
     if (shyFar(m)) continue;
@@ -11047,6 +11058,147 @@ function updateBarycentres() {
     }
   }
   for (let i = n; i < baryPool.length; i++) baryPool[i].visible = false;
+}
+
+/* -------------------------------------------------- hand-placed barycentres */
+/*
+ * A barycentre you put down yourself: a massless point that is the centre
+ * of mass of whatever you build round it. While it is selected, each body
+ * dropped joins it —
+ *   the 1st waits beside it;
+ *   the 2nd makes a binary with the 1st: the 1st is moved round to the far
+ *     side so their centre of mass lands exactly on the marker (closer if it
+ *     is the heavier one), and both get the circular speeds a real binary has;
+ *   every later one goes round the whole system, as a circumbinary planet does.
+ * A body dropped right beside one member instead orbits that member. Once
+ * the system has two members the marker rides on their real centre of mass.
+ */
+const barys = [];
+let baryCount = 0;
+
+function makeBary(at, vel) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_BARY || (TEX_BARY = baryTexture()),
+    color: new THREE.Color(0x7fe6ff), transparent: true, depthWrite: false, depthTest: false }));
+  sp.renderOrder = 7;
+  scene.add(sp);
+  const b = { kind: 'bary', alive: true, name: 'Barycentre ' + (++baryCount), p: at.clone(), v: vel.clone(),
+    members: [], sprite: sp, r: 1 };
+  barys.push(b);
+  return b;
+}
+
+function disposeBary(b) {
+  b.alive = false;
+  scene.remove(b.sprite);
+  b.sprite.material.dispose();
+  const i = barys.indexOf(b);
+  if (i >= 0) barys.splice(i, 1);
+  if (sim.selected === b) select(null);
+  if (sim.follow === b) sim.follow = null;
+}
+
+function clearBarys() { while (barys.length) disposeBary(barys[0]); }
+
+/** A new body joins a hand-placed barycentre. Returns false if it should
+    orbit something else instead (it was dropped right beside a member). */
+function joinBary(B, b) {
+  const gm = G * settings.gravity;
+  const mem = B.members.filter(m => m.alive && m !== b);
+  if (mem.length >= 1) {
+    // beside a member: a planet of that member, not of the whole system
+    let near = null, nd = Infinity;
+    for (const m of mem) { const d = m.p.distanceTo(b.p); if (d < nd) { nd = d; near = m; } }
+    const span = mem.length > 1 ? mem[0].p.distanceTo(mem[1].p) : near.p.distanceTo(B.p);
+    if (mem.length >= 2 && nd < span * 0.35) return false;
+  }
+  const up = new THREE.Vector3(0, 1, 0);
+  const tangent = (rel) => {
+    let t = up.clone().cross(rel);
+    if (t.lengthSq() < 1e-20) t = new THREE.Vector3(1, 0, 0).cross(rel);
+    return t.normalize();
+  };
+  if (mem.length === 0) {
+    // the first member waits beside the marker, moving with it
+    b.v.copy(B.v);
+  } else if (mem.length === 1) {
+    const a = mem[0];
+    const rb = b.p.clone().sub(B.p);
+    if (rb.lengthSq() < 1e-18) rb.set(visRadius(b) * 20 + 1e-6, 0, 0);
+    const M = a.m + b.m;
+    // a on the opposite side, at the distance that puts the centre of mass here
+    const ra = rb.clone().multiplyScalar(-b.m / a.m);
+    a.p.copy(B.p).add(ra);
+    const d = rb.length() + ra.length();
+    const vrel = Math.sqrt(gm * M / d);
+    const t = tangent(rb);
+    b.v.copy(B.v).addScaledVector(t, vrel * a.m / M);
+    a.v.copy(B.v).addScaledVector(t, -vrel * b.m / M);
+    trailRestart(a);
+  } else {
+    // round the whole system, at the circular speed for all of its mass
+    let M = 0;
+    const c = new THREE.Vector3(), cv = new THREE.Vector3();
+    for (const m of mem) { M += m.m; c.addScaledVector(m.p, m.m); cv.addScaledVector(m.v, m.m); }
+    c.divideScalar(M); cv.divideScalar(M);
+    const rel = b.p.clone().sub(c);
+    const speed = Math.sqrt(gm * M / Math.max(rel.length(), 1e-12));
+    b.v.copy(cv).addScaledVector(tangent(rel), speed);
+  }
+  B.members.push(b);
+  return true;
+}
+
+function trailRestart(b) {
+  if (!b.trail) return;
+  b.trail.n = 0; b.trail.geo.setDrawRange(0, 0); b.trail.q = null; b.trail.lx = undefined;
+  b.trail.o.copy(b.p); b.trail.line.position.copy(b.p);
+}
+
+function updateBarys(simDt) {
+  for (let i = barys.length - 1; i >= 0; i--) {
+    const B = barys[i];
+    B.members = B.members.filter(m => m.alive);
+    if (B.members.length >= 2) {
+      // ride on the real centre of mass of the system
+      let M = 0;
+      B.p.set(0, 0, 0); B.v.set(0, 0, 0);
+      for (const m of B.members) { M += m.m; B.p.addScaledVector(m.p, m.m); B.v.addScaledVector(m.v, m.m); }
+      B.p.divideScalar(M); B.v.divideScalar(M);
+      let far = 0;
+      for (const m of B.members) far = Math.max(far, m.p.distanceTo(B.p));
+      B.r = far;
+    } else {
+      B.p.addScaledVector(B.v, simDt);
+      B.r = B.members.length ? B.members[0].p.distanceTo(B.p) || 1 : 1;
+    }
+    const sp = B.sprite;
+    sp.position.copy(B.p);
+    sp.scale.setScalar((sim.selected === B ? 22 : 16) * worldPerPixel(Math.max(camera.position.distanceTo(B.p), 1e-9)));
+    sp.material.opacity = sim.selected === B ? 1 : 0.8;
+  }
+}
+
+function renderBaryInspector(B) {
+  const host = $('an-insp-body');
+  $('an-insp-h').textContent = 'BARYCENTRE';
+  const mem = B.members.filter(m => m.alive);
+  const next = mem.length === 0 ? 'Drop a body near it — it will wait for a partner.'
+    : mem.length === 1 ? 'Drop a second body: the two become a binary round this point.'
+    : 'Drop more bodies: they will go round the whole system.';
+  host.innerHTML =
+    '<div class="an-name-in" style="cursor:default;pointer-events:none">' + escAttr(B.name) + '</div>' +
+    '<div class="an-type">placed by hand</div>' +
+    '<dl class="an-stats"><dt>Members</dt><dd>' + (mem.map(m => escAttr(m.name)).join(', ') || 'none yet') + '</dd>' +
+    '<dt>Total mass</dt><dd>' + fmtMass(mem.reduce((t, m) => t + m.m, 0)) + '</dd></dl>' +
+    '<p class="an-note">While this is selected, bodies you drop join it. ' + next + '</p>' +
+    '<div class="an-row"><button id="is-bfollow">' + (sim.follow === B ? 'UNFOLLOW' : 'FOLLOW') +
+    '</button><button id="is-bzoom">ZOOM TO</button></div>' +
+    '<div class="an-row"><button id="is-bdone">DONE ADDING</button><button id="is-bdel" class="an-danger">REMOVE MARKER</button></div>' +
+    '<p class="an-note" style="margin-top:13px">' + TYPES.barycentre.blurb + '</p>';
+  $('is-bfollow').addEventListener('click', () => { sim.follow = sim.follow === B ? null : B; renderInspector(); });
+  $('is-bzoom').addEventListener('click', () => { frameOn(B, 4); sim.follow = B; renderInspector(); });
+  $('is-bdone').addEventListener('click', () => select(null));
+  $('is-bdel').addEventListener('click', () => disposeBary(B));
 }
 
 /** Circular-orbit velocity about `primary` at `pos`, in the horizontal plane. */
@@ -11224,6 +11376,14 @@ function dropArmed() {
   const vel = velocityFromDrag();
   const primary = dominantAt(input.placePos, null);
   const tapped = Math.hypot(input.x - input.x0, input.y - input.y0) < 6;
+  if (TYPES[input.armed].kind === 'bary') {
+    const B = makeBary(input.placePos, primary ? primary.v.clone() : new THREE.Vector3());
+    arm(null);
+    select(B);
+    toast(B.name + ' placed. Now pick a star and drop two near it — they will circle this point.');
+    return;
+  }
+  const hub = sim.selected && sim.selected.kind === 'bary' && sim.selected.alive ? sim.selected : null;
   if (TYPES[input.armed].kind === 'uni') {
     const u = makeUniverse(input.placePos, vel);
     select(u);
@@ -11233,6 +11393,12 @@ function dropArmed() {
     return;
   }
   const b = makeBody(input.armed, input.placePos, vel);
+  if (hub && (b.kind === 'body' || b.kind === 'bh') && joinBary(hub, b)) {
+    // keep the barycentre selected, so the next drop joins it too
+    select(hub);
+    computeAccel();
+    return;
+  }
   if (primary && primary.alive && (b.kind === 'body' || b.kind === 'bh')) shareMomentum(b, primary, tapped);
   select(b);
   // A galaxy is tens of thousands of light-years wide: pull back to see it.
@@ -11261,7 +11427,9 @@ function onKey(e) {
       if (sim.selected) { sim.follow = sim.follow === sim.selected ? null : sim.selected; renderInspector(); }
       break;
     case 'Delete': case 'Backspace':
-      if (sim.selected && sim.selected.kind === 'mark') {
+      if (sim.selected && sim.selected.kind === 'bary') {
+        disposeBary(sim.selected);
+      } else if (sim.selected && sim.selected.kind === 'mark') {
         // landmarks are part of the scenery, not something to delete
       } else if (sim.selected && sim.selected.kind === 'uni') {
         removeUniverse(sim.selected);
@@ -11329,6 +11497,8 @@ function updateHint() {
   let s;
   if (land.b) {
     s = landedHUD();
+  } else if (input.armed && sim.selected && sim.selected.kind === 'bary') {
+    s = 'Click near <b>' + sim.selected.name + '</b> to add a <b>' + TYPES[input.armed].label + '</b> to its system';
   } else if (input.armed) {
     s = 'Click empty space to drop <b>' + TYPES[input.armed].label + '</b> &middot; <b>drag</b> to aim its speed';
     if (settings.grid) s += ' &middot; grid square <b class="an-cell">—</b>';
@@ -12097,6 +12267,7 @@ function renderInspector() {
   if (b.kind === 'snr') { renderCloudInspector(b); return; }
   if (b.kind === 'uni') { renderUniverseInspector(b); return; }
   if (b.kind === 'mark') { renderMarkInspector(b); return; }
+  if (b.kind === 'bary') { renderBaryInspector(b); return; }
   if (b.kind === 'gal') { renderGalaxyInspector(b); return; }
   if (b.kind === 'gas') { renderClumpInspector(b); return; }
   const def = TYPES[b.type];
@@ -13539,6 +13710,7 @@ function clearAll() {
   clearSupernovae();
   clearUniverses();
   clearBelts();
+  clearBarys();
   clearDiscs();
   grewBodies.clear();
   pSources = [];
@@ -13735,6 +13907,8 @@ function openHelp() {
     '</ul>' +
     '<p>Every galaxy is full of <b>nebulae</b> at their real sizes: pink <b>emission nebulae</b> where stars are being born, blue <b>reflection nebulae</b>, the small glowing rings of <b>planetary nebulae</b> and the red-and-green shells of <b>supernova remnants</b>. From a whole galaxy away they are specks — zoom in on an arm and they open up. Click one to lock on and fly into it. Ellipticals have almost no gas left, so they only have the shells of dying stars.</p>' +
     '<p>And everything else a real galaxy holds: every kind of star — red dwarfs, Sun-like stars, blue giants, red giants and supergiants, Wolf–Rayet stars, brown dwarfs — and the remains of dead ones: <b>white dwarfs</b>, <b>neutron stars</b> and <b>black holes</b>. Most stars have <b>planets</b>: lock on to one and its orbits are drawn, and the worlds go round in time with the clock. Ancient <b>globular clusters</b> swarm round the halo, young <b>open clusters</b> sit on the arms, and at the very middle of every galaxy is a <b>supermassive black hole</b> with its glowing disc — select the galaxy and press <b>VISIT THE BLACK HOLE</b>.</p>' +
+    '<h3>BARYCENTRES</h3>' +
+    '<p>Two bodies orbit their shared <b>centre of mass</b>, not each other — so drop a star beside another and both swing round the point between them (marked with a small pink crosshair), instead of drifting off together. To build a system exactly where you want it, drop a <b>Barycentre</b> (under <b>Cosmic</b>) first. While it is selected, the first two bodies you drop near it become a binary circling that very point, and anything after that goes round the whole system — a planet with two suns. Press <b>DONE ADDING</b> to go back to dropping things normally.</p>' +
     '<h3>SINGULARITIES AND UNIVERSES</h3>' +
     '<ul>' +
     '<li>A <b>Singularity</b> (under <b>Cosmic</b>) is a point of infinite density with no event horizon around it. It swallows anything that touches it, and it shimmers through every colour.</li>' +
@@ -13935,6 +14109,7 @@ function loop(now) {
   updateBelts();
   if (marks.length) updateMarks();
   updateBarycentres();
+  if (barys.length) updateBarys(simDt);
   renderFrame();
   updateHud(realDt);
 
