@@ -87,5 +87,5 @@ Games can add their own events with the global `track()`:
 Conventions to preserve:
 - **URL-encode spaces** in the `href` (e.g. `football%20rivals/`, `math%20mine/`).
 - Each card sets a per-game accent color via the inline `--accent` custom property and carries a hand-drawn inline `<svg>` icon.
-- The `<span class="ver">` badge holds the version label — free-form (e.g. `1.0`, `WC`, `0.6`). ClaudeCraft uses a `0.x` lineage (0.1 Aether → 0.2 Underworld → 0.3 Milk & Honey → 0.4 Swords → 0.5 Pets → 0.6 Demons & Angels → 0.7 Biomes of Darkness → 0.7.1 Topped Up → 0.8 Water & Wonders), which supersedes any older `5.0`-style number.
+- The `<span class="ver">` badge holds the version label — free-form (e.g. `1.0`, `WC`, `0.6`). ClaudeCraft uses a `0.x` lineage (0.1 Aether → 0.2 Underworld → 0.3 Milk & Honey → 0.4 Swords → 0.5 Pets → 0.6 Demons & Angels → 0.7 Biomes of Darkness → 0.7.1 Topped Up → 0.8 Water & Wonders; the game opens as 0.7 — `CURRENT_VERSION` — and 0.7.1/0.8 are optional in its Settings version picker, so the card shows 0.7), which supersedes any older `5.0`-style number.
 - Games namespace their DOM ids with a short prefix (`cc-` ClaudeCraft, `mtc-` math mine, `round-` balloon pop, `ts-` Toon Studio). Since each game is its own page this is stylistic scoping, not a hard requirement — but match the game's existing prefix when editing one.
