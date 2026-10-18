@@ -3350,6 +3350,8 @@ function beginEngulf(a, b, vImp, vEsc) {
   // Locked together on contact: one velocity, carrying exactly the momentum the
   // pair had between them.
   const mt = a.m + b.m;
+  // How it was coming in, kept before the two are locked together.
+  const inbound = b.v.clone().sub(a.v);
   const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mt);
   a.v.copy(vel); b.v.copy(vel);
 
@@ -3362,7 +3364,7 @@ function beginEngulf(a, b, vImp, vEsc) {
     hole: hole, step: 0, bore: 0,
     // A mark from the very first moment of contact, barely open — the two
     // surfaces are only touching at a point yet.
-    mark: addScar(a, dir, hole * 0.12)
+    mark: addScar(a, dir, hole * 0.12, inbound)
   };
   fx.flash(b.p, rb * 2.4, [255, 200, 140], 0.45);
   return true;
@@ -3604,8 +3606,8 @@ function bounce(a, b) {
     b.m -= gasEjecta(b.p, b.v, Math.round(n * 1.5), b.m * 0.009 * bump, vEsc,
       visRadius(b), { speed: 0.9 });
     // Both of them come away scuffed where they touched.
-    addScar(b, nrm.clone().negate(), clamp(bump * 0.35, 0.12, 0.5));
-    addScar(a, nrm, clamp(bump * 0.35, 0.12, 0.5));
+    addScar(b, nrm.clone().negate(), clamp(bump * 0.35, 0.12, 0.5), rel.clone().negate());
+    addScar(a, nrm, clamp(bump * 0.35, 0.12, 0.5), rel);
   }
 }
 
@@ -3613,6 +3615,7 @@ function merge(a, b, vImp, vEsc, mark) {
   const mTot = a.m + b.m;
   // Where it was hit, captured before the survivor is moved to the barycentre.
   const hitDir = b.p.clone().sub(a.p);
+  const inbound = b.v.clone().sub(a.v);
   const com = a.p.clone().multiplyScalar(a.m).addScaledVector(b.p, b.m).divideScalar(mTot);
   const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mTot);
   // Mixing a diffuse knot of gas into a solid world must not swell the world to
@@ -3690,7 +3693,7 @@ function merge(a, b, vImp, vEsc, mark) {
      the whole way down and this only finishes it off. */
   const hole = clamp(Math.cbrt(b.m / Math.max(a.m, 1e-12)) * 1.5, 0.14, 1.1);
   if (mark && a.scars && a.scars.indexOf(mark) >= 0) { mark.s = hole; buildScars(a); }
-  else addScar(a, hitDir, hole);
+  else addScar(a, hitDir, hole, inbound);
 
   // refreshVisual above rebuilt the parts, so the sea goes on after it.
   if (a.water > 0) setWater(a, a.water);
@@ -3707,6 +3710,7 @@ function merge(a, b, vImp, vEsc, mark) {
 function shatter(a, b, vImp) {
   const mTot = a.m + b.m;
   const hitDir = b.p.clone().sub(a.p);
+  const inbound = b.v.clone().sub(a.v);
   const com = a.p.clone().multiplyScalar(a.m).addScaledVector(b.p, b.m).divideScalar(mTot);
   const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mTot);
 
@@ -3738,7 +3742,7 @@ function shatter(a, b, vImp) {
   updateLuminosity(a);
   refreshVisual(a);
   // The survivor wears the hit. This one is a big mark — it was nearly destroyed.
-  addScar(a, hitDir, rnd(0.55, 1.1));
+  addScar(a, hitDir, rnd(0.55, 1.1), inbound);
 
   /* What is left splits three ways: a few big solid fragments, a handful of
      selectable knots that are mostly still vapour, and the fine gas already
@@ -6589,7 +6593,7 @@ function localOnBody(b, worldDir) {
  * Record a mark where `worldDir` points, sized as a fraction of the body's own
  * radius. Held on the body, so it survives a rebuild and a save.
  */
-function addScar(b, worldDir, size) {
+function addScar(b, worldDir, size, vRel) {
   if (!b.alive || b.kind !== 'body') return null;
   const def = TYPES[b.type];
   // Nothing that has no surface to scar: a star's photosphere heals in minutes
@@ -6599,6 +6603,7 @@ function addScar(b, worldDir, size) {
   b.scars = b.scars || [];
   // age 0: bright yellow. Over SCAR_COOL days it fades to maroon.
   const mark = { n: [n.x, n.y, n.z], s: clamp(size, 0.10, 1.15), roll: Math.random() * TAU, age: 0 };
+  slantScar(b, mark, worldDir, vRel);
   b.scars.push(mark);
   // Oldest marks are buried by later resurfacing; keep the panel honest by
   // counting every one, but only ever draw the most recent handful.
@@ -6608,6 +6613,30 @@ function addScar(b, worldDir, size) {
   if (b.parts) buildScars(b);
   // Handed back so a crater that is still being dug can go on growing.
   return b.scars.indexOf(mark) >= 0 ? mark : null;
+}
+
+/**
+ * How the impactor was travelling when it hit. A head-on hit leaves a round
+ * spot; one coming in at a slant smears it out downrange, the way the melt and
+ * debris carry on in the direction the impactor was going. `vRel` is the
+ * impactor's velocity relative to the body. The direction is stored in the
+ * body's own turning frame, like the spot's position.
+ */
+function slantScar(b, mark, worldDir, vRel) {
+  if (!vRel) return;
+  const nW = worldDir.clone();
+  if (nW.lengthSq() < 1e-18) return;
+  nW.normalize();
+  const sp = vRel.length();
+  if (!(sp > 0)) return;
+  // The part of the motion along the ground, not into it.
+  const tan = vRel.clone().addScaledVector(nW, -vRel.dot(nW));
+  const sinA = clamp(tan.length() / sp, 0, 1);
+  if (sinA < 0.05) { mark.e = 0; return; }
+  const d = localOnBody(b, tan);
+  mark.d = [d.x, d.y, d.z];
+  // 0 straight down; about 1 at 45°; up to 2.2 for a skimming hit.
+  mark.e = 2.2 * Math.pow(sinA, 2.2);
 }
 
 /* How long a fresh impact scar takes to go from molten to cold rock, in days.
@@ -6749,11 +6778,25 @@ function scarCapGeometry(b, sc, lift, list) {
   const w = new THREE.Vector3().crossVectors(n, u).normalize();
   // Rolled about its own axis, so no two craters have their rays lined up.
   const cr = Math.cos(sc.roll), sr = Math.sin(sc.roll);
-  const uu = u.clone().multiplyScalar(cr).addScaledVector(w, sr);
-  const ww = u.clone().multiplyScalar(-sr).addScaledVector(w, cr);
+  let uu = u.clone().multiplyScalar(cr).addScaledVector(w, sr);
+  let ww = u.clone().multiplyScalar(-sr).addScaledVector(w, cr);
+  /* A slanted hit: line the spot up with the way the impactor was going,
+     stretch it along that line, narrow it a little across, and slide its
+     middle downrange of the point of impact. */
+  const e = sc.e || 0;
+  if (e > 0 && sc.d) {
+    const dd = new THREE.Vector3(sc.d[0], sc.d[1], sc.d[2]);
+    dd.addScaledVector(n, -dd.dot(n));
+    if (dd.lengthSq() > 1e-12) {
+      uu = dd.normalize();
+      ww = new THREE.Vector3().crossVectors(n, uu).normalize();
+    }
+  }
+  const along = 1 + e, across = 1 / (1 + e * 0.3), shift = e * 0.55;
 
   const ang = scarAngle(sc);
-  const amax = Math.min(ang * SCAR_TEX_SPAN, 1.32);
+  // Far enough out to hold the whole stretched spot, wherever it slid to.
+  const amax = Math.min(ang * Math.max(SCAR_TEX_SPAN, along * (2.35 + shift)), 1.32);
 
   const pos = [], uvs = [], idx = [];
   const dir = new THREE.Vector3();
@@ -6763,13 +6806,17 @@ function scarCapGeometry(b, sc, lift, list) {
     const t = a / ang;
     const rt = Math.min(SCAR_TEX_R * t, 0.492);
     const ca = Math.cos(a), sa = Math.sin(a);
+    // Where this ring sits in the spot's own stretched picture.
+    const rx = (SCAR_TEX_R * a) / (ang * along), ry = (SCAR_TEX_R * a) / (ang * across);
+    const ox = SCAR_TEX_R * shift;
     for (let j = 0; j <= SEGS; j++) {
       const th = (j / SEGS) * TAU, ct = Math.cos(th), st = Math.sin(th);
       dir.copy(n).multiplyScalar(ca).addScaledVector(uu, sa * ct).addScaledVector(ww, sa * st).normalize();
       // Every crater on the body, not just this one, so overlapping rims agree.
       const rr = scarredRadius(list, dir, groundAt(b, dir)) + lift;
       pos.push(dir.x * rr, dir.y * rr, dir.z * rr);
-      uvs.push(0.5 + rt * ct, 0.5 + rt * st);
+      if (e > 0) uvs.push(clamp(0.5 + rx * ct - ox, 0, 1), clamp(0.5 + ry * st, 0, 1));
+      else uvs.push(0.5 + rt * ct, 0.5 + rt * st);
     }
   }
   for (let i = 0; i < RINGS; i++) {
