@@ -3391,6 +3391,45 @@ const HEAT_RAMP = [
   [0.00, [150, 30, 8]], [0.30, [255, 110, 26]], [0.60, [255, 196, 84]], [1.00, [255, 250, 228]]
 ];
 
+/**
+ * A big impact blasts part of a world's atmosphere into space: the shock runs
+ * right round the planet and throws the air off the far side as well as the
+ * near one. What goes is drawn as a shell of puffs in the sky's own colour,
+ * streaming away; what is left is thinner until volcanoes refill it.
+ */
+function blowOffAir(a, heat, com, vel, vEsc) {
+  const def = TYPES[a.type];
+  if (!def.atmo || heat < 0.05) return;
+  const air = a.air != null ? a.air : 1;
+  const lost = air * clamp(heat * 0.6, 0, 0.85);
+  if (lost <= 0.005) return;
+  a.air = air - lost;
+  const n = Math.min(Math.round(80 + 320 * lost), parts.free.length);
+  const R = visRadius(a), col = def.atmo;
+  for (let i = 0; i < n; i++) {
+    const k = parts.free.pop(), k3 = k * 3;
+    const u = rnd(-1, 1), th = rnd(0, TAU), sr = Math.sqrt(1 - u * u);
+    const dx = sr * Math.cos(th), dy = u, dz = sr * Math.sin(th);
+    const off = R * rnd(1.08, 1.25);
+    parts.pos[k3] = com.x + dx * off; parts.pos[k3 + 1] = com.y + dy * off; parts.pos[k3 + 2] = com.z + dz * off;
+    const sp = vEsc * rnd(0.9, 1.6);
+    parts.vel[k3] = vel.x + dx * sp; parts.vel[k3 + 1] = vel.y + dy * sp; parts.vel[k3 + 2] = vel.z + dz * sp;
+    const bs = rnd(14, 36);
+    parts.bsize[k] = bs; parts.size[k] = bs;
+    parts.m[k] = 0;                                   // air weighs nothing on this scale
+    parts.hot[k] = 1;
+    parts.crate[k] = COOL_IMPACT * 0.25;
+    parts.src[k] = -1;
+    // lit by the fire below at first, fading to the colour of the sky itself
+    parts.warm[k3] = 1; parts.warm[k3 + 1] = 0.82; parts.warm[k3 + 2] = 0.6;
+    parts.cool[k3] = col[0] / 255 * 0.5; parts.cool[k3 + 1] = col[1] / 255 * 0.5; parts.cool[k3 + 2] = col[2] / 255 * 0.5;
+    parts.col[k3] = 1; parts.col[k3 + 1] = 0.82; parts.col[k3 + 2] = 0.6;
+    parts.on[k] = 1;
+    parts.live++;
+  }
+  parts.dirty = true;
+}
+
 /** How hot a hit leaves the whole surface, 0–1: a pebble nothing, a Theia white-hot. */
 function impactHeatOf(a, b, vImp, vEsc) {
   const sev = clamp(vImp / Math.max(vEsc, 1e-9), 0.5, 2);
@@ -3656,7 +3695,9 @@ function merge(a, b, vImp, vEsc, mark) {
   // refreshVisual above rebuilt the parts, so the sea goes on after it.
   if (a.water > 0) setWater(a, a.water);
   // The whole surface heated by the hit: white-hot after a Theia, cooling off.
-  a.impactHeat = Math.max(a.impactHeat || 0, impactHeatOf(a, b, vImp, vEsc));
+  const heat = impactHeatOf(a, b, vImp, vEsc);
+  a.impactHeat = Math.max(a.impactHeat || 0, heat);
+  blowOffAir(a, heat, com, vel, vEsc);
   fx.flash(com, visRadius(a) * 4, [255, 210, 150], 0.7);
   toast(note + (clumped > 0 ? ' — knots of it flew off' : '') +
     (brought > 0.02 ? ' — and its water with it' : ''));
@@ -5809,6 +5850,7 @@ const ATMO_FRAG = `
   uniform vec3 uColor;
   uniform vec3 uLight;
   uniform float uStrength;
+  uniform float uGlow;      // a sky heated by an impact shines on its own
   varying vec3 vWN;
   varying vec3 vVP;
   void main() {
@@ -5816,7 +5858,7 @@ const ATMO_FRAG = `
     vec3 N = normalize((viewMatrix * vec4(vWN, 0.0)).xyz);
     float rim = pow(1.0 - max(dot(N, V), 0.0), 2.6);
     float lit = max(dot(normalize(vWN), normalize(uLight)), 0.0);
-    gl_FragColor = vec4(uColor, rim * uStrength * (0.16 + 0.84 * lit));
+    gl_FragColor = vec4(uColor, rim * (uStrength * (0.16 + 0.84 * lit) + uGlow));
   }`;
 
 /* A star's photosphere. The one thing that makes a real star unmistakable is
@@ -6233,7 +6275,8 @@ function buildWorld(b, def, grp) {
       uniforms: {
         uColor: { value: new THREE.Color().fromArray(def.atmo.map(c => c / 255)) },
         uLight: { value: new THREE.Vector3(1, 0, 0) },
-        uStrength: { value: 0.95 }
+        uStrength: { value: 0.95 },
+        uGlow: { value: 0 }
       },
       vertexShader: ATMO_VERT, fragmentShader: ATMO_FRAG,
       blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, side: THREE.FrontSide
@@ -10673,6 +10716,7 @@ const _dir = new THREE.Vector3();
 const _tmpA = new THREE.Vector3();
 const _tmpB = new THREE.Vector3();
 const _basis = new THREE.Matrix4();
+const _tmpC = new THREE.Color();
 const FROST = new THREE.Color(0.72, 0.82, 0.95);
 /* What a living world fades to when it stops being one: dust. */
 const DEAD = new THREE.Color(0.60, 0.53, 0.44);
@@ -10805,6 +10849,25 @@ function updateVisuals(realDt, simDt) {
 
     if (p.surf && !tiny) p.surf.rotation.y = b.rot;
     if (p.cloud) p.cloud.rotation.y = b.rot * 1.12;
+
+    /* The air: how much is left after impacts blew some of it away, and how
+       hot the hit left it. A heated sky turns orange-white and glows round the
+       whole limb, night side included, and the clouds boil off until it cools. */
+    if (p.atmo || p.cloud) {
+      const air = b.air != null ? b.air : 1, h = b.impactHeat || 0;
+      if (p.atmo) {
+        const u = p.atmo.material.uniforms;
+        const hc = ramp(HEAT_RAMP, h);
+        u.uColor.value.setRGB(def.atmo[0] / 255, def.atmo[1] / 255, def.atmo[2] / 255)
+          .lerp(_tmpC.setRGB(hc[0] / 255, hc[1] / 255, hc[2] / 255), clamp(h * 1.3, 0, 1));
+        u.uStrength.value = 0.95 * air;
+        u.uGlow.value = h * 1.4 * Math.max(air, 0.25);
+      }
+      if (p.cloud) {
+        p.cloud.material.opacity = clamp(air * (1 - h * 1.6), 0, 1);
+        if (p.cloud.material.opacity < 0.01) p.cloud.visible = false;
+      }
+    }
     // The outer layers of a star lag the surface, so let them. The shear is
     // what sells the shells as standing at different heights rather than
     // being painted onto the same ball.
@@ -10850,6 +10913,8 @@ function updateVisuals(realDt, simDt) {
     // Heat from an impact soaks away over a month or two of simulated time
     // (and never takes longer than half a minute on screen).
     if (b.impactHeat && !b.sink) b.impactHeat = Math.max(0, b.impactHeat - Math.max(simDt / 50, realDt / 30));
+    // Air blown off by an impact is slowly breathed back out by volcanoes.
+    if (b.air != null && b.air < 1) b.air = Math.min(1, b.air + simDt / (365.25 * 4));
     if (p.surf && b.baseColor && p.surf.material.isMeshStandardMaterial) {
       const mat = p.surf.material;
       const hot = clamp((b.temp - 900) / 1300, 0, 1);
@@ -12382,6 +12447,7 @@ function renderInspector() {
     (b.stripped > 0 ? '<dt>Torn away</dt><dd id="is-strip"></dd>' : '') +
     (b.scarCount > 0 ? '<dt>Impact scars</dt><dd id="is-scars"></dd>' : '') +
     (b.terra > 0 && b.kind === 'body' ? '<dt>Living surface</dt><dd id="is-life"></dd>' : '') +
+    (def.atmo && b.air != null && b.air < 0.995 ? '<dt>Air left</dt><dd id="is-air"></dd>' : '') +
     '<dt id="is-orb-l">Orbiting</dt><dd id="is-orb"></dd>' +
     '</dl>' +
     '<div class="an-field"><label>Mass <b id="is-mval"></b></label>' +
@@ -12402,7 +12468,7 @@ function renderInspector() {
     mass: $('is-mass'), rad: $('is-rad'), den: $('is-den'), spd: $('is-spd'),
     tmp: $('is-tmp'), orb: $('is-orb'), orbL: $('is-orb-l'), mval: $('is-mval'),
     lum: $('is-lum'), age: $('is-age'), core: $('is-core'), strip: $('is-strip'),
-    band: $('is-band'),
+    band: $('is-band'), air: $('is-air'),
     scars: $('is-scars'), dm: $('is-dm'), dn: $('is-dn'), dr: $('is-dr'),
     tfbar: $('is-tfbar'), tfnote: $('is-tfnote'), life: $('is-life')
   };
@@ -12525,6 +12591,8 @@ function updateInspectorStats() {
   inspRefs.den.textContent = b.kind === 'bh' ? '—' : fmtDensity(b.m, b.r);
   inspRefs.spd.textContent = fmtSpeed(b.v.length());
   inspRefs.tmp.textContent = b.kind === 'bh' ? '—' : Math.round(b.temp).toLocaleString() + ' K';
+  if (inspRefs.air) inspRefs.air.textContent = Math.round((b.air != null ? b.air : 1) * 100) + '%' +
+    (b.impactHeat > 0.05 ? ' — glowing hot' : '');
   if (inspRefs.band) {
     const bd = starBand(b);
     inspRefs.band.textContent = bd ? bd.name : '—';
@@ -13862,7 +13930,7 @@ function saveUniverse() {
           ? { R: b.galR, arms: b.galArms, spin: b.galSpin, merged: b.galMerged || 0, P: b.galPeriod || 0, N: b.galN || 0,
               ax: b.galAxis ? b.galAxis.toArray() : null }
           : null,
-        st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount, sy: b.shy ? 1 : 0,
+        st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount, sy: b.shy ? 1 : 0, ai: b.air,
         tf: b.terra, tfo: b.terraOn, wa: b.water,
         cl: b.kind === 'gas' ? { age: b.clumpAge, life: b.clumpLife } : null,
         // A protoplanetary disc is saved with its star, not on its own.
@@ -13917,6 +13985,7 @@ function loadUniverse() {
     }
     if (s.st != null) b.stripped = s.st;
     if (s.sy) b.shy = true;
+    if (s.ai != null) b.air = s.ai;
     if (s.m0 != null) b.m0 = s.m0;
     if (s.tn) {
       const c = hexRgb(s.tn);
@@ -14062,7 +14131,7 @@ function openHelp() {
     '<li><b>Slow collisions merge</b> and conserve momentum. <b>Fast ones shatter</b> both bodies into rubble — the test is impact speed against the pair\'s escape velocity.</li>' +
     '<li>Most of what a collision throws out is <b>not gravel — it is gas</b>. Two worlds hitting each other put in far more energy than it takes to melt rock, let alone boil it, so the plume of vapour that comes off outweighs the solid fragments by more than two to one. It is drawn in the same colours as a protoplanetary disc because it is the same stuff at the same temperatures: white-hot where it is fastest, then orange, then cold blue as it spreads and cools. That vapour is exactly where discs, rings and moons come from — ours came off the impact that made the Moon.</li>' +
     '<li>A collision also throws off <b>knots</b> — lumps big enough to click on and weigh. Most are still vapour, and about a third of them come off <b>solid</b>, because they never got hot enough to boil. Select a gas knot and the panel tells you which way it is going to go: below about four Moons of mass it spreads out and is gone, and above it gravity wins and it <b>pulls itself together into a world</b>. Drag its mass across that line and watch the answer change. This is not a made-up rule — it is how our own Moon was made, out of the wreckage of something the size of Mars hitting the young Earth.</li>' +
-    '<li>Whatever survives a collision <b>wears the mark</b>. A round spot is left on the surface exactly where it was hit — bright yellow at first, fading through orange to maroon — sized by how big the thing that hit it was, and it turns with the world and leans with its axis. The panel counts them under <b>Impact scars</b>. Stars and gas giants do not keep them — there is no ground for a mark to stay on.</li>' +
+    '<li>Whatever survives a collision <b>wears the mark</b>. A round spot is left on the surface exactly where it was hit — bright yellow at first, fading through orange to maroon — sized by how big the thing that hit it was, and it turns with the world and leans with its axis. The panel counts them under <b>Impact scars</b>. A big enough hit also <b>heats the whole world</b> until it glows white-hot, <b>blasts part of its atmosphere into space</b>, sets the sky that is left glowing orange and boils the clouds away — the panel shows how much air is left, and volcanoes slowly breathe it back over the next few years. Stars and gas giants do not keep them — there is no ground for a mark to stay on.</li>' +
     '<li>Anything newly <b>born</b> — a planet condensing out of a disc, a world puffing up into a gas giant, a star catching light — arrives inside a swirl of infalling dust that spirals in and <b>whirls faster as it shrinks</b>, because angular momentum is conserved. Same reason a spinning skater speeds up when they pull their arms in.</li>' +
     '<li>The debris thrown out by an impact is <b>real matter, not sparks</b>. Every grain carries mass and is pulled along by the same gravity as the planets, so it orbits, rains back down, settles into rings, or is swallowed by a black hole — and whatever eats it genuinely gets heavier. The counter at the bottom left shows bodies plus live debris.</li>' +
     '<li>Feed a <b>rocky</b> world past <b>60.1 Earth masses</b> and its gravity can finally hold onto hydrogen: it flares up and swells into a <b>gas giant</b>, roughly doubling in width as dense rock gives way to light gas. Worlds that are already gassy skip this and just keep growing.</li>' +
