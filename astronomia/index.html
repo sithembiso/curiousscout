@@ -3897,18 +3897,35 @@ function updateTerraform(simDt) {
     const before = b.terra;
     b.terra = clamp(b.terra + (live ? simDt / span : -simDt / span * 2), 0, 1);
     if (b.terra === before) continue;
+    if (b.terra > before) terraWater(b);
 
     // A dead world needs its living layer built the first time it greens up.
     if (before <= 0 && b.terra > 0 && b.parts && !b.parts.terraSkin && !isLivingSurf(TYPES[b.type])) {
       refreshVisual(b);
     }
     if (before < 1 && b.terra >= 1) {
-      toast(b.name + ' is alive — air, weather and green land' + ((b.water || 0) > 0.05 ? '' : '. Now add the water.'));
+      toast(b.name + ' is alive — oceans, air and all');
       if (sim.selected === b && !inspectorLock) renderInspector();
     } else if (before > 0 && b.terra <= 0) {
       toast(b.name + ' could not hold on to it, and died back');
       if (sim.selected === b && !inspectorLock) renderInspector();
     }
+  }
+}
+
+/* How full the seas get on their own as a world greens up. More can always be
+   poured in, or let out, by hand. */
+const TERRA_WATER = 0.5;
+
+/** The oceans rise with the living layer, but never below what is already there. */
+function terraWater(b) {
+  if (!canHoldWater(b)) return;
+  const want = clamp(b.terra, 0, 1) * TERRA_WATER;
+  if (want <= (b.water || 0) + 0.004) return;
+  setWater(b, want);
+  if (sim.selected === b) {
+    const v = $('is-tfw-v'); if (v) v.textContent = waterLabel(b);
+    const dr = $('is-tf-drain'); if (dr) dr.disabled = false;
   }
 }
 
@@ -6337,8 +6354,8 @@ function buildTerraLayer(b, grp) {
      has to follow the mountains it is growing on, or a terraformed Mars ends up
      with Olympus Mons sticking out through its new biosphere. */
   /* All land: plains, forest, desert and snow, with no sea floor painted in.
-     The oceans are real water you pour in yourself (see bindTerra), and they
-     fill this world's OWN basins — so the seas sit where its low ground is,
+     The oceans are real water that rises as it greens (see terraWater), and
+     they fill this world's OWN basins — so the seas sit where its low ground is,
      not where some other planet's would be. */
   const sv = b.seed % 3;
   const skinTex = cachedTexture('terraskin:' + sv, () => {
@@ -12161,14 +12178,14 @@ function terraHTML(b) {
     (b.terraOn && b.terra < 1 && chk.ok ? '<button id="is-terra-now">FINISH IT</button>' : '') +
     '</div>';
 
-  /* Water does not come by itself: it is poured in by hand, a tenth of an ocean
-     at a time, and it fills the low ground first. */
+  /* The seas rise by themselves as it greens up; these pour in more, or let
+     some out, a tenth of an ocean at a time. */
   if (b.terraOn && canHoldWater(b)) {
     h += '<div class="an-field"><label>Oceans <b id="is-tfw-v">' + waterLabel(b) + '</b></label></div>' +
       '<div class="an-row"><button id="is-tf-water">ADD WATER</button>' +
       '<button id="is-tf-drain"' + ((b.water || 0) > 0.001 ? '' : ' disabled') + '>DRAIN</button></div>' +
-      '<p class="an-note">Pour the seas in yourself. They fill ' + escAttr(b.name) + '\'s own craters and ' +
-      'lowlands first, then creep up the coasts. Too cold and they freeze over.</p>';
+      '<p class="an-note">The seas rise on their own as it comes alive, filling ' + escAttr(b.name) + '\'s own ' +
+      'craters and lowlands first. Pour in more to drown the coasts, or drain some off. Too cold and they freeze over.</p>';
   }
   return h;
 }
@@ -12206,7 +12223,8 @@ function bindTerra(b) {
       if (!terraCheck(b).ok) return;
       b.terra = 1;
       if (b.parts && !b.parts.terraSkin && !isLivingSurf(TYPES[b.type])) refreshVisual(b);
-      toast(b.name + ' is alive — air, weather and green land' + ((b.water || 0) > 0.05 ? '' : '. Now add the water.'));
+      terraWater(b);
+      toast(b.name + ' is alive — oceans, air and all');
       renderInspector();
     });
   }
@@ -14313,7 +14331,7 @@ function openHelp() {
     '<li><b>Heavy enough.</b> Under about a twentieth of an Earth its gravity cannot hold an atmosphere down and the air leaks away into space. That is not a made-up rule — it is precisely why <b>Mars</b> is a frozen desert with a hundredth of our air pressure, despite once having rivers running across it.</li>' +
     '<li><b>Not too heavy.</b> Past about twenty Earths a rocky world starts holding on to hydrogen as well, and turns into a small Neptune with no surface at all to stand on.</li>' +
     '<li><b>The right heat.</b> Water has to be able to sit on the surface as a liquid: roughly 258 K to 348 K. This is the whole meaning of the <b>habitable zone</b>, and it is worked out from the real starlight falling on that world right now — so <b>moving a planet changes the answer</b>. Drag a frozen world inwards until the panel stops complaining and it will take.</li>' +
-    '<li>It is not instant and it is <b>not permanent</b>. Clouds gather and the land greens over across a few years — and the oceans are up to you: press <b>ADD WATER</b> to pour them in, and they fill the world\'s own craters and lowlands first — and the world only stays that way while those three things stay true. Shove it out past the snow line, or feed its star until it swells, and it browns off and dies — <b>twice as fast as it grew</b>, because ruining something is always quicker than building it.</li>' +
+    '<li>It is not instant and it is <b>not permanent</b>. Oceans fill the world\'s own craters and lowlands, clouds gather and the land greens over across a few years — and <b>ADD WATER</b> and <b>DRAIN</b> let you pour in more or let some out — and the world only stays that way while those three things stay true. Shove it out past the snow line, or feed its star until it swells, and it browns off and dies — <b>twice as fast as it grew</b>, because ruining something is always quicker than building it.</li>' +
     '<li>The world underneath keeps its own name and its own kind. A terraformed Mars is still Mars, with the living layer laid over the top — and it is still Mars when it dies back.</li>' +
     '<li>Try <b>Terraforming</b> in Systems: four dead worlds around one star, and only one of them can be brought to life where it stands. The other three each fail for a different one of the three reasons.</li>' +
     '</ul>' +
