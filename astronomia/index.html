@@ -9032,20 +9032,31 @@ function discGeometry(seed, n) {
      wherever puffs overlap, so a palette that starts out pale is bleached to
      grey exactly where the disc is thickest — which is the interesting part.
      A real disc genuinely does run this way too: white-hot where it is falling
-     onto the star, orange further out, and cold blue dust at the rim. */
-  const HOT = [1.00, 0.92, 0.70], WARM = [1.00, 0.52, 0.16];
-  const COOL = [0.62, 0.26, 0.42], RIM = [0.20, 0.34, 0.72];
+     onto the star, orange further out, and dull red dust at the rim. */
+  const HOT = [1.00, 0.80, 0.50], WARM = [1.00, 0.45, 0.14];
+  const COOL = [0.86, 0.24, 0.08], RIM = [0.48, 0.10, 0.06];
+  /* Rings and gaps, like HL Tauri's: bright bands of dust with dark lanes
+     between them where young planets are already sweeping their orbits clear.
+     Spaced a little unevenly so it does not look ruled. */
+  const GAPS = [0.27, 0.36, 0.47, 0.57, 0.69, 0.80];
+  const gapW = [0.02, 0.018, 0.026, 0.022, 0.03, 0.024];
 
   for (let i = 0; i < n; i++) {
-    // Area-weighted between 0.16 and 1 of the outer radius.
-    const r = Math.sqrt(0.026 + rng() * 0.974);
+    // Area-weighted between 0.09 and 1 of the outer radius.
+    const r = Math.sqrt(0.008 + rng() * 0.992);
     const th = rng() * TAU;
     // Faint spiral density waves — real discs are grooved with them, and it is
     // the grooves that eventually become planets.
-    const dens = 0.45 + wave((th / TAU + r * 0.8) % 1, r) * 1.1;
+    let dens = 0.75 + wave((th / TAU + r * 0.8) % 1, r) * 0.35;
+    for (let k = 0; k < GAPS.length; k++) {
+      const x = (r - GAPS[k]) / gapW[k];
+      dens *= 1 - 0.97 * Math.exp(-x * x);
+    }
+    // A soft but definite outer edge.
+    dens *= 1 - smoothstep(clamp((r - 0.9) / 0.1, 0, 1));
     if (rng() > dens) continue;
     // Discs flare: they are thin at the middle and puff out towards the rim.
-    const h = (0.010 + r * 0.048) * gauss();
+    const h = (0.018 + r * 0.075) * gauss();
     pos.push(Math.cos(th) * r, h, Math.sin(th) * r);
 
     let c = r < 0.30 ? mix(HOT, WARM, r / 0.30)
@@ -9053,11 +9064,11 @@ function discGeometry(seed, n) {
       : mix(COOL, RIM, (r - 0.66) / 0.34);
     // The inside is being lit by the star it is falling onto, so it is far
     // brighter than the rim as well as a different colour.
-    const lit = (0.35 + 1.5 * Math.pow(1 - r, 1.7)) * (0.75 + rng() * 0.5);
+    const lit = (0.6 + 1.4 * Math.pow(1 - r, 1.7)) * (0.8 + rng() * 0.4);
     col.push(c[0] * lit, c[1] * lit, c[2] * lit);
     // Wide enough that neighbours run into each other. Small separate dots read
     // as scattered grit; only once they overlap do they become cloud.
-    siz.push(0.020 + Math.pow(rng(), 2) * 0.085);
+    siz.push(0.04 + Math.pow(rng(), 2) * 0.08);
   }
 
   const g = new THREE.BufferGeometry();
@@ -9070,8 +9081,8 @@ function discGeometry(seed, n) {
 
 function buildDiscVisual(d) {
   const g = new THREE.Group();
-  const pts = new THREE.Points(discGeometry(d.seed % 9973, 9000), new THREE.ShaderMaterial({
-    uniforms: { uMap: { value: TEX_PUFF }, uOp: { value: 0.5 }, uScale: { value: 1 }, uFocal: { value: 1 } },
+  const pts = new THREE.Points(discGeometry(d.seed % 9973, 16000), new THREE.ShaderMaterial({
+    uniforms: { uMap: { value: TEX_PUFF }, uOp: { value: 0.42 }, uScale: { value: 1 }, uFocal: { value: 1 } },
     vertexShader: NEB_VERT, fragmentShader: NEB_FRAG,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
   }));
