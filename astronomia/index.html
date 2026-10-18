@@ -6403,53 +6403,17 @@ function buildWhiteHole(b, grp) {
 const MAX_SCARS = 7;
 const _ZAXIS = new THREE.Vector3(0, 0, 1);
 
-/**
- * A pool of impact melt seen from above: a disc of glowing lava, broken into
- * plates of dark crust where the top has started to skin over, with the hot
- * stuff showing through the cracks between them. The crust thickens towards
- * the rim, where the pool is shallowest and coolest.
- */
-function meltTexture(seed, size) {
+/** An impact mark: a plain soft round spot, white so the material can colour it. */
+function spotTexture(size) {
   const cv = newCanvas(size, size);
   const ctx = cv.getContext('2d');
-  const img = ctx.createImageData(size, size), d = img.data;
-  const f = fbm(seed, 5, 5, 4, 0.55);
-  const r = mulberry32(seed);
-  // crust plates: a handful of cells, cracks along the lines between them
-  const cells = [];
-  for (let i = 0; i < 22; i++) {
-    const a = r() * TAU, q = Math.sqrt(r()) * 0.46;
-    cells.push([0.5 + Math.cos(a) * q, 0.5 + Math.sin(a) * q]);
-  }
-  const LAVA = [[0, [255, 246, 196]], [0.35, [255, 190, 70]], [0.7, [246, 98, 18]], [1, [150, 30, 8]]];
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const u = x / size, v = y / size;
-      // The decal was sized for a crater's thrown-out rays; the pool is the
-      // middle 60% of it. 0 at the centre, 1 at the pool's edge.
-      const rr = Math.hypot(u - 0.5, v - 0.5) * 2 / 0.6;
-      if (rr > 1) continue;
-      let d1 = 9, d2 = 9;
-      for (const c of cells) {
-        const dd = Math.hypot(u - c[0], v - c[1]);
-        if (dd < d1) { d2 = d1; d1 = dd; } else if (dd < d2) d2 = dd;
-      }
-      const crack = clamp(1 - (d2 - d1) / 0.035, 0, 1);     // 1 on a crack line
-      const n = f(u, v);
-      // how crusted over this spot is: more towards the rim, less down cracks
-      const crust = clamp(0.25 + rr * 0.7 + (n - 0.5) * 0.6 - crack * 1.3, 0, 1);
-      const lava = ramp(LAVA, clamp(rr * 0.75 + (1 - n) * 0.35, 0, 1));
-      const rock = [46 + n * 30, 30 + n * 18, 24 + n * 12];
-      const k = Math.pow(crust, 1.4);
-      const i4 = (y * size + x) * 4;
-      d[i4] = lava[0] * (1 - k) + rock[0] * k;
-      d[i4 + 1] = lava[1] * (1 - k) + rock[1] * k;
-      d[i4 + 2] = lava[2] * (1 - k) + rock[2] * k;
-      // a soft round edge, so the pool sits in the ground rather than on it
-      d[i4 + 3] = 255 * clamp((1 - rr) / 0.12, 0, 1);
-    }
-  }
-  ctx.putImageData(img, 0, 0);
+  const c = size / 2;
+  const g = ctx.createRadialGradient(c, c, 0, c, c, c * 0.6);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.65, 'rgba(255,255,255,0.9)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(c, c, c * 0.6, 0, TAU); ctx.fill();
   return cv;
 }
 
@@ -6460,9 +6424,7 @@ function meltTexture(seed, size) {
  * through. Drawn additively, so this is pure light laid over the crater.
  */
 function scarFireTexture(seed, size) {
-  /* The glow of fresh melt over the pool: a round disc of light, white-hot in
-     the middle and orange at the edge, exactly the pool's size — no rim and
-     no streaks, which made a fresh mark read as a rayed crater. */
+  /* The glow of a fresh spot: a round disc of light the spot's size. */
   const cv = newCanvas(size, size);
   const ctx = cv.getContext('2d');
   const c = size / 2;
@@ -6500,8 +6462,7 @@ function addScar(b, worldDir, size) {
   if (def.star || GASSY_SURF.has(def.surf)) return null;
   const n = localOnBody(b, worldDir);
   b.scars = b.scars || [];
-  // age 0: white-hot. Over SCAR_COOL days it settles into a lava pool that
-  // keeps glowing under its crust.
+  // age 0: bright yellow. Over SCAR_COOL days it fades to maroon.
   const mark = { n: [n.x, n.y, n.z], s: clamp(size, 0.10, 1.15), roll: Math.random() * TAU, age: 0 };
   b.scars.push(mark);
   // Oldest marks are buried by later resurfacing; keep the panel honest by
@@ -6709,11 +6670,10 @@ function buildScars(b) {
      little dark flakes. */
   const clear = 0.002 + reliefOf(b.type) * 0.020;
 
-  const tex = cachedTexture('melt', () => meltTexture(90210, 256));
+  const tex = cachedTexture('spot', () => spotTexture(128));
   const hot = cachedTexture('scarfire', () => scarFireTexture(4711, 256));
   for (const sc of b.scars) {
-    // The pool itself: lava between plates of crust. Unlit, because molten
-    // rock shines by its own heat, on the night side as much as the day.
+    // The spot itself, coloured by its age in paintScars.
     const mat = new THREE.MeshBasicMaterial({
       map: tex, transparent: true, depthWrite: false, opacity: 0, side: THREE.DoubleSide,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
@@ -6736,14 +6696,13 @@ function buildScars(b) {
   paintScars(b);
 }
 
-/* The colour a cooling impact melt passes through: white-hot, then the orange
-   of flowing lava, then a dull red before it goes out altogether. */
+/* What an impact spot passes through as it ages: bright yellow, then
+   orange, then a deep maroon that stays. */
 const SCAR_RAMP = [
-  [0.00, [255, 250, 235]],   // just hit: white-hot
-  [0.22, [255, 196,  92]],
-  [0.50, [255, 104,  22]],   // flowing lava
-  [0.78, [156,  26,   8]],   // dull red
-  [1.00, [ 70,  12,   6]]    // going out
+  [0.00, [255, 232,  80]],   // just hit: bright yellow
+  [0.30, [255, 168,  40]],
+  [0.60, [196,  72,  32]],
+  [1.00, [118,  20,  36]]    // maroon
 ];
 
 /**
@@ -6760,17 +6719,17 @@ function paintScars(b) {
     const t = clamp(age / SCAR_COOL, 0, 1);
     if (t < 1) anyHot = true;
 
-    /* Glow: blinding the instant it forms, settling to the steady orange of a
-       lava lake that stays molten under its crust — it never quite goes out. */
-    const lit = Math.max(Math.pow(1 - t, 1.7), 0.28);
-    const c = ramp(SCAR_RAMP, clamp(t * 0.55, 0, 1));
-    sk.fire.material.color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
-    sk.fire.material.opacity = lit * 0.95;
-    sk.fire.visible = true;
-
-    // The pool is there from the first moment, the flash glowing over it.
-    sk.pit.material.opacity = 0.6 + 0.35 * smoothstep(clamp(t / 0.4, 0, 1));
-    sk.pit.visible = sk.pit.material.opacity > 0.004;
+    // The spot: yellow when it lands, fading through orange to maroon.
+    const c = ramp(SCAR_RAMP, t);
+    // (given as screen colours, so converted for the renderer's sRGB output)
+    sk.pit.material.color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255).convertSRGBToLinear();
+    sk.pit.material.opacity = 0.9;
+    sk.pit.visible = true;
+    // A yellow glow on top while it is fresh, fading away as it cools.
+    const lit = Math.pow(1 - t, 1.7);
+    sk.fire.material.color.setRGB(1, 0.86, 0.35);
+    sk.fire.material.opacity = lit * 0.8;
+    sk.fire.visible = lit > 0.004;
   }
   return anyHot;
 }
@@ -13982,7 +13941,7 @@ function openHelp() {
     '<li><b>Slow collisions merge</b> and conserve momentum. <b>Fast ones shatter</b> both bodies into rubble — the test is impact speed against the pair\'s escape velocity.</li>' +
     '<li>Most of what a collision throws out is <b>not gravel — it is gas</b>. Two worlds hitting each other put in far more energy than it takes to melt rock, let alone boil it, so the plume of vapour that comes off outweighs the solid fragments by more than two to one. It is drawn in the same colours as a protoplanetary disc because it is the same stuff at the same temperatures: white-hot where it is fastest, then orange, then cold blue as it spreads and cools. That vapour is exactly where discs, rings and moons come from — ours came off the impact that made the Moon.</li>' +
     '<li>A collision also throws off <b>knots</b> — lumps big enough to click on and weigh. Most are still vapour, and about a third of them come off <b>solid</b>, because they never got hot enough to boil. Select a gas knot and the panel tells you which way it is going to go: below about four Moons of mass it spreads out and is gone, and above it gravity wins and it <b>pulls itself together into a world</b>. Drag its mass across that line and watch the answer change. This is not a made-up rule — it is how our own Moon was made, out of the wreckage of something the size of Mars hitting the young Earth.</li>' +
-    '<li>Whatever survives a collision <b>wears the mark</b>. A pool of molten rock is left on the surface exactly where it was hit — white-hot at first, then a glowing lava lake skinned with plates of dark crust — sized by how big the thing that hit it was, and it turns with the world and leans with its axis. The panel counts them under <b>Impact scars</b>. Stars and gas giants do not keep them — there is no ground for the melt to pool on.</li>' +
+    '<li>Whatever survives a collision <b>wears the mark</b>. A round spot is left on the surface exactly where it was hit — bright yellow at first, fading through orange to maroon — sized by how big the thing that hit it was, and it turns with the world and leans with its axis. The panel counts them under <b>Impact scars</b>. Stars and gas giants do not keep them — there is no ground for a mark to stay on.</li>' +
     '<li>Anything newly <b>born</b> — a planet condensing out of a disc, a world puffing up into a gas giant, a star catching light — arrives inside a swirl of infalling dust that spirals in and <b>whirls faster as it shrinks</b>, because angular momentum is conserved. Same reason a spinning skater speeds up when they pull their arms in.</li>' +
     '<li>The debris thrown out by an impact is <b>real matter, not sparks</b>. Every grain carries mass and is pulled along by the same gravity as the planets, so it orbits, rains back down, settles into rings, or is swallowed by a black hole — and whatever eats it genuinely gets heavier. The counter at the bottom left shows bodies plus live debris.</li>' +
     '<li>Feed a <b>rocky</b> world past <b>60.1 Earth masses</b> and its gravity can finally hold onto hydrogen: it flares up and swells into a <b>gas giant</b>, roughly doubling in width as dense rock gives way to light gas. Worlds that are already gassy skip this and just keep growing.</li>' +
