@@ -4428,6 +4428,10 @@ function goKilonova(a, b) {
   const mTot = a.m + b.m;
   const com = a.p.clone().multiplyScalar(a.m).addScaledVector(b.p, b.m).divideScalar(mTot);
   const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mTot);
+  // The pair's spin axis, taken before they are folded together: the jets
+  // leave along it.
+  const axis = a.p.clone().sub(b.p).cross(a.v.clone().sub(b.v));
+  const size = Math.max(visRadius(a), visRadius(b));
 
   // Fold the pair into one body at their shared centre of mass, then hand it to
   // the ordinary supernova machinery — everything after the first second is the
@@ -4439,8 +4443,155 @@ function goKilonova(a, b) {
   removeBody(b);
 
   const plan = goSupernova(a, kiloPlan(mTot / M_SUN));
-  if (plan) toast(pair + ' merged — kilonova!');
+  if (plan) {
+    kiloJet(com, vel, axis, size);
+    toast(pair + ' merged — kilonova! A jet of gold and plasma');
+  }
   return plan;
+}
+
+/* ------------------------------------------------------- kilonova jets ---- */
+/*
+ * The instant two neutron stars merge, the new remnant fires two narrow beams
+ * of plasma out of its poles at nearly the speed of light — that is the short
+ * gamma-ray burst seen with GW170817 — and the neutron-rich debris around it
+ * forges heavy elements: gold, platinum, uranium. Drawn as twin jets, white-hot
+ * gold at the root fading to violet plasma, with sparks of new-made gold
+ * streaming out along them. They last a minute of real time, then fade.
+ */
+const KJET_LIFE = 60;         // seconds of wall clock
+const KJET_SPARKS = 900;
+const kiloJets = [];
+let kjGeo = null, kjSparkGeo = null;
+
+const KJET_FRAG = `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  uniform float uTime;
+  uniform float uFade;
+  varying float vY;
+  varying float vEdge;
+  void main() {
+    #include <logdepthbuf_fragment>
+    float along = pow(1.0 - vY, 1.3) * smoothstep(0.0, 0.02, vY);
+    float core = pow(vEdge, 1.8);
+    float knots = 0.7 + 0.3 * sin(vY * 46.0 - uTime * 9.0);
+    vec3 gold = vec3(1.0, 0.78, 0.28), plasma = vec3(0.62, 0.42, 1.0);
+    vec3 col = mix(vec3(1.0, 0.96, 0.82), gold, smoothstep(0.0, 0.2, vY));
+    col = mix(col, plasma, smoothstep(0.3, 0.9, vY));
+    gl_FragColor = vec4(col, along * core * knots * uFade);
+  }`;
+
+const KSPARK_VERT = `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  attribute float aPhase;
+  attribute float aSide;
+  attribute vec2 aOff;
+  uniform float uTime;
+  uniform float uScale;
+  uniform float uFade;
+  varying float vA;
+  varying float vT;
+  void main() {
+    float t = fract(aPhase + uTime * (0.35 + 0.25 * fract(aPhase * 17.0)));
+    vec3 p = vec3(aOff * (0.02 + 0.16 * t), aSide * t);
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mv;
+    #include <logdepthbuf_vertex>
+    float px = uScale * 0.012 / max(-mv.z, 1e-9);
+    gl_PointSize = clamp(px, 1.5, 14.0);
+    vA = uFade * (1.0 - t) * smoothstep(0.0, 0.05, t);
+    vT = t;
+  }`;
+const KSPARK_FRAG = `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  varying float vA;
+  varying float vT;
+  void main() {
+    #include <logdepthbuf_fragment>
+    vec2 q = gl_PointCoord - 0.5;
+    float d = dot(q, q);
+    if (d > 0.25) discard;
+    vec3 col = mix(vec3(1.0, 0.86, 0.36), vec3(0.75, 0.55, 1.0), smoothstep(0.4, 1.0, vT));
+    gl_FragColor = vec4(col, exp(-d * 14.0) * vA);
+  }`;
+
+function kiloJet(pos, vel, axis, size) {
+  if (!kjGeo) {
+    // Unit length along +z from the origin; scaled to the jet's length.
+    kjGeo = new THREE.CylinderGeometry(0.07, 0.004, 1, 28, 1, true);
+    kjGeo.translate(0, 0.5, 0);
+    kjGeo.rotateX(Math.PI / 2);
+    const n = KJET_SPARKS, rng = mulberry32(0x601d);
+    const ph = new Float32Array(n), sd = new Float32Array(n), off = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      ph[i] = rng(); sd[i] = i % 2 ? 1 : -1;
+      const a = rng() * TAU, r = Math.sqrt(rng());
+      off[i * 2] = Math.cos(a) * r; off[i * 2 + 1] = Math.sin(a) * r;
+    }
+    kjSparkGeo = new THREE.BufferGeometry();
+    kjSparkGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    kjSparkGeo.setAttribute('aPhase', new THREE.BufferAttribute(ph, 1));
+    kjSparkGeo.setAttribute('aSide', new THREE.BufferAttribute(sd, 1));
+    kjSparkGeo.setAttribute('aOff', new THREE.BufferAttribute(off, 2));
+  }
+  const ax = axis && axis.lengthSq() > 0 ? axis.clone().normalize()
+    : new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize();
+  const uni = { uTime: { value: 0 }, uFade: { value: 1 }, uScale: { value: 1 } };
+  const beamMat = new THREE.ShaderMaterial({
+    uniforms: uni, vertexShader: JET_VERT, fragmentShader: KJET_FRAG,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+  });
+  const sparkMat = new THREE.ShaderMaterial({
+    uniforms: uni, vertexShader: KSPARK_VERT, fragmentShader: KSPARK_FRAG,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+  });
+  const grp = new THREE.Group();
+  for (const dir of [1, -1]) {
+    const beam = new THREE.Mesh(kjGeo, beamMat);
+    beam.frustumCulled = false;
+    if (dir < 0) beam.rotation.x = Math.PI;
+    grp.add(beam);
+  }
+  const sparks = new THREE.Points(kjSparkGeo, sparkMat);
+  sparks.frustumCulled = false;
+  grp.add(sparks);
+  grp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), ax);
+  grp.position.copy(pos);
+  scene.add(grp);
+  kiloJets.push({ grp: grp, mats: [beamMat, sparkMat], uni: uni, p0: pos.clone(), v: vel.clone(),
+    t0: sim.time, born: performance.now(), len: Math.max(size, 1e-6) * 2e4 });
+  fx.flash(pos, size * 30, [255, 214, 120], 1);
+}
+
+/** Once a frame: shoot the jets out, keep them on the remnant, fade them. */
+function updateKiloJets() {
+  const now = performance.now();
+  for (let i = kiloJets.length - 1; i >= 0; i--) {
+    const j = kiloJets[i];
+    const age = (now - j.born) / 1000;
+    if (age >= KJET_LIFE) { disposeKiloJet(j); kiloJets.splice(i, 1); continue; }
+    // Out to nearly full length in about a second, then still creeping outward.
+    const L = j.len * (1 - Math.exp(-age / 0.35)) * (1 + age / 40);
+    j.grp.scale.set(L * (0.6 + 0.4 * Math.min(age / 2, 1)), L * (0.6 + 0.4 * Math.min(age / 2, 1)), L);
+    j.grp.position.copy(j.p0).addScaledVector(j.v, sim.time - j.t0);
+    j.uni.uTime.value = age;
+    // Full strength for most of the minute, fading over the last quarter.
+    j.uni.uFade.value = 1 - smoothstep(clamp((age - KJET_LIFE * 0.6) / (KJET_LIFE * 0.4), 0, 1));
+    j.uni.uScale.value = VIEW.h * VIEW.dpr / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) * L;
+  }
+}
+
+function disposeKiloJet(j) {
+  scene.remove(j.grp);
+  for (const m of j.mats) m.dispose();
+}
+
+function clearKiloJets() {
+  for (const j of kiloJets) disposeKiloJet(j);
+  kiloJets.length = 0;
 }
 
 /**
@@ -14262,6 +14413,7 @@ function clearAll() {
   clearParticles();
   clearGalaxyStars();
   clearSupernovae();
+  clearKiloJets();
   clearUniverses();
   clearBelts();
   clearBarys();
@@ -14651,6 +14803,7 @@ function loop(now) {
   const simDt = sim.time - t0;
   if (universes.length) updateUniverses(realDt, simDt);
   updateGasDisks();
+  updateKiloJets();
 
   if (sim.follow) {
     galx.focus = -1;
