@@ -9013,6 +9013,11 @@ function makeDisc(host, o) {
     obj: null
   };
   d.m0 = d.mass;
+  d.span = d.next;
+  // Where the next few planets will form, and the lanes of those already made.
+  d.plan = Array.isArray(o.plan) ? o.plan.slice(0, DISC_PLAN) : [];
+  d.lanes = Array.isArray(o.lanes) ? o.lanes.slice() : [];
+  while (d.plan.length < DISC_PLAN) d.plan.push(discPickR(d));
   buildDiscVisual(d);
   discs.push(d);
   host.disc = d;
@@ -9035,23 +9040,22 @@ function discGeometry(seed, n) {
      onto the star, orange further out, and dull red dust at the rim. */
   const HOT = [1.00, 0.80, 0.50], WARM = [1.00, 0.45, 0.14];
   const COOL = [0.86, 0.24, 0.08], RIM = [0.48, 0.10, 0.06];
-  /* Rings and gaps, like HL Tauri's: bright bands of dust with dark lanes
-     between them where young planets are already sweeping their orbits clear.
-     Spaced a little unevenly so it does not look ruled. */
-  const GAPS = [0.27, 0.36, 0.47, 0.57, 0.69, 0.80];
-  const gapW = [0.02, 0.018, 0.026, 0.022, 0.03, 0.024];
+  /* A plain disc to start with. The stripes come later, in the shader, where
+     planets are going to form (see discGaps). */
 
   for (let i = 0; i < n; i++) {
-    // Area-weighted between 0.09 and 1 of the outer radius.
-    const r = Math.sqrt(0.008 + rng() * 0.992);
+    /* Most of it area-weighted between 0.04 and 1 of the outer radius. The
+       rest is spread evenly in log-radius right down to 0.006, as smaller
+       puffs, so the inner disc — where most planets form — has fine enough
+       grain to show the narrow lanes they clear. Puffs sized in proportion to
+       radius cover the same share of the disc at every radius. */
+    const fine = rng() < 0.4;
+    const r = fine ? 0.006 * Math.pow(0.5 / 0.006, rng())
+      : Math.sqrt(0.0016 + rng() * 0.9984);
     const th = rng() * TAU;
     // Faint spiral density waves — real discs are grooved with them, and it is
     // the grooves that eventually become planets.
     let dens = 0.75 + wave((th / TAU + r * 0.8) % 1, r) * 0.35;
-    for (let k = 0; k < GAPS.length; k++) {
-      const x = (r - GAPS[k]) / gapW[k];
-      dens *= 1 - 0.97 * Math.exp(-x * x);
-    }
     // A soft but definite outer edge.
     dens *= 1 - smoothstep(clamp((r - 0.9) / 0.1, 0, 1));
     if (rng() > dens) continue;
@@ -9068,7 +9072,7 @@ function discGeometry(seed, n) {
     col.push(c[0] * lit, c[1] * lit, c[2] * lit);
     // Wide enough that neighbours run into each other. Small separate dots read
     // as scattered grit; only once they overlap do they become cloud.
-    siz.push(0.04 + Math.pow(rng(), 2) * 0.08);
+    siz.push(fine ? r * (0.12 + rng() * 0.12) : 0.04 + Math.pow(rng(), 2) * 0.08);
   }
 
   const g = new THREE.BufferGeometry();
@@ -9079,11 +9083,67 @@ function discGeometry(seed, n) {
   return g;
 }
 
+/* The disc's own shader: the nebula puffs, dimmed in dark lanes. Each lane is
+   (radius as a share of the disc, depth 0–1, width). */
+const DISC_GAPS = 12;
+const PDISC_VERT = `
+  attribute vec3 aCol;
+  attribute float aSize;
+  uniform float uScale;
+  uniform float uFocal;
+  uniform vec3 uGaps[${DISC_GAPS}];
+  varying vec3 vCol;
+  void main() {
+    float r = length(position.xz);
+    float keep = 1.0;
+    for (int i = 0; i < ${DISC_GAPS}; i++) {
+      vec3 g = uGaps[i];
+      if (g.y <= 0.0) continue;
+      float x = (r - g.x) / g.z;
+      keep *= 1.0 - g.y * exp(-x * x);
+    }
+    vCol = aCol * keep;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mv;
+    gl_PointSize = clamp(aSize * uScale * uFocal / max(-mv.z, 1e-6), 2.0, 460.0);
+  }`;
+
+/** How many planets ahead a disc plans, and so shows lanes for. */
+const DISC_PLAN = 3;
+
+/** Somewhere for the next planet: log-uniform, so the inner disc gets its share. */
+const discPickR = (d) => d.rIn * Math.pow(d.rOut / d.rIn, Math.random());
+
+/**
+ * The stripes. A disc knows where its next few planets are going to condense,
+ * and the dust there is already being gathered up: the lane for the next one
+ * deepens as its time comes, the ones after it show faintly, and every planet
+ * already made keeps the lane it swept clean.
+ */
+function discGaps(d) {
+  const out = d.pts.material.uniforms.uGaps.value;
+  let n = 0;
+  const put = (r, depth) => {
+    if (n >= DISC_GAPS) return;
+    const x = r / d.rOut;
+    if (!(x > 0.02 && x < 1)) return;
+    out[n++].set(x, clamp(depth, 0, 0.97), Math.max(0.0015, x * 0.09));
+  };
+  const span = Math.max(d.span || 1, 1e-9);
+  const ripe = clamp(1 - d.next / span, 0, 1);
+  if (d.plan) d.plan.forEach((r, i) => put(r, i === 0 ? 0.25 + 0.7 * ripe : i === 1 ? 0.25 : 0.14));
+  if (d.lanes) for (let i = d.lanes.length - 1; i >= 0; i--) put(d.lanes[i], 0.9);
+  while (n < DISC_GAPS) out[n++].set(0, 0, 1);
+}
+
 function buildDiscVisual(d) {
   const g = new THREE.Group();
-  const pts = new THREE.Points(discGeometry(d.seed % 9973, 16000), new THREE.ShaderMaterial({
-    uniforms: { uMap: { value: TEX_PUFF }, uOp: { value: 0.42 }, uScale: { value: 1 }, uFocal: { value: 1 } },
-    vertexShader: NEB_VERT, fragmentShader: NEB_FRAG,
+  const gaps = [];
+  for (let i = 0; i < DISC_GAPS; i++) gaps.push(new THREE.Vector3(0, 0, 1));
+  const pts = new THREE.Points(discGeometry(d.seed % 9973, 22000), new THREE.ShaderMaterial({
+    uniforms: { uMap: { value: TEX_PUFF }, uOp: { value: 0.42 }, uScale: { value: 1 }, uFocal: { value: 1 },
+      uGaps: { value: gaps } },
+    vertexShader: PDISC_VERT, fragmentShader: NEB_FRAG,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
   }));
   pts.frustumCulled = false;
@@ -9116,9 +9176,8 @@ function condenseFromDisc(d) {
   const host = d.host;
   if (freeSlots() < 1) return false;
 
-  // Log-uniform in radius, so the crowded inner disc still gets its planets.
-  const t = Math.random();
-  const r = d.rIn * Math.pow(d.rOut / d.rIn, t);
+  // Where it was planned — the lane the disc has been clearing for it.
+  const r = d.plan && d.plan.length ? d.plan[0] : discPickR(d);
   const ice = iceLineOf(host);
   const inside = r < ice;
 
@@ -9148,6 +9207,12 @@ function condenseFromDisc(d) {
 
   d.mass -= chunk;
   d.made++;
+  // The plan moves on: this lane is now the planet's, and a new one is chosen.
+  if (d.plan && d.plan.length) {
+    d.plan.shift();
+    d.lanes.push(r);
+    while (d.plan.length < DISC_PLAN) d.plan.push(discPickR(d));
+  }
   // A new planet sweeps its own lane clean, so the hole in the middle widens a
   // little — but never so far that the disc stops making inner worlds at all.
   if (r < d.rIn * 1.4) d.rIn = Math.min(r * 1.25, d.rOut * 0.05);
@@ -9171,6 +9236,7 @@ function updateDiscs(simDt) {
       const every = Math.max(settings.discYears, 0.02) * 365.25;
       if (d.next <= 0) {
         d.next = every * rnd(0.6, 1.4);
+        d.span = d.next;
         // Discs do not last forever — ours was gone inside about ten million
         // years, blown off by the young Sun once the planets had taken their share.
         if (d.mass > d.m0 * 0.04 && d.made < 12) condenseFromDisc(d);
@@ -9197,6 +9263,7 @@ function updateDiscs(simDt) {
     u.uFocal.value = VIEW.h * VIEW.dpr / (2 * Math.tan(FOV * Math.PI / 360));
     // Thins out as its material is used up, and fades away at the end.
     u.uOp.value = clamp(0.05 + 0.17 * (d.mass / d.m0), 0, 0.24) * clamp(d.fade, 0, 1);
+    discGaps(d);
     d.pts.visible = u.uOp.value > 0.004 && d.rOut / worldPerPixel(
       Math.max(camera.position.distanceTo(d.obj.position), 1e-9)) > 3;
   }
@@ -14096,7 +14163,8 @@ function saveUniverse() {
         // A protoplanetary disc is saved with its star, not on its own.
         dc: b.disc && b.disc.alive
           ? { rIn: b.disc.rIn, rOut: b.disc.rOut, mass: b.disc.mass, m0: b.disc.m0,
-              made: b.disc.made, axis: b.disc.axis.toArray() }
+              made: b.disc.made, axis: b.disc.axis.toArray(),
+              plan: b.disc.plan, lanes: b.disc.lanes }
           : null
       }))
     };
@@ -14219,7 +14287,7 @@ function openHelp() {
     '</ul>' +
     '<h3>DISCS, BROWN DWARFS AND GALAXIES</h3>' +
     '<ul>' +
-    '<li>A <b>Protostar + Disc</b> is a star still being born, wrapped in the flat disc of gas and dust it is feeding from. Start time and the disc <b>condenses into planets</b>, one at a time — rock and small worlds on the warm side of the <b>ice line</b>, giants just beyond it, exactly the order our own Solar System came out in. Every planet takes its mass out of the disc, so once the disc is spent, that is that.</li>' +
+    '<li>A <b>Protostar + Disc</b> is a star still being born, wrapped in the flat disc of gas and dust it is feeding from. Start time and the disc <b>condenses into planets</b>, one at a time — rock and small worlds on the warm side of the <b>ice line</b>, giants just beyond it, exactly the order our own Solar System came out in. Every planet takes its mass out of the disc, so once the disc is spent, that is that. The disc starts out plain, but it already knows where its next planets will form: a <b>dark lane</b> opens there and deepens as the moment comes, the planet appears in it, and the lane stays — so a disc that has been busy ends up <b>striped</b>.</li>' +
     '<li>A <b>brown dwarf</b> is a failed star: heavier than any planet, too light to fuse hydrogen. Here one keeps contracting until it <b>lights up as a red dwarf</b> after a hundred years (change that in Settings). A real one never manages it — it just fades for trillions of years — so this one is for fun.</li>' +
     '<li>A <b>galaxy</b> is eleven thousand individual stars wrapped in glowing clouds of gas, and every one of them is really orbiting. Drop two and crash them together — that is what <b>Galaxy Collision</b> in Systems sets up.</li>' +
     '</ul>' +
