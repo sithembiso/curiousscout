@@ -1809,30 +1809,6 @@ function ringTexture(seed, size, palette) {
   return cv;
 }
 
-/** Accretion disc: relativistic-hot inside, cooling outward. */
-function accretionTexture(seed, size) {
-  const cv = newCanvas(size, size);
-  const ctx = cv.getContext('2d');
-  const r = mulberry32(seed);
-  const c = size / 2;
-  const n = 200;
-  for (let i = n; i >= 0; i--) {
-    const t = i / n;
-    const rad = c * (0.02 + t * 0.98);
-    const col = ramp([
-      [0, [255, 255, 255]], [0.12, [214, 236, 255]], [0.3, [255, 232, 176]],
-      [0.55, [255, 150, 52]], [0.8, [186, 54, 22]], [1, [58, 12, 10]]
-    ], t);
-    let a = (1 - Math.pow(t, 1.5)) * (0.55 + 0.45 * Math.abs(Math.sin(t * 60 + r() * 0.4)));
-    if (t < 0.05) a *= t / 0.05;
-    if (t > 0.9) a *= 1 - (t - 0.9) / 0.1;
-    ctx.strokeStyle = rgba(col, clamp(a, 0, 1));
-    ctx.lineWidth = c / n + 1.4;
-    ctx.beginPath(); ctx.arc(c, c, rad, 0, TAU); ctx.stroke();
-  }
-  return cv;
-}
-
 /** Soft radial sprite used for star glow, coma and explosion sparks. */
 function glowTexture(size, inner, hardness) {
   const cv = newCanvas(size, size);
@@ -5868,17 +5844,129 @@ function buildHole(b, grp) {
   grp.add(shadow);
   b.parts.surf = shadow;
 
-  const photon = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_PHOTON, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  const photon = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_PHOTON, color: new THREE.Color(0xcfe0ff), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
   grp.add(photon);
   b.parts.photon = photon;
 
-  const dt = cachedTexture('disk', () => accretionTexture(1337, 512));
-  const dm = new THREE.MeshBasicMaterial({ map: dt, blending: THREE.AdditiveBlending, transparent: true, side: THREE.DoubleSide, depthWrite: false });
-  const disk = new THREE.Mesh(ringGeometry(0.26), dm);
+  const disk = makeGasDisk();
   disk.rotation.x = -Math.PI / 2 + 0.30;
   disk.rotation.z = 0.2;
   grp.add(disk);
   b.parts.disk = disk;
+}
+
+/* ------------------------------------------------------------ accretion discs */
+/*
+ * An accretion disc is gas: a few thousand wisps of it, each on its own
+ * circular orbit, so the inner edge whips round far faster than the rim
+ * (Kepler: angular speed falls as r^-1.5) and the disc shears into streaks.
+ * The motion is done in the vertex shader from one clock, so it costs nothing.
+ * Hot blue-white at the inner edge, deep blue at the rim, a little thicker the
+ * further out, and brighter on the side swinging towards you — relativistic
+ * beaming, the reason real images of these discs are lopsided.
+ *
+ * Laid out in the XY plane with radius 1, like the ring it replaces, so the
+ * same scale and tilt apply. One geometry and one material are shared by
+ * every disc in the scene; disposeVisual knows to leave them alone.
+ */
+const GAS_DISK_N = 2600;
+let gasDiskGeo = null, gasDiskMat = null, gasAtlas = null;
+
+const GAS_DISK_VERT = `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  attribute float aR;
+  attribute float aPhase;
+  attribute float aH;
+  attribute float aSize;
+  attribute vec3 aCol;
+  uniform float uTime;
+  uniform float uScale;
+  varying vec3 vCol;
+  varying float vA;
+  varying float vRot;
+  varying float vTile;
+  void main() {
+    float om = 1.4 * pow(aR / 0.3, -1.5);
+    float a = aPhase + uTime * om;
+    vec3 p = vec3(cos(a) * aR, sin(a) * aR, aH);
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mv;
+    #include <logdepthbuf_vertex>
+    float sc = length((modelMatrix * vec4(1.0, 0.0, 0.0, 0.0)).xyz);
+    float px = aSize * sc * uScale / max(-mv.z, 1e-9);
+    // gas coming towards you is brighter and bluer
+    vec3 vt = normalize(mat3(modelViewMatrix) * vec3(-sin(a), cos(a), 0.0));
+    float beam = 1.0 + 0.8 * vt.z;
+    vCol = aCol * beam * vec3(0.9 - 0.1 * vt.z, 1.0, 1.0 + 0.15 * vt.z);
+    vA = min(1.0, px * px / 16.0);
+    vRot = a + aPhase;
+    vTile = mod(floor(aPhase * 7.0), 4.0);
+    gl_PointSize = clamp(px, 1.5, 420.0);
+  }`;
+const GAS_DISK_FRAG = `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  uniform sampler2D uMap;
+  varying vec3 vCol;
+  varying float vA;
+  varying float vRot;
+  varying float vTile;
+  void main() {
+    #include <logdepthbuf_fragment>
+    vec2 q = gl_PointCoord - 0.5;
+    float c = cos(vRot), s = sin(vRot);
+    q = vec2(c * q.x - s * q.y, s * q.x + c * q.y) + 0.5;
+    if (q.x < 0.0 || q.x > 1.0 || q.y < 0.0 || q.y > 1.0) discard;
+    vec2 tile = vec2(mod(vTile, 2.0), floor(vTile / 2.0)) * 0.5;
+    float wisp = texture2D(uMap, tile + q * 0.5).a;
+    float soft = exp(-dot(q - 0.5, q - 0.5) * 9.0);
+    gl_FragColor = vec4(vCol, (wisp * 0.75 + soft * 0.25) * vA);
+  }`;
+
+function makeGasDisk() {
+  if (!gasDiskGeo) {
+    const n = GAS_DISK_N, rng = mulberry32(0x9a5d15c);
+    const aR = new Float32Array(n), aPh = new Float32Array(n), aH = new Float32Array(n);
+    const aS = new Float32Array(n), aC = new Float32Array(n * 3), pos = new Float32Array(n * 3);
+    const HOT = [0.85, 0.95, 1.0], MID = [0.30, 0.58, 1.0], RIM = [0.10, 0.22, 0.85];
+    for (let i = 0; i < n; i++) {
+      // crowded towards the inner edge, where the gas is densest and hottest
+      const r = 0.26 + Math.pow(rng(), 1.8) * 0.74;
+      aR[i] = r;
+      aPh[i] = rng() * TAU;
+      aH[i] = (rng() + rng() + rng() - 1.5) * 0.04 * r;
+      aS[i] = (0.035 + rng() * 0.07) * (0.6 + r);
+      const t = (r - 0.26) / 0.74;
+      const c = t < 0.25 ? mix(HOT, MID, t / 0.25) : mix(MID, RIM, (t - 0.25) / 0.75);
+      const glow = (1.25 - t * 0.85) * (0.75 + rng() * 0.5) * 0.55;
+      aC[i * 3] = c[0] * glow; aC[i * 3 + 1] = c[1] * glow; aC[i * 3 + 2] = c[2] * glow;
+    }
+    gasDiskGeo = new THREE.BufferGeometry();
+    gasDiskGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    gasDiskGeo.setAttribute('aR', new THREE.BufferAttribute(aR, 1));
+    gasDiskGeo.setAttribute('aPhase', new THREE.BufferAttribute(aPh, 1));
+    gasDiskGeo.setAttribute('aH', new THREE.BufferAttribute(aH, 1));
+    gasDiskGeo.setAttribute('aSize', new THREE.BufferAttribute(aS, 1));
+    gasDiskGeo.setAttribute('aCol', new THREE.BufferAttribute(aC, 3));
+    if (!gasAtlas) gasAtlas = nebulaAtlas();
+    gasDiskMat = new THREE.ShaderMaterial({
+      uniforms: { uMap: { value: gasAtlas }, uTime: { value: 0 }, uScale: { value: 1 } },
+      vertexShader: GAS_DISK_VERT, fragmentShader: GAS_DISK_FRAG,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    gasDiskMat.userData.shared = true;
+  }
+  const disk = new THREE.Points(gasDiskGeo, gasDiskMat);
+  disk.frustumCulled = false;
+  return disk;
+}
+
+/** Once a frame: the shared disc clock and pixel scale. */
+function updateGasDisks() {
+  if (!gasDiskMat) return;
+  gasDiskMat.uniforms.uTime.value = performance.now() / 1000;
+  gasDiskMat.uniforms.uScale.value = VIEW.h * VIEW.dpr / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
 }
 
 /* No horizon, no disc: just the point itself, blazing, shifting through every
@@ -7525,10 +7613,8 @@ function buildGalaxy(b, grp) {
   const f = Math.pow(b.galR / GAL_R_MW, 2) * (shape === 'elliptical' ? 30 : shape === 'dwarf' ? 3 : 1);
   b.smbhM = 4.3e6 * M_SUN * f;
   const shadow = new THREE.Mesh(SPHERE_LO, new THREE.MeshBasicMaterial({ color: 0x000000 }));
-  const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_PHOTON, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
-  const disk = new THREE.Mesh(ringGeometry(0.26), new THREE.MeshBasicMaterial({
-    map: cachedTexture('disk', () => accretionTexture(1337, 512)),
-    blending: THREE.AdditiveBlending, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+  const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_PHOTON, color: new THREE.Color(0xcfe0ff), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  const disk = makeGasDisk();
   disk.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), b.galAxis);
   grp.add(shadow); grp.add(ring); grp.add(disk);
   b.parts.smbhShadow = shadow; b.parts.smbhRing = ring; b.parts.smbhDisk = disk;
@@ -7559,11 +7645,8 @@ function updateGalaxies() {
       b.parts.smbhShadow.scale.setScalar(rv);
       b.parts.smbhDisk.scale.setScalar(rv * 7);
       b.parts.smbhRing.scale.setScalar(rv * 5.6);
-      // in the galaxy's own plane (a map may tilt the galaxy after building it),
-      // turning slowly
-      b.smbhSpin = (b.smbhSpin || 0) + 0.004;
+      // in the galaxy's own plane (a map may tilt the galaxy after building it)
       b.parts.smbhDisk.quaternion.setFromUnitVectors(_ZAXIS, b.galAxis);
-      b.parts.smbhDisk.rotateZ(b.smbhSpin);
       // only worth drawing once it is more than a speck
       const on = rv * 7 / wpp > 1.5;
       b.parts.smbhShadow.visible = b.parts.smbhRing.visible = b.parts.smbhDisk.visible = on;
@@ -8702,7 +8785,7 @@ function disposeVisual(b, keepTrail) {
   if (b.obj) {
     scene.remove(b.obj);
     b.obj.traverse(o => {
-      if (o.material) {
+      if (o.material && !o.material.userData.shared) {
         if (o.material.map && o.material.map.isCanvasTexture && !cacheHasTexture(o.material.map)) o.material.map.dispose();
         o.material.dispose();
       }
@@ -10379,7 +10462,7 @@ function updateVisuals(realDt, simDt) {
     }
 
     // ---- black holes
-    if (p.disk) p.disk.rotation.z += realDt * 0.35;
+    if (p.disk && !p.disk.isPoints) p.disk.rotation.z += realDt * 0.35;
     if (def.naked && p.glow) {
       const hue = (performance.now() / 6000 + b.seed * 1e-3) % 1;
       p.glow.material.color.setHSL(hue, 0.9, 0.78);
@@ -12977,6 +13060,7 @@ function loop(now) {
   advance(realDt);
   const simDt = sim.time - t0;
   if (universes.length) updateUniverses(realDt, simDt);
+  updateGasDisks();
 
   if (sim.follow) {
     galx.focus = -1;
