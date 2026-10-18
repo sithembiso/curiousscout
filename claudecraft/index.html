@@ -31,6 +31,7 @@
           <li><b>🌙 DAY &amp; NIGHT</b> every 5 minutes — and at night the <b>ZOMBIES</b> come out 🧟</li>
           <li><b>💾 WORLDS &amp; SEEDS</b> — save several worlds, pick any seed, play <b>Creative</b> 🎨 or <b>Hardcore</b> 💀</li>
           <li><b>🧱 8×8 block textures</b>, <b>/tp</b> and other commands, food, and 5 new achievements</li>
+          <li><b>🥛 THE LAND OF MILK &amp; HONEY</b> is now a place to <b>explore</b> — 7 wonders to discover (Honey Falls, the Milk Lake, the Great Honey Tree, the Giant Hive 🐝, the Cloud Garden, the Flower Meadow and the Crystal Grotto) and 12 golden honeypots to find. No puzzles: find every wonder and the Guardian crowns you!</li>
           <li><b>🌑 Don't go too far.</b> Something is out there.</li>
         </ul>
         <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #4a2400;">🧪 TRY 0.8 — WATER &amp; WONDERS <span style="font-weight:600;opacity:0.8;">(⚙️ Settings → Version 0.8)</span></div>
@@ -73,7 +74,7 @@
       <b>The ultimate quest:</b><br>
       1. Beat the obsidian pillar — but DON'T break the diamond heart yet!<br>
       2. Get a DIAMOND PICKAXE, then mine the diamond heart to open the SECRET CAVE 🥛<br>
-      3. Solve the wise Guardian's <b>3 building puzzles</b><br>
+      <span id="cc-quest3">3. Solve the wise Guardian's <b>3 building puzzles</b></span><br>
       4. Become the <b style="color:#ffd866;">GOD OF CLAUDECRAFT!</b> 👑✨
     </div>
     <div style="font-size: 11px; opacity: 0.75; margin-bottom: 12px;">
@@ -337,6 +338,8 @@
     entities: vAtLeast('0.6'),
     topup: vAtLeast('0.7.1'),
     v08: vAtLeast('0.8'),
+    // 0.7+: the Land of Milk & Honey is somewhere to explore, not a puzzle to solve
+    explore: vAtLeast('0.7'),
     // 0.0 Classic: a pure building sandbox, before any of the adventure was added
     classic: selectedVersion === '0.0'
   };
@@ -406,6 +409,7 @@
     settingsEl.style.display = 'none';
     startEl.style.display = 'flex';
   });
+  if (FEAT.explore) document.getElementById('cc-quest3').innerHTML = '3. Explore it: find all <b>7 wonders</b> and the golden honeypots, then visit the wise Guardian';
   // Update the version badge text (badge is in HTML directly)
   const verBadge = document.getElementById('cc-ver-badge');
   if (verBadge) {
@@ -435,7 +439,8 @@
     WOOL_WHITE:52,WOOL_BLACK:53,WOOL_BROWN:54,WOOL_PINK:55,BED:56,
     WATER:57,ICE:58,TORCH:59,FURNACE:60,FARMLAND:61,WHEAT0:62,WHEAT1:63,WHEAT2:64,WHEAT3:65,
     SLAB:66,STAIRS_N:67,STAIRS_E:68,STAIRS_S:69,STAIRS_W:70,
-    LADDER_PX:71,LADDER_NX:72,LADDER_PZ:73,LADDER_NZ:74,DOOR_X:75,DOOR_Z:76,DOOR_XO:77,DOOR_ZO:78
+    LADDER_PX:71,LADDER_NX:72,LADDER_PZ:73,LADDER_NZ:74,DOOR_X:75,DOOR_Z:76,DOOR_XO:77,DOOR_ZO:78,
+    HONEYPOT:79
   };
   const BLOCK_INFO = {
     [B.GRASS]:{name:'Grass',colors:{top:0x6abe30,side:0x8B5A2B,bot:0x8B5A2B},needs:0},
@@ -514,7 +519,8 @@
     [B.DOOR_X]:{name:'Door',color:0xa0703a,needs:0},
     [B.DOOR_Z]:{name:'Door',color:0xa0703a,needs:0},
     [B.DOOR_XO]:{name:'Door',color:0xa0703a,needs:0},
-    [B.DOOR_ZO]:{name:'Door',color:0xa0703a,needs:0}
+    [B.DOOR_ZO]:{name:'Door',color:0xa0703a,needs:0},
+    [B.HONEYPOT]:{name:'Golden honeypot',colors:{top:0xffe066,side:0xf0b020,bot:0xc08010},needs:99}
   };
   // ===== 0.8: SHAPED BLOCKS =====
   // Most blocks are whole cubes. These are drawn as one or more boxes inside
@@ -558,7 +564,7 @@
   // Little pictures for the things that aren't plain cubes
   const ICON={[B.TORCH]:'🔥',[B.FURNACE]:'♨️',[B.WHEAT0]:'🌱',[B.SLAB]:'▬',[B.STAIRS_N]:'📶',[B.LADDER_PX]:'🪜',[B.DOOR_X]:'🚪',[B.BED]:'🛏️',[B.ICE]:'🧊'};
   // Non-block things you can carry
-  const ITEM_NAMES={bread:'🍞 Bread',apple:'🍎 Apple',milkcup:'🥛 Milk',egg:'🥚 Egg',fish:'🐟 Raw fish',cookedfish:'🍣 Cooked fish',
+  const ITEM_NAMES={honeypot:'🍯 Golden honeypot',bread:'🍞 Bread',apple:'🍎 Apple',milkcup:'🥛 Milk',egg:'🥚 Egg',fish:'🐟 Raw fish',cookedfish:'🍣 Cooked fish',
     wheat:'🌾 Wheat',bone:'🦴 Bone',string:'🧵 String'};
   const WOOLS=[B.WOOL_WHITE,B.WOOL_BLACK,B.WOOL_BROWN,B.WOOL_PINK];
   const PICK_TIERS = ['Hands','Wooden pick','Stone pick','Iron pick','Diamond pick'];
@@ -1121,7 +1127,7 @@
   }
 
   function generateMilkAndHoney(){
-    const half=30;
+    const half=FEAT.explore?48:30;
     for(let x=-half;x<half;x++)for(let z=-half;z<half;z++){
       const h=5+Math.floor(noise(x,z)*2+Math.sin(x*0.2)*1+Math.cos(z*0.2)*1);
       for(let y=0;y<=h;y++){
@@ -1129,7 +1135,7 @@
         else setBlockIn(milkhoney,x,y,z,B.HONEYCOMB);
       }
     }
-    for(let i=0;i<4;i++){
+    for(let i=0;i<(FEAT.explore?6:4);i++){
       let mx=Math.floor((rand()-0.5)*half), mz=Math.floor((rand()-0.5)*half);
       const len=25+Math.floor(rand()*15);
       let dir=rand()*Math.PI*2;
@@ -1157,7 +1163,7 @@
         setBlockIn(milkhoney,px+dx,topY,pz+dz,B.HONEY);
       }
     }
-    for(let i=0;i<22;i++){
+    for(let i=0;i<(FEAT.explore?40:22);i++){
       const tx=Math.floor((rand()-0.5)*half*1.6);
       const tz=Math.floor((rand()-0.5)*half*1.6);
       let ty=1;
@@ -1173,7 +1179,7 @@
         if(getBlockIn(milkhoney,lx,ly,lz)===B.AIR)setBlockIn(milkhoney,lx,ly,lz,B.HONEY);
       }
     }
-    for(let i=0;i<10;i++){
+    for(let i=0;i<(FEAT.explore?16:10);i++){
       const cx=Math.floor((rand()-0.5)*half*1.5);
       const cz=Math.floor((rand()-0.5)*half*1.5);
       const cy=14+Math.floor(rand()*4);
@@ -1192,6 +1198,7 @@
     }
     setBlockIn(milkhoney,gx,gy,gz,B.GUARDIAN);
     guardianPos={x:gx,y:gy,z:gz,currentPuzzle:0};
+    if(FEAT.explore)buildWonders(half);
     let sy=1;
     for(let y=MH_HEIGHT-2;y>0;y--){if(getBlockIn(milkhoney,0,y,0)===B.HONEYCOMB){sy=y+1;break;}}
     mhSpawn={x:0,y:sy+1,z:0};
@@ -1205,6 +1212,182 @@
         const type=i<3?B.WOLF:B.CAT;
         pets.push({type, x:px+0.5, y:py, z:pz+0.5, tamed:false, vx:0, vz:0, lastMove:0});
       }
+    }
+  }
+
+  // ===== THE LAND OF MILK & HONEY: SEVEN WONDERS (0.7+) =====
+  // A land to wander rather than a puzzle to solve. Seven wonders are built
+  // into it, each with a golden honeypot, and five more honeypots are tucked
+  // away elsewhere. Find every wonder, then go back to the Wise Guardian.
+  const WONDERS=[
+    {id:'falls', name:'🍯 Honey Falls', x:-30, z:-26, r:9},
+    {id:'lake', name:'🥛 the Milk Lake', x:28, z:20, r:11},
+    {id:'tree', name:'🌳 the Great Honey Tree', x:-28, z:26, r:7},
+    {id:'hive', name:'🐝 the Giant Hive', x:30, z:-28, r:9},
+    {id:'clouds', name:'☁️ the Cloud Garden', x:0, z:32, r:7},
+    {id:'meadow', name:'🌸 the Flower Meadow', x:-36, z:0, r:9},
+    {id:'grotto', name:'💎 the Crystal Grotto', x:36, z:-2, r:8}
+  ];
+  const HONEYPOTS_TOTAL=12;
+  const wondersFound=new Set();
+  let hivePos=null;
+  function buildWonders(half){
+    const M=milkhoney, put=(x,y,z,b)=>setBlockIn(M,x,y,z,b);
+    const top=(x,z)=>{for(let y=MH_HEIGHT-2;y>0;y--){const b=getBlockIn(M,x,y,z);if(b===B.HONEYCOMB||b===B.MILK||b===B.HONEY)return y;}return 1;};
+    const clearAbove=(x,y,z,n)=>{for(let k=0;k<n;k++)put(x,y+k,z,B.AIR);};
+    const pot=(x,y,z)=>put(x,y,z,B.HONEYPOT);
+    // Flatten a round patch to height h (filling and clearing as needed)
+    const flatten=(cx,cz,r,h)=>{
+      for(let dx=-r;dx<=r;dx++)for(let dz=-r;dz<=r;dz++){
+        if(dx*dx+dz*dz>r*r)continue;
+        for(let y=1;y<MH_HEIGHT;y++)put(cx+dx,y,cz+dz,y<=h?B.HONEYCOMB:B.AIR);
+      }
+    };
+    // 🍯 Honey Falls: a tall cliff with honey pouring down its face into a pool
+    {
+      const w=WONDERS[0], h=6;
+      flatten(w.x,w.z,8,h);
+      for(let dx=-6;dx<=6;dx++)for(let dz=-5;dz<=-1;dz++)for(let y=h;y<=h+10-Math.abs(dx)/2;y++)put(w.x+dx,y,w.z+dz,B.HONEYCOMB);
+      for(let y=h+1;y<=h+9;y++){put(w.x,y,w.z-1,B.HONEY);put(w.x+1,y,w.z-1,B.HONEY);}
+      for(let dx=-3;dx<=4;dx++)for(let dz=0;dz<=3;dz++)if((dx-0.5)**2+(dz-1)**2<=10)put(w.x+dx,h,w.z+dz,B.HONEY);
+      for(let dx=-2;dx<=3;dx++)put(w.x+dx,h+11,w.z-3,B.HONEYCOMB);
+      pot(w.x-1,h+12,w.z-3);                                     // up on top of the falls
+      for(let i=0;i<9;i++)put(w.x-6+i,h+1+i,w.z-0,B.HONEYCOMB);  // a staircase up the side
+    }
+    // 🥛 The Milk Lake: wide and shallow, with a little island in the middle
+    {
+      const w=WONDERS[1], h=4;
+      for(let dx=-10;dx<=10;dx++)for(let dz=-10;dz<=10;dz++){
+        const d=dx*dx+dz*dz;
+        if(d>100)continue;
+        for(let y=1;y<MH_HEIGHT;y++)put(w.x+dx,y,w.z+dz,y<h?B.HONEYCOMB:y===h?(d<=6?B.HONEYCOMB:B.MILK):B.AIR);
+      }
+      put(w.x,h+1,w.z,B.HONEYTREE); put(w.x,h+2,w.z,B.HONEYTREE);
+      for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++)put(w.x+dx,h+3,w.z+dz,B.HONEY);
+      pot(w.x+1,h+1,w.z);
+    }
+    // 🌳 The Great Honey Tree: a giant, with steps winding up the trunk to a nest at the top
+    {
+      const w=WONDERS[2], h=top(w.x,w.z), H=12;
+      flatten(w.x,w.z,5,h);
+      for(let y=h+1;y<=h+H;y++)for(const [dx,dz] of [[0,0],[1,0],[0,1],[1,1]])put(w.x+dx,y,w.z+dz,B.HONEYTREE);
+      const ring=[[-1,0],[-1,1],[0,2],[1,2],[2,1],[2,0],[1,-1],[0,-1]];
+      for(let i=0;i<H-1;i++){const [dx,dz]=ring[i%8];put(w.x+dx,h+1+i,w.z+dz,B.HONEYCOMB);}
+      for(let dx=-4;dx<=5;dx++)for(let dz=-4;dz<=5;dz++)for(let dy=0;dy<=2;dy++){
+        const d=(dx-0.5)**2+(dz-0.5)**2;
+        if(d>(dy===2?9:20))continue;
+        const b=getBlockIn(M,w.x+dx,h+H+dy,w.z+dz);
+        if(b===B.AIR)put(w.x+dx,h+H+dy,w.z+dz,B.HONEY);
+      }
+      for(const [dx,dz] of [[0,0],[1,0],[0,1],[1,1]])put(w.x+dx,h+H+1,w.z+dz,B.HONEYCOMB);
+      pot(w.x,h+H+2,w.z);
+      clearAbove(w.x,h+H+3,w.z,2);
+    }
+    // 🐝 The Giant Hive: a honeycomb dome, hollow, with a doorway — bees outside
+    {
+      const w=WONDERS[3], h=top(w.x,w.z), R=6;
+      flatten(w.x,w.z,R+2,h);
+      for(let dx=-R;dx<=R;dx++)for(let dz=-R;dz<=R;dz++)for(let dy=0;dy<=R;dy++){
+        const d=Math.sqrt(dx*dx+dz*dz+dy*dy*1.3);
+        if(d<=R&&d>R-1.2)put(w.x+dx,h+1+dy,w.z+dz,B.HONEYCOMB);
+      }
+      for(let dy=1;dy<=3;dy++)for(let dx=-1;dx<=1;dx++)for(let dz=R-2;dz<=R;dz++)put(w.x+dx,h+dy,w.z+dz,B.AIR);   // the doorway
+      for(const [dx,dz] of [[-2,-2],[2,-2],[-3,1],[3,1]])put(w.x+dx,h+1,w.z+dz,B.HONEY);
+      put(w.x,h+R-1,w.z,B.GLOW);
+      pot(w.x,h+1,w.z-2);
+      hivePos={x:w.x,y:h+R+1,z:w.z};
+    }
+    // ☁️ The Cloud Garden: stepping-stone clouds climbing into the sky
+    {
+      const w=WONDERS[4], h=top(w.x,w.z);
+      const steps=[[-6,-6],[-4,-6],[-2,-5],[0,-4],[2,-3],[3,-1],[3,1],[2,3],[0,4]];
+      steps.forEach(([dx,dz],i)=>{
+        const y=h+2+i*1;
+        for(const [ax,az] of [[0,0],[1,0],[0,1],[1,1]])put(w.x+dx+ax,y,w.z+dz+az,B.MILKCLOUD);
+      });
+      const py=h+2+steps.length;
+      for(let dx=-3;dx<=3;dx++)for(let dz=-3;dz<=3;dz++)if(dx*dx+dz*dz<=10)put(w.x+dx,py,w.z+dz+1,B.MILKCLOUD);
+      put(w.x+1,py+1,w.z+1,B.GLOW);
+      pot(w.x,py+1,w.z+1);
+    }
+    // 🌸 The Flower Meadow: a flat lawn dotted with flowers
+    {
+      const w=WONDERS[5], h=top(w.x,w.z);
+      flatten(w.x,w.z,9,h);
+      const FLOWERS=[B.WOOL_PINK,B.WOOL_WHITE,B.HONEY,B.WOOL_PINK,B.CRYSTAL];
+      for(let dx=-8;dx<=8;dx++)for(let dz=-8;dz<=8;dz++){
+        if(dx*dx+dz*dz>64)continue;
+        const r=rnd3(dx+77,dz+13,5);
+        if(r<0.22)put(w.x+dx,h+1,w.z+dz,FLOWERS[Math.floor(r*100)%FLOWERS.length]);
+      }
+      put(w.x,h+1,w.z,B.AIR); pot(w.x,h+1,w.z);
+    }
+    // 💎 The Crystal Grotto: a hill with a glittering cave tunnelled into it
+    {
+      const w=WONDERS[6], h=top(w.x,w.z);
+      for(let dx=-8;dx<=8;dx++)for(let dz=-8;dz<=8;dz++){
+        const d=Math.sqrt(dx*dx+dz*dz);
+        if(d>8)continue;
+        const hh=h+Math.round((8-d)*0.9);
+        for(let y=1;y<=hh;y++)put(w.x+dx,y,w.z+dz,B.HONEYCOMB);
+      }
+      for(let dx=-8;dx<=2;dx++)for(let dz=-1;dz<=1;dz++)for(let dy=1;dy<=3;dy++)put(w.x+dx,h+dy,w.z+dz,B.AIR);
+      for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++)for(let dy=1;dy<=4;dy++)put(w.x+dx,h+dy,w.z+dz,B.AIR);
+      for(const [dx,dy,dz] of [[-2,4,-2],[2,1,-2],[-2,1,2],[2,3,2],[0,4,0],[-6,3,-1],[-4,3,1],[2,2,0]])put(w.x+dx,h+dy,w.z+dz,B.CRYSTAL);
+      pot(w.x+1,h+1,w.z);
+    }
+    // Five more, hidden around the edges of the land
+    const hide=[[-44,-44],[44,44],[-44,40],[44,-44],[6,-44]];
+    for(const [x,z] of hide){const y=top(x,z);clearAbove(x,y+1,z,3);pot(x,y+1,z);}
+    // a ring of flowers round the Guardian, who now watches over the land
+    for(let a=0;a<12;a++){const x=Math.round(Math.cos(a/12*Math.PI*2)*4), z=-10+Math.round(Math.sin(a/12*Math.PI*2)*4);put(x,top(x,z)+1,z,a%2?B.WOOL_PINK:B.WOOL_WHITE);}
+  }
+  // Where the nearest wonder you haven't found yet is, as an arrow from where you're looking
+  function nextWonder(){
+    let best=null, bd=Infinity;
+    for(const w of WONDERS){if(wondersFound.has(w.id))continue;const d=Math.hypot(w.x-player.pos.x,w.z-player.pos.z);if(d<bd){bd=d;best=w;}}
+    return best;
+  }
+  function arrowTo(x,z){
+    const look=Math.atan2(-Math.sin(player.yaw),-Math.cos(player.yaw));
+    const want=Math.atan2(x-player.pos.x,z-player.pos.z);
+    let d=want-look; while(d>Math.PI)d-=Math.PI*2; while(d<-Math.PI)d+=Math.PI*2;
+    const i=Math.round(d/(Math.PI/4));
+    return ({0:'⬆️',1:'↖️',2:'⬅️',3:'↙️',4:'⬇️','-4':'⬇️','-1':'↗️','-2':'➡️','-3':'↘️'})[i]||'⬆️';
+  }
+  function exploreMilkHoney(){
+    for(const w of WONDERS){
+      if(wondersFound.has(w.id))continue;
+      if(Math.hypot(player.pos.x-w.x,player.pos.z-w.z)<w.r){
+        wondersFound.add(w.id);
+        toast('✨ You discovered '+w.name+'! ('+wondersFound.size+'/'+WONDERS.length+' wonders)',5000);
+        if(typeof sfx==='function')sfx('chime');
+        if(wondersFound.size===WONDERS.length)setTimeout(()=>toast('🧙 Every wonder found! Go back to the Wise Guardian…',6000),2500);
+        checkAchievements();
+      }
+    }
+  }
+  // Bees: little yellow-and-black flyers looping round the hive
+  const beeGroup=new THREE.Group();
+  const bees=[];
+  if(FEAT.explore&&FEAT.milkhoney){
+    const yellow=new THREE.MeshLambertMaterial({color:0xffd020}), black=new THREE.MeshLambertMaterial({color:0x1a1a1a}), wing=new THREE.MeshLambertMaterial({color:0xeef6ff,transparent:true,opacity:0.7});
+    for(let i=0;i<10;i++){
+      const g=new THREE.Group();
+      const body=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.2,0.3),yellow); g.add(body);
+      const band=new THREE.Mesh(new THREE.BoxGeometry(0.23,0.21,0.06),black); band.position.z=-0.04; g.add(band);
+      for(const sx of [-1,1]){const w=new THREE.Mesh(new THREE.BoxGeometry(0.16,0.02,0.12),wing);w.position.set(sx*0.14,0.12,0);g.add(w);}
+      beeGroup.add(g); bees.push({g,phase:i*0.63,rad:4+Math.random()*5,h:Math.random()*4,speed:0.6+Math.random()*0.6});
+    }
+  }
+  scene.add(beeGroup);
+  function updateBees(t){
+    beeGroup.visible=currentRealm==='milkhoney'&&!!hivePos;
+    if(!beeGroup.visible)return;
+    for(const b of bees){
+      const a=t*b.speed+b.phase;
+      b.g.position.set(hivePos.x+Math.cos(a)*b.rad,hivePos.y-3+b.h+Math.sin(a*2.3)*0.8,hivePos.z+Math.sin(a)*b.rad);
+      b.g.rotation.y=-a;
     }
   }
 
@@ -1320,6 +1503,10 @@
           if(y<2)c=0xf4f4ee;                                    // sheet showing at the top
         }
       }
+      else if(id===B.HONEYPOT){
+        if(kind===0){if(x===0||x===7||y===0||y===7)c=0xc08010;else if(x>=2&&x<=5&&y>=2&&y<=5)c=0xffb020;}
+        else{if(y===1||y===2)c=0xffe680;if(y<1)c=0xc08010;if((x+y)%5===0)f*=1.15;}
+      }
       else if(id===B.WATER){f=0.9+0.2*(0.5+0.5*Math.sin((x*1.1+y*0.6)+rnd3(id,y,6)*2));if((x+y*2)%7===0)c=0x7ab0f0;}
       else if(id===B.ICE){f=0.95+r(0)*0.08;if(x===y||x===y+3)c=0xdaf0ff;}
       else if(id===B.TORCH){if(kind===0)f=1.15;else if(y<2)c=0xffd040;}
@@ -1377,7 +1564,7 @@
   // `light` (0.8+) gives each face how much sky reaches it and how much torchlight,
   // both judged from the cell the face looks out into. Water goes in its own
   // see-through mesh. Returns {solid, water}.
-  const FULLBRIGHT=[B.PORTAL,B.FIRE_PORTAL,B.GLOW,B.BOSS,B.DEMON,B.LAVA,B.GUARDIAN,B.DARK_MATTER];
+  const FULLBRIGHT=[B.PORTAL,B.FIRE_PORTAL,B.GLOW,B.BOSS,B.DEMON,B.LAVA,B.GUARDIAN,B.DARK_MATTER,B.HONEYPOT];
   function buildGeometry(world,eachBlock,light){
     const bufs=[0,1].map(()=>({p:[],n:[],c:[],u:[],s:[],t:[],i:[],k:0}));
     const lit=(x,y,z,id)=>{
@@ -2691,6 +2878,15 @@
     {id:'villageChest',label:'📦 Loot a village chest',check:()=>achievements.villageChest},
     {id:'darkMatter',label:'🌑 Collect dark matter',check:()=>(inventory[B.DARK_MATTER]||0)>=1}
   ];
+  if(FEAT.explore){
+    // the three puzzles become three exploring goals
+    const at=ACHIEVEMENTS.findIndex(a=>a.id==='puzzle1');
+    ACHIEVEMENTS.splice(at,3,
+      {id:'wonders3',label:'🗺️ Find 3 wonders',check:()=>wondersFound.size>=3},
+      {id:'wondersAll',label:'✨ Find all 7 wonders',check:()=>wondersFound.size>=WONDERS.length},
+      {id:'honeypots',label:'🍯 Collect all 12 honeypots',check:()=>(inventory.honeypot||0)>=HONEYPOTS_TOTAL}
+    );
+  }
   if(FEAT.v08)ACHIEVEMENTS.push(
     {id:'cave',label:'🕳️ Explore a cave',check:()=>achievements.cave},
     {id:'torch',label:'🔥 Light up the dark',check:()=>achievements.torch},
@@ -3160,7 +3356,7 @@
       pos:[player.pos.x,player.pos.y,player.pos.z], yaw:player.yaw, pitch:player.pitch,
       hotbar:hotbarSlots.slice(), aetherHp:aetherBoss?aetherBoss.hp:null, demonHp:demonBoss?demonBoss.hp:null,
       tamed:pets.map(p=>p.tamed), slain:[...slainEntities], flying:player.flying, dayTime,
-      gifted:[...giftedVillagers], bed:bedSpawn, fuel:furnaceFuel
+      gifted:[...giftedVillagers], bed:bedSpawn, fuel:furnaceFuel, wonders:[...wondersFound]
     };
     activeWorld.lastPlayed=Date.now();
     persistWorlds();
@@ -3200,7 +3396,7 @@
     fireballs.length=0;
     for(const o of [inventory,armor,achievements])for(const k in o)delete o[k];
     tools.pickTier=0; tools.swordTier=0; tools.flameSword=false; tools.rod=false;
-    crops.clear(); endFishing(); bedSpawn=null; furnaceFuel=0; respawnPending=false; breath=10; fallTop=null;
+    crops.clear(); endFishing(); wondersFound.clear(); bedSpawn=null; furnaceFuel=0; respawnPending=false; breath=10; fallTop=null;
     hotbarSlots.splice(0,hotbarSlots.length,...DEFAULT_HOTBAR); activeSlot=0;
     timeLeft=TIME_LIMIT; playerHearts=3; gameOver=false; paused=false;
     puzzleOrigin=null; waitingForPuzzleSolve=false; activePuzzleIndex=0;
@@ -3228,6 +3424,7 @@
       (st.tamed||[]).forEach((t,i)=>{if(pets[i])pets[i].tamed=t;});
       for(const id of st.gifted||[])giftedVillagers.add(id);
       bedSpawn=st.bed||null; furnaceFuel=st.fuel||0;
+      for(const id of st.wonders||[])wondersFound.add(id);
       // wheat still growing carries on growing
       for(const [k,v] of st.edits)if(k.startsWith('overworld:')&&WHEATS.includes(v)&&v!==B.WHEAT3)crops.add(k.slice(10));
       for(const id of st.slain||[]){
@@ -3757,6 +3954,28 @@
       }
       toast('⚔️ Hit Demon! HP: '+demonBoss.hp); return;
     }
+    if(r.blockId===B.HONEYPOT){
+      inventory.honeypot=(inventory.honeypot||0)+1;
+      setBlock(r.x,r.y,r.z,B.AIR); rebuildMesh();
+      toast('🍯 A golden honeypot! ('+inventory.honeypot+'/'+HONEYPOTS_TOTAL+')',3500);
+      if(typeof sfx==='function')sfx('chime');
+      checkAchievements();
+      return;
+    }
+    if(r.blockId===B.GUARDIAN&&FEAT.explore){
+      if(achievements.god){toast('🧙 "You are the God of ClaudeCraft, my friend. Wander as you please."',4500);return;}
+      if(wondersFound.size>=WONDERS.length){
+        achievements.god=true;
+        toast('🧙✨ "You have seen every wonder of this land. Kneel, explorer — and rise a GOD!"',6000);
+        checkAchievements();
+        setTimeout(()=>winGame('explorer'),1500);
+        return;
+      }
+      const w=nextWonder();
+      const left=WONDERS.length-wondersFound.size;
+      toast('🧙 "Welcome, traveller! This land has '+WONDERS.length+' wonders — you\'ve found '+wondersFound.size+'. Seek '+w.name+'… follow the arrow '+arrowTo(w.x,w.z)+'. '+(left>1?left+' still to find.':'Just one more!')+'"',7000);
+      return;
+    }
     if(r.blockId===B.GUARDIAN){
       if(achievements.god){toast('🧙 "You are the God of ClaudeCraft, my friend."',4500);return;}
       if(!achievements.puzzle1)startPuzzle(0);
@@ -4098,7 +4317,8 @@
     const TITLES = {
       guardian: {emoji:'👑⚔️', title:'GUARDIAN OF CLAUDECRAFT!', msg:`You beat the Aether Guardian in ${mins}m ${secs}s!`, ranks:{best:'🏆 LEGENDARY GUARDIAN!',mid:'⭐ MIGHTY GUARDIAN!',ok:'👑 NOBLE GUARDIAN!'}},
       emperor:  {emoji:'⚔️🔥👑', title:'EMPEROR OF CLAUDECRAFT!', msg:`You beat the Lava Demon in ${mins}m ${secs}s!`, ranks:{best:'🏆 LEGENDARY EMPEROR!',mid:'⭐ MIGHTY EMPEROR!',ok:'👑 NOBLE EMPEROR!'}},
-      god:      {emoji:'👑✨👑', title:'GOD OF CLAUDECRAFT!', msg:`Solved all 3 puzzles in ${mins}m ${secs}s!`, ranks:{best:'🏆 LEGENDARY GOD!',mid:'⭐ MIGHTY GOD!',ok:'👑 NOBLE GOD!'}}
+      god:      {emoji:'👑✨👑', title:'GOD OF CLAUDECRAFT!', msg:`Solved all 3 puzzles in ${mins}m ${secs}s!`, ranks:{best:'🏆 LEGENDARY GOD!',mid:'⭐ MIGHTY GOD!',ok:'👑 NOBLE GOD!'}},
+      explorer: {emoji:'👑🗺️👑', title:'GOD OF CLAUDECRAFT!', msg:`You explored every wonder of the Land of Milk & Honey in ${mins}m ${secs}s!`, ranks:{best:'🏆 LEGENDARY EXPLORER!',mid:'⭐ MIGHTY EXPLORER!',ok:'👑 NOBLE EXPLORER!'}}
     };
     const t = TITLES[type] || TITLES.god;
     document.getElementById('cc-win-emoji').textContent = t.emoji;
@@ -4210,7 +4430,16 @@
     document.getElementById('cc-portal-hint').style.display=(aFrame&&currentRealm==='overworld'&&holdingDiamond)?'inline-block':'none';
     document.getElementById('cc-fireportal-hint').style.display=(fFrame&&currentRealm==='overworld'&&holdingDiamond)?'inline-block':'none';
     const puzzleHint=document.getElementById('cc-puzzle-hint');
-    if(currentRealm==='milkhoney'&&guardianPos&&!achievements.god){
+    if(FEAT.explore&&currentRealm==='milkhoney'){
+      exploreMilkHoney();
+      updateBees(now/1000);
+      const w=nextWonder();
+      const pots='🍯 '+(inventory.honeypot||0)+'/'+HONEYPOTS_TOTAL;
+      const txt=w?'🗺️ Wonders '+wondersFound.size+'/'+WONDERS.length+' · '+pots+' · next '+arrowTo(w.x,w.z)
+        :achievements.god?'👑 Every wonder found · '+pots:'🧙 All wonders found! Go back to the Wise Guardian '+arrowTo(guardianPos.x,guardianPos.z)+' · '+pots;
+      puzzleHint.textContent=txt; puzzleHint.style.display='inline-block';
+    } else if(FEAT.explore){puzzleHint.style.display='none';updateBees(0);}
+    else if(currentRealm==='milkhoney'&&guardianPos&&!achievements.god){
       const dist=Math.sqrt((player.pos.x-guardianPos.x)**2+(player.pos.z-guardianPos.z)**2);
       if(dist<12){
         let txt='';
