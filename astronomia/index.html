@@ -6429,7 +6429,7 @@ const GAS_DISK_VERT = `
     float px = aSize * sc * uScale / max(-mv.z, 1e-9);
     // gas coming towards you is brighter and bluer
     vec3 vt = normalize(mat3(modelViewMatrix) * vec3(-sin(a), cos(a), 0.0));
-    float beam = 1.0 + 0.8 * vt.z;
+    float beam = 1.0 + 0.55 * vt.z;
     vCol = aCol * beam * vec3(0.9 - 0.1 * vt.z, 1.0, 1.0 + 0.15 * vt.z);
     vA = min(1.0, px * px / 16.0);
     vRot = a + aPhase;
@@ -6452,8 +6452,8 @@ const GAS_DISK_FRAG = `
     if (q.x < 0.0 || q.x > 1.0 || q.y < 0.0 || q.y > 1.0) discard;
     vec2 tile = vec2(mod(vTile, 2.0), floor(vTile / 2.0)) * 0.5;
     float wisp = texture2D(uMap, tile + q * 0.5).a;
-    float soft = exp(-dot(q - 0.5, q - 0.5) * 9.0);
-    gl_FragColor = vec4(vCol, (wisp * 0.75 + soft * 0.25) * vA);
+    float soft = exp(-dot(q - 0.5, q - 0.5) * 7.0);
+    gl_FragColor = vec4(vCol, (wisp * 0.6 + soft * 0.55) * vA);
   }`;
 
 function makeGasDisk() {
@@ -6474,11 +6474,13 @@ function makeGasDisk() {
         const arm = rng() < 0.5 ? 0 : Math.PI;
         aPh[i] = arm - 2.6 * Math.log(r / 0.26) + (rng() + rng() - 1) * 0.32;
       } else aPh[i] = rng() * TAU;
-      aH[i] = (rng() + rng() + rng() - 1.5) * 0.04 * r;
-      aS[i] = (0.035 + rng() * 0.07) * (0.6 + r);
+      // Puffed up, and each wisp a big soft cloud, so the disc reads as one
+      // thick body of gas rather than a scatter of specks.
+      aH[i] = (rng() + rng() + rng() - 1.5) * 0.085 * r;
+      aS[i] = (0.07 + rng() * 0.12) * (0.6 + r);
       const t = (r - 0.26) / 0.74;
       const c = t < 0.25 ? mix(HOT, MID, t / 0.25) : mix(MID, RIM, (t - 0.25) / 0.75);
-      const glow = (1.25 - t * 0.85) * (0.75 + rng() * 0.5) * 0.55;
+      const glow = (1.25 - t * 0.85) * (0.75 + rng() * 0.5) * 0.12;
       aC[i * 3] = c[0] * glow; aC[i * 3 + 1] = c[1] * glow; aC[i * 3 + 2] = c[2] * glow;
     }
     gasDiskGeo = new THREE.BufferGeometry();
