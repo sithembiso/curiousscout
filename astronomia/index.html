@@ -6923,6 +6923,12 @@ const GAL_SPHERE_FRAG = `
   void main() {
     #include <logdepthbuf_fragment>
     float mu = clamp(dot(normalize(vN), normalize(vV)), 0.0, 1.0);
+    // A black hole comes through with no colour at all: a perfect black ball
+    // with a thin bright ring where light skims round the edge.
+    if (vC.r + vC.g + vC.b < 0.01) {
+      gl_FragColor = vec4(vec3(1.0, 0.78, 0.55) * pow(1.0 - mu, 7.0) * 1.6, 1.0);
+      return;
+    }
     // boiling granulation, two scales drifting against each other
     float g = n3(vP * 13.0 + uTime * 0.25) * 0.6 + n3(vP * 34.0 - uTime * 0.4) * 0.4;
     vec3 c = vC * (0.62 + 0.5 * g);
@@ -6942,8 +6948,45 @@ const GAL_TYPES = [
   { name: 'Sun-like star', T: [5000, 6200],   R: [0.8, 1.3],  px: [1.1, 1.6] },
   { name: 'white star',    T: [7400, 10000],  R: [1.4, 2.4],  px: [1.4, 2.0] },
   { name: 'blue giant',    T: [15000, 35000], R: [4, 10],     px: [2.7, 3.3] },
-  { name: 'red giant',     T: [3300, 4600],   R: [12, 70],    px: [2.0, 2.6] }
+  { name: 'red giant',     T: [3300, 4600],   R: [12, 70],    px: [2.0, 2.6] },
+  { name: 'white dwarf',   T: [8000, 30000],  R: [0.008, 0.02], px: [0.7, 1.0],
+    note: 'the cooling core of a dead Sun-like star, the size of the Earth' },
+  { name: 'neutron star',  T: [6e5, 1e6],     R: [1.3e-5, 1.6e-5], px: [0.8, 1.1], col: [0.75, 0.85, 1.0],
+    note: 'what a supernova leaves behind: a city-sized ball of neutrons, spinning many times a second' },
+  { name: 'black hole',    T: [0, 0],         R: [3e-5, 1.2e-4], px: [0.6, 0.8], col: [0.45, 0.28, 0.85],
+    note: 'all that is left of a giant star; the faint violet glow is gas heating up as it falls in' },
+  { name: 'brown dwarf',   T: [800, 2200],    R: [0.08, 0.12], px: [0.6, 0.8], col: [0.77, 0.2, 0.23],
+    note: 'a failed star, too small ever to start fusing hydrogen' },
+  { name: 'Wolf–Rayet star', T: [5e4, 1.2e5], R: [1, 3],      px: [3.0, 3.3],
+    note: 'a giant that has blown its own outer layers away; it will go supernova soon' },
+  { name: 'red supergiant', T: [3300, 3900],  R: [300, 900],   px: [3.0, 3.4],
+    note: 'one of the biggest stars there is — put it where the Sun is and it would swallow Jupiter' }
 ];
+const GAL_BH = 7;
+/* How common each kind is. Young discs: mostly red dwarfs, a few hot giants,
+   and the remains of stars that have already died. Old populations (bulges,
+   ellipticals, globular clusters) have lost every massive star long ago. */
+function pickGalKind(old, blue, rng) {
+  const r = rng();
+  if (old) {
+    return r < 0.50 ? 0 : r < 0.75 ? 1 : r < 0.86 ? 4 : r < 0.96 ? 5 : r < 0.985 ? 8 : r < 0.994 ? 6 : GAL_BH;
+  }
+  return r < 0.40 ? 0 : r < 0.68 ? 1 : r < 0.75 ? 2 : r < 0.80 ? (blue ? 3 : 2) : r < 0.85 ? 4
+    : r < 0.91 ? 5 : r < 0.96 ? 8 : r < 0.975 ? 6 : r < 0.983 ? GAL_BH : r < 0.987 ? (blue ? 9 : 3) : 10;
+}
+/** Give one star slot its kind, temperature, colour, size and brightness. */
+function setGalStar(k, kind, rng) {
+  const st8 = GAL_TYPES[kind];
+  const T = lerp(st8.T[0], st8.T[1], rng());
+  const sc = st8.col ? st8.col.map(v => v * 255) : kelvinToRGB(T);
+  const k3 = k * 3;
+  galx.kind[k] = kind;
+  galx.temp[k] = T;
+  galx.rad[k] = lerp(st8.R[0], st8.R[1], Math.pow(rng(), 1.5)) * R_SUN * R_EARTH;
+  galx.scol[k3] = sc[0] / 255; galx.scol[k3 + 1] = sc[1] / 255; galx.scol[k3 + 2] = sc[2] / 255;
+  // its size as a point of light: mostly faint pinpricks, a few bright ones
+  galx.ssz[k] = lerp(st8.px[0], st8.px[1], rng());
+}
 
 /* ...and the stars inside the clouds. The same orbiting points drawn a second
    time as crisp, screen-sized stars, so the gas has stars in it at every zoom:
@@ -6969,7 +7012,10 @@ const GAL_STAR_VERT = `
     // reaching out a few radii round the sphere drawn by galx.mesh.
     float disc = aRad * uScale / max(-mv.z, 1e-9);
     vNear = smoothstep(0.6, 2.0, disc);
-    s = max(s * uDpr, min(disc * 9.0, 900.0));
+    // A star you are flying up to gets brighter long before it shows a disc:
+    // the Sun is dazzling even from Saturn, where it is a fifth of a pixel.
+    s = max(s * uDpr, min(sqrt(disc) * 14.0 * uDpr, 80.0));
+    s = max(s, min(disc * 9.0, 900.0));
     gl_PointSize = aSize > 0.0 ? s : 0.0;
     if (aSize <= 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
   }`;
@@ -7132,6 +7178,7 @@ function seedGalaxyStars(b) {
   const BULGE_SHARE = { spiral: 0.24, barred: 0.18, ring: 0.16, elliptical: 1, irregular: 0.08, dwarf: 0.06 }[shape];
 
   const want = Math.min(b.galN || GAL_STARS, galx.free.length);
+  const mine = [];
   for (let i = 0; i < want; i++) {
     const k = galx.free.pop();
     const k3 = k * 3;
@@ -7244,26 +7291,59 @@ function seedGalaxyStars(b) {
 
     galx.col[k3] = c[0]; galx.col[k3 + 1] = c[1]; galx.col[k3 + 2] = c[2];
     galx.siz[k] = s;
-    // What kind of star this actually is.
-    const roll = rng();
-    let kind;
-    if (old) kind = roll < 0.55 ? 0 : roll < 0.85 ? 1 : 4;
-    else if (roll < 0.45) kind = 0;
-    else if (roll < 0.78) kind = 1;
-    else if (roll < 0.92) kind = c[2] > c[0] && rng() < 0.7 ? 3 : 2;   // blue giants on the young arms
-    else kind = 4;
-    const st8 = GAL_TYPES[kind];
-    const T = lerp(st8.T[0], st8.T[1], rng());
-    const sc = kelvinToRGB(T);
-    galx.kind[k] = kind;
-    galx.temp[k] = T;
-    galx.rad[k] = lerp(st8.R[0], st8.R[1], Math.pow(rng(), 1.5)) * R_SUN * R_EARTH;
-    galx.scol[k3] = sc[0] / 255; galx.scol[k3 + 1] = sc[1] / 255; galx.scol[k3 + 2] = sc[2] / 255;
-    // its size as a point of light: mostly faint pinpricks, a few bright ones
-    galx.ssz[k] = lerp(st8.px[0], st8.px[1], rng());
+    // What kind of star this actually is. Blue giants live on the young arms.
+    setGalStar(k, pickGalKind(old, c[2] > c[0] && rng() < 0.7, rng), rng);
     galx.own[k] = b.id;
     galx.live++;
+    mine.push(k);
   }
+
+  /* ---- star clusters. Globulars: tight balls of ancient stars swarming
+     round the halo on orbits tipped every way. Open clusters: little families
+     of young stars on the arms, still together where they were born. */
+  const CL = { spiral: [12, 14], barred: [12, 14], ring: [6, 10], irregular: [3, 8], dwarf: [2, 2], elliptical: [24, 0] }[shape];
+  let lo = 0, hi = mine.length - 1;
+  for (let ci = 0; ci < CL[0] && hi - lo > 60; ci++) {
+    const rc = (25 + rng() * 45) * LY_GM;
+    const d = new THREE.Vector3(gauss(), gauss(), gauss()).normalize();
+    const rr = R * (0.12 + Math.pow(rng(), 0.8) * 0.85);
+    const tan = new THREE.Vector3(gauss(), gauss(), gauss()).cross(d).normalize();
+    const vcen = galVCirc(b.m, rr, soft) * rnd(0.6, 0.9);
+    let first = -1;
+    for (let m = 0; m < 40; m++) {
+      const k = mine[lo++], k3 = k * 3;
+      if (first < 0) first = k;
+      galx.pos[k3] = b.p.x + d.x * rr + gauss() * rc * 1.4;
+      galx.pos[k3 + 1] = b.p.y + d.y * rr + gauss() * rc * 1.4;
+      galx.pos[k3 + 2] = b.p.z + d.z * rr + gauss() * rc * 1.4;
+      galx.vel[k3] = b.v.x + tan.x * vcen + gauss() * vcen * 0.01;
+      galx.vel[k3 + 1] = b.v.y + tan.y * vcen + gauss() * vcen * 0.01;
+      galx.vel[k3 + 2] = b.v.z + tan.z * vcen + gauss() * vcen * 0.01;
+      galx.col[k3] = 0.55; galx.col[k3 + 1] = 0.46; galx.col[k3 + 2] = 0.32;
+      galx.siz[k] = rc * 2.5;
+      setGalStar(k, pickGalKind(true, false, rng), rng);
+    }
+    nebulae.push({ gal: b.id, k: first, kind: 'globular', R: rc * 2, puffs: [],
+      name: (rng() < 0.5 ? 'NGC ' : 'M ') + (1 + ((rng() * 7800) | 0)) });
+  }
+  for (let ci = 0; ci < CL[1] && hi - lo > 30; ci++) {
+    const a = mine[hi--], a3 = a * 3;
+    const rc = (4 + rng() * 8) * LY_GM;
+    for (let m = 0; m < 14; m++) {
+      const k = m === 0 ? a : mine[hi--], k3 = k * 3;
+      if (m > 0) {
+        galx.pos[k3] = galx.pos[a3] + gauss() * rc; galx.pos[k3 + 1] = galx.pos[a3 + 1] + gauss() * rc;
+        galx.pos[k3 + 2] = galx.pos[a3 + 2] + gauss() * rc;
+        galx.vel[k3] = galx.vel[a3]; galx.vel[k3 + 1] = galx.vel[a3 + 1]; galx.vel[k3 + 2] = galx.vel[a3 + 2];
+        galx.siz[k] = rc;
+      }
+      const r = rng();
+      setGalStar(k, r < 0.2 ? 3 : r < 0.5 ? 2 : 1, rng);
+    }
+    nebulae.push({ gal: b.id, k: a, kind: 'open', R: rc * 2.5, puffs: [],
+      name: (rng() < 0.5 ? 'NGC ' : 'Collinder ') + (1 + ((rng() * 7800) | 0)) });
+  }
+
   galx.dirty = true;
   if (nebx.pts) seedNebulae(b);
 }
@@ -7437,6 +7517,21 @@ function buildGalaxy(b, grp) {
   core.renderOrder = -4;
   grp.add(core);
   b.parts.galCore = core;
+
+  /* The supermassive black hole at the very middle, at its real size: a few
+     million Suns in a spiral (Sagittarius A* is 4.3 million), billions in a
+     giant elliptical, a few hundred thousand in a dwarf. */
+  const shape = TYPES[b.type].shape || 'spiral';
+  const f = Math.pow(b.galR / GAL_R_MW, 2) * (shape === 'elliptical' ? 30 : shape === 'dwarf' ? 3 : 1);
+  b.smbhM = 4.3e6 * M_SUN * f;
+  const shadow = new THREE.Mesh(SPHERE_LO, new THREE.MeshBasicMaterial({ color: 0x000000 }));
+  const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_PHOTON, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  const disk = new THREE.Mesh(ringGeometry(0.26), new THREE.MeshBasicMaterial({
+    map: cachedTexture('disk', () => accretionTexture(1337, 512)),
+    blending: THREE.AdditiveBlending, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+  disk.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), b.galAxis);
+  grp.add(shadow); grp.add(ring); grp.add(disk);
+  b.parts.smbhShadow = shadow; b.parts.smbhRing = ring; b.parts.smbhDisk = disk;
   b.lightColor = new THREE.Color(0xffe6b8);
 
   seedGalaxyStars(b);
@@ -7459,6 +7554,20 @@ function updateGalaxies() {
       b.parts.galCore.visible = out > 0.01;
     }
     if (b.parts.dot) b.parts.dot.visible = false;
+    if (b.parts.smbhShadow) {
+      const rv = schwarzschild(b.smbhM) * 2.6;
+      b.parts.smbhShadow.scale.setScalar(rv);
+      b.parts.smbhDisk.scale.setScalar(rv * 7);
+      b.parts.smbhRing.scale.setScalar(rv * 5.6);
+      // in the galaxy's own plane (a map may tilt the galaxy after building it),
+      // turning slowly
+      b.smbhSpin = (b.smbhSpin || 0) + 0.004;
+      b.parts.smbhDisk.quaternion.setFromUnitVectors(_ZAXIS, b.galAxis);
+      b.parts.smbhDisk.rotateZ(b.smbhSpin);
+      // only worth drawing once it is more than a speck
+      const on = rv * 7 / wpp > 1.5;
+      b.parts.smbhShadow.visible = b.parts.smbhRing.visible = b.parts.smbhDisk.visible = on;
+    }
   }
   if (galx.pts) {
     // world radius -> pixels at unit distance
@@ -7469,6 +7578,8 @@ function updateGalaxies() {
     if (galx.live > 0) placeGalaxyStars(S);
     else {
       if (galx.mesh) galx.mesh.count = 0;
+      if (galx.planets) galx.planets.count = 0;
+      if (galx.orbits) galx.orbits.visible = false;
       if (nebx.geo) nebx.geo.setDrawRange(0, 0);
     }
     if (galx.dirty) {
@@ -7493,14 +7604,19 @@ function placeGalaxyStars(S) {
   const o = galx.origin.copy(camera.position);
   const pos = galx.pos, gp = galx.gpos, own = galx.own, rad = galx.rad;
   _gNear.length = 0;
+  _gSys.length = 0;
+  const sysR = 40 * AU * S;              // a planetary system's width, for its pixel test
   for (let k = 0; k < GAL_MAX; k++) {
     if (own[k] < 0) continue;
     const k3 = k * 3;
     const x = pos[k3] - o.x, y = pos[k3 + 1] - o.y, z = pos[k3 + 2] - o.z;
     gp[k3] = x; gp[k3 + 1] = y; gp[k3 + 2] = z;
-    const px = rad[k] * S / Math.max(Math.sqrt(x * x + y * y + z * z), 1e-9);
+    const d = Math.max(Math.sqrt(x * x + y * y + z * z), 1e-9);
+    const px = rad[k] * S / d;
     if (px > 0.8) _gNear.push(px, k);
+    if (sysR / d > 10) _gSys.push(sysR / d, k);
   }
+  placePlanets(S);
   galx.geo.attributes.position.needsUpdate = true;
   galx.pts.position.copy(o);
   galx.stars.position.copy(o);
@@ -7518,7 +7634,8 @@ function placeGalaxyStars(S) {
     _gt.set(gp[k3], gp[k3 + 1], gp[k3 + 2]);
     _gs.setScalar(rad[k]);
     sm.setMatrixAt(n, _gm.compose(_gt, _gq, _gs));
-    sm.instanceColor.setXYZ(n, galx.scol[k3], galx.scol[k3 + 1], galx.scol[k3 + 2]);
+    if (galx.kind[k] === GAL_BH) sm.instanceColor.setXYZ(n, 0, 0, 0);
+    else sm.instanceColor.setXYZ(n, galx.scol[k3], galx.scol[k3 + 1], galx.scol[k3 + 2]);
     n++;
   }
   sm.count = n;
@@ -7808,7 +7925,12 @@ const NEB_KINDS = {
   planetary:  { name: 'planetary nebula',  R: [0.6, 2.5], n: 54,
     note: 'the glowing shell a dying Sun-like star has puffed off — the Sun will make one in five billion years' },
   remnant:    { name: 'supernova remnant', R: [15, 70], n: 96,
-    note: 'the still-expanding blast shell of a star that exploded' }
+    note: 'the still-expanding blast shell of a star that exploded' },
+  // Star clusters ride in the same list so they can be clicked the same way.
+  globular:   { name: 'globular cluster', R: [0, 0], n: 0,
+    note: 'a ball of ancient stars, older than almost anything else in the galaxy, swarming round its halo' },
+  open:       { name: 'open cluster', R: [0, 0], n: 0,
+    note: 'a family of young stars born together out of the same cloud, like the Pleiades' }
 };
 // How many of each a galaxy of each shape gets: young galaxies are full of
 // nurseries; an elliptical has almost no gas left and only dying stars' shells.
@@ -7910,7 +8032,6 @@ function initNebulae() {
 const NEB_PREFIX = ['NGC', 'IC', 'Sh2-', 'RCW', 'M', 'NGC'];
 /** Give a galaxy its nebulae, pinned to stars of the right kind. */
 function seedNebulae(b) {
-  removeNebulae(b.id);
   const shape = TYPES[b.type].shape || 'spiral';
   const mix = NEB_MIX[shape];
   const rng = mulberry32(b.seed ^ 0x6e6562);
@@ -8034,6 +8155,162 @@ function focusNebula(nb) {
     (ly < 10 ? ly.toFixed(1) : Math.round(ly).toLocaleString()) + ' light-years across: ' + spec.note + '.');
 }
 
+/* ---------------------------------------------------------------- planets */
+/*
+ * Most stars have planets, so here they do too: a star's system is made up
+ * on demand from its slot number — the same star always has the same worlds —
+ * and drawn only while the system is near enough to see. Inner worlds are
+ * small and rocky, outer ones mostly giants; each goes round on its real
+ * Kepler period, in time with the simulation.
+ */
+const PLANET_MAX = 480;
+const PLANET_HOSTS = new Set([0, 1, 2, 4, 5]);
+const _gSys = [];
+const sysCache = new Map();
+const ROCKY = [[0.55, 0.45, 0.38], [0.30, 0.50, 0.85], [0.75, 0.40, 0.25], [0.85, 0.90, 0.95], [0.35, 0.6, 0.35]];
+const GIANT = [[0.85, 0.72, 0.55], [0.55, 0.72, 0.95], [0.90, 0.84, 0.68], [0.75, 0.6, 0.5]];
+
+function planetsOf(k) {
+  const key = galx.temp[k];
+  const hit = sysCache.get(k);
+  if (hit && hit.key === key) return hit;
+  let sys = { key, list: [] };
+  if (PLANET_HOSTS.has(galx.kind[k])) {
+    const r = mulberry32((k * 2654435761) ^ ((key * 1000) | 0));
+    if (r() > 0.25) {
+      const ax = new THREE.Vector3(r() - 0.5, 1.2, r() - 0.5).normalize();
+      const e1 = new THREE.Vector3(1, 0, 0).cross(ax).normalize();
+      const e2 = new THREE.Vector3().crossVectors(ax, e1);
+      sys.e1 = e1; sys.e2 = e2;
+      const n = 1 + ((r() * 7) | 0);
+      let a = (0.05 + r() * 0.3) * AU;
+      for (let i = 0; i < n; i++) {
+        a *= 1.4 + r() * 0.9;
+        const gas = a > 2.5 * AU ? r() < 0.7 : r() < 0.08;
+        const pal = gas ? GIANT : ROCKY;
+        sys.list.push({
+          a, phase: r() * TAU,
+          period: 365.25 * Math.pow(a / AU, 1.5),
+          r: (gas ? lerp(3.5, 11.5, r()) : lerp(0.4, 2.2, r())) * R_EARTH,
+          col: pal[(r() * pal.length) | 0]
+        });
+      }
+    }
+  }
+  if (sysCache.size > 4000) sysCache.clear();
+  sysCache.set(k, sys);
+  return sys;
+}
+
+const PLANET_VERT = `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  attribute vec3 aSun;
+  varying vec3 vN;
+  varying vec3 vL;
+  varying vec3 vC;
+  void main() {
+    vec4 wp = instanceMatrix * vec4(position, 1.0);
+    vN = normalize(mat3(instanceMatrix) * normal);
+    vL = normalize(aSun - wp.xyz);
+    #ifdef USE_INSTANCING_COLOR
+      vC = instanceColor;
+    #else
+      vC = vec3(1.0);
+    #endif
+    gl_Position = projectionMatrix * modelViewMatrix * wp;
+    #include <logdepthbuf_vertex>
+  }`;
+const PLANET_FRAG = `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  varying vec3 vN;
+  varying vec3 vL;
+  varying vec3 vC;
+  void main() {
+    #include <logdepthbuf_fragment>
+    float lit = max(dot(normalize(vN), normalize(vL)), 0.0);
+    gl_FragColor = vec4(vC * (0.16 + 0.84 * lit), 1.0);
+  }`;
+
+function placePlanets(S) {
+  let pm = galx.planets;
+  if (!pm) {
+    const geo = new THREE.SphereGeometry(1, 24, 16);
+    geo.setAttribute('aSun', new THREE.InstancedBufferAttribute(new Float32Array(PLANET_MAX * 3), 3));
+    pm = galx.planets = new THREE.InstancedMesh(geo, new THREE.ShaderMaterial({
+      vertexShader: PLANET_VERT, fragmentShader: PLANET_FRAG
+    }), PLANET_MAX);
+    pm.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(PLANET_MAX * 3), 3);
+    pm.frustumCulled = false;
+    scene.add(pm);
+  }
+  pm.position.copy(galx.origin);
+  const idx = [];
+  for (let i = 0; i < _gSys.length; i += 2) idx.push(i);
+  if (idx.length > 60) idx.sort((a, b) => _gSys[b] - _gSys[a]).length = 60;
+  const sun = pm.geometry.attributes.aSun;
+  const gp = galx.gpos;
+  let n = 0;
+  for (const i of idx) {
+    const k = _gSys[i + 1], k3 = k * 3;
+    const sys = planetsOf(k);
+    const sx = gp[k3], sy = gp[k3 + 1], sz = gp[k3 + 2];
+    for (const pl of sys.list) {
+      if (n >= PLANET_MAX) break;
+      const th = pl.phase + TAU * sim.time / pl.period;
+      const c = Math.cos(th) * pl.a, sn = Math.sin(th) * pl.a;
+      _gt.set(sx + sys.e1.x * c + sys.e2.x * sn, sy + sys.e1.y * c + sys.e2.y * sn, sz + sys.e1.z * c + sys.e2.z * sn);
+      // never smaller than a pixel or so, so a system reads as a set of dots
+      const dist = Math.max(_gt.length(), 1e-9);
+      _gs.setScalar(Math.max(pl.r, dist / S * 2.0));
+      pm.setMatrixAt(n, _gm.compose(_gt, _gq, _gs));
+      pm.instanceColor.setXYZ(n, pl.col[0], pl.col[1], pl.col[2]);
+      sun.setXYZ(n, sx, sy, sz);
+      n++;
+    }
+  }
+  pm.count = n;
+  pm.instanceMatrix.needsUpdate = true;
+  pm.instanceColor.needsUpdate = true;
+  sun.needsUpdate = true;
+  placeOrbits();
+}
+
+/* Faint orbit rings round the star you are locked on to, so its system reads
+   as a system even while the planets are only dots. */
+const ORBIT_SEG = 96, ORBIT_MAX = 8;
+function placeOrbits() {
+  let ol = galx.orbits;
+  if (!ol) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ORBIT_MAX * ORBIT_SEG * 2 * 3), 3));
+    ol = galx.orbits = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+      color: 0x8fb4ff, transparent: true, opacity: 0.28, depthWrite: false, blending: THREE.AdditiveBlending }));
+    ol.frustumCulled = false;
+    scene.add(ol);
+  }
+  const k = galx.focus;
+  const sys = k >= 0 && galx.own[k] >= 0 ? planetsOf(k) : null;
+  if (!sys || !sys.list.length) { ol.visible = false; return; }
+  const arr = ol.geometry.attributes.position.array, gp = galx.gpos, k3 = k * 3;
+  let v = 0;
+  for (const pl of sys.list.slice(0, ORBIT_MAX)) {
+    for (let i = 0; i < ORBIT_SEG; i++) {
+      for (const j of [i, i + 1]) {
+        const t = j / ORBIT_SEG * TAU, c = Math.cos(t) * pl.a, sn = Math.sin(t) * pl.a;
+        arr[v++] = gp[k3] + sys.e1.x * c + sys.e2.x * sn;
+        arr[v++] = gp[k3 + 1] + sys.e1.y * c + sys.e2.y * sn;
+        arr[v++] = gp[k3 + 2] + sys.e1.z * c + sys.e2.z * sn;
+      }
+    }
+  }
+  ol.geometry.setDrawRange(0, v / 3);
+  ol.geometry.attributes.position.needsUpdate = true;
+  ol.position.copy(galx.origin);
+  ol.visible = true;
+}
+
 /** The galaxy star nearest a click, or -1. */
 function pickGalaxyStar(sx, sy) {
   if (!galx.own || galx.live === 0) return -1;
@@ -8055,8 +8332,13 @@ function focusGalaxyStar(k) {
   sim.follow = null;
   const ty = GAL_TYPES[galx.kind[k]];
   const rs = galx.rad[k] / (R_SUN * R_EARTH);
-  toast('Locked on to a ' + ty.name + ' — ' + rs.toPrecision(2) + ' R☉, ' +
-    Math.round(galx.temp[k]).toLocaleString() + ' K. Scroll in to visit it.');
+  const size = rs < 0.05 ? Math.round(galx.rad[k] * 1e6).toLocaleString() + ' km across'
+    : (rs >= 100 ? Math.round(rs).toLocaleString() : rs.toPrecision(2)) + ' R☉';
+  const hot = galx.temp[k] > 0 ? ', ' + Math.round(galx.temp[k]).toLocaleString() + ' K' : '';
+  const np = planetsOf(k).list.length;
+  toast('Locked on to ' + (/^[aeiou]/i.test(ty.name) ? 'an ' : 'a ') + ty.name + ' — ' + size + hot +
+    (ty.note ? '. ' + ty.note[0].toUpperCase() + ty.note.slice(1) : '') +
+    (np ? '. It has ' + np + ' planet' + (np > 1 ? 's' : '') : '') + '. Scroll in to visit it.');
 }
 
 /* ================================================== protoplanetary discs   */
@@ -11165,6 +11447,7 @@ function renderGalaxyInspector(b) {
     '<input type="range" id="is-gwide" min="9" max="12.8" step="0.01" value="' + lr.toFixed(3) + '"></div>' +
     '<p class="an-note">Changing this rebuilds the disc from scratch, so anything already happening to it is lost.</p>' +
     '<div class="an-row"><button id="is-reseed">REBUILD THE DISC</button></div>' +
+    '<div class="an-row"><button id="is-smbh">VISIT THE BLACK HOLE</button></div>' +
     '<div class="an-row"><button id="is-follow">' + (sim.follow === b ? 'UNFOLLOW' : 'FOLLOW') + '</button><button id="is-zoom">ZOOM TO</button></div>' +
     '<div class="an-row"><button id="is-del" class="an-danger">REMOVE</button></div>' +
     '<p style="font-size:11px;line-height:1.55;color:var(--ink-dim);margin-top:13px">' +
@@ -11200,6 +11483,16 @@ function renderGalaxyInspector(b) {
   });
 
   $('is-reseed').addEventListener('click', () => { seedGalaxyStars(b); b.galMerged = 0; renderInspector(); toast(b.name + '’s disc rebuilt'); });
+  $('is-smbh').addEventListener('click', () => {
+    galx.focus = -1;
+    sim.follow = b;
+    view.target.copy(b.p);
+    view.dist = schwarzschild(b.smbhM) * 2.6 * 40;
+    const ms = b.smbhM / M_SUN;
+    toast('The supermassive black hole at the heart of ' + b.name + ': ' +
+      (ms >= 1e9 ? (ms / 1e9).toPrecision(2) + ' billion' : (ms / 1e6).toPrecision(2) + ' million') +
+      ' times the mass of the Sun, squeezed into a ball smaller than our Solar System.');
+  });
   $('is-follow').addEventListener('click', () => { sim.follow = sim.follow === b ? null : b; renderInspector(); });
   $('is-zoom').addEventListener('click', () => { frameOn(b, 2.4); sim.follow = b; renderInspector(); });
   $('is-del').addEventListener('click', () => { select(null); removeBody(b); compact(); });
@@ -12507,6 +12800,7 @@ function openHelp() {
     '<li><b>Dwarf</b> — a tiny galaxy a few thousand light-years across. The most common kind in the universe.</li>' +
     '</ul>' +
     '<p>Every galaxy is full of <b>nebulae</b> at their real sizes: pink <b>emission nebulae</b> where stars are being born, blue <b>reflection nebulae</b>, the small glowing rings of <b>planetary nebulae</b> and the red-and-green shells of <b>supernova remnants</b>. From a whole galaxy away they are specks — zoom in on an arm and they open up. Click one to lock on and fly into it. Ellipticals have almost no gas left, so they only have the shells of dying stars.</p>' +
+    '<p>And everything else a real galaxy holds: every kind of star — red dwarfs, Sun-like stars, blue giants, red giants and supergiants, Wolf–Rayet stars, brown dwarfs — and the remains of dead ones: <b>white dwarfs</b>, <b>neutron stars</b> and <b>black holes</b>. Most stars have <b>planets</b>: lock on to one and its orbits are drawn, and the worlds go round in time with the clock. Ancient <b>globular clusters</b> swarm round the halo, young <b>open clusters</b> sit on the arms, and at the very middle of every galaxy is a <b>supermassive black hole</b> with its glowing disc — select the galaxy and press <b>VISIT THE BLACK HOLE</b>.</p>' +
     '<h3>SINGULARITIES AND UNIVERSES</h3>' +
     '<ul>' +
     '<li>A <b>Singularity</b> (under <b>Cosmic</b>) is a point of infinite density with no event horizon around it. It swallows anything that touches it, and it shimmers through every colour.</li>' +
