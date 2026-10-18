@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>ClaudeCraft 0.7 - Biomes of Darkness</title>
+<title>ClaudeCraft 0.7.1 - Topped Up</title>
 <style>
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #87CEEB; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; user-select: none; touch-action: none; }
   #cc-root { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
@@ -18,12 +18,20 @@
   <div id="cc-release" style="position: absolute; inset: 0; background: rgba(40, 25, 5, 0.92); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 30; padding: 20px;">
     <div style="background: linear-gradient(135deg, #ffd866, #ffaa44); color: #2a1a00; max-width: 540px; width: 100%; border-radius: 16px; padding: 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.5); max-height: 90%; overflow-y: auto;">
       <div style="text-align: center; margin-bottom: 14px;">
-        <div style="font-size: 38px; margin-bottom: 4px;">🌲🌑</div>
-        <div style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">Version 0.7 is here!</div>
-        <div style="font-size: 14px; font-weight: 600; color: #8a4a00;">Biomes of Darkness 🏜️🌲⛰️🌙</div>
+        <div style="font-size: 38px; margin-bottom: 4px;">🐄🛏️🌧️</div>
+        <div style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">Version 0.7.1 is here!</div>
+        <div style="font-size: 14px; font-weight: 600; color: #8a4a00;">Topped Up 🐑🐔🌨️</div>
       </div>
       <div style="background: rgba(255,255,255,0.45); border-radius: 12px; padding: 14px; margin-bottom: 14px;">
-        <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #4a2400;">✨ WHAT'S NEW IN 0.7</div>
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #4a2400;">✨ WHAT'S NEW IN 0.7.1</div>
+        <ul style="margin: 0 0 12px; padding-left: 18px; font-size: 13px; line-height: 1.6;">
+          <li><b>🐄 FARM ANIMALS</b> — cows, sheep and chickens in the grasslands. Click a cow for <b>milk</b> 🥛, a chicken for an <b>egg</b> 🥚, a sheep for <b>wool</b> 🐑 (it grows back!)</li>
+          <li><b>🛏️ BEDS</b> — craft one from 3 wool + 3 wood, click it at night and sleep till morning</li>
+          <li><b>🌧️ WEATHER</b> — rain showers, and snow in the taiga and up on the peaks 🌨️ (try <b>/weather rain</b>)</li>
+          <li><b>🎒 A SMARTER HOTBAR</b> — new blocks you pick up (sand, planks, glass, wool…) jump into an empty slot so you can build with them</li>
+          <li><b>🏆 3 new achievements</b></li>
+        </ul>
+        <div style="font-size: 12px; font-weight: 700; margin-bottom: 6px; color: #4a2400;">ALSO IN 0.7 — BIOMES OF DARKNESS</div>
         <ul style="margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6;">
           <li><b>🌍 AN ENDLESS WORLD</b> — the Overworld never ends, and 1,000 blocks out it breaks into the <b>Far Lands</b> 🌌</li>
           <li><b>🏜️ BIOMES</b> — plains, forests, deserts, snowy taiga and towering mountains</li>
@@ -35,15 +43,15 @@
         </ul>
       </div>
       <div style="font-size: 11px; opacity: 0.75; text-align: center; margin-bottom: 14px;">
-        Previous: 0.6 (Demons & Angels) · 0.5 (Pets) · 0.4 (Swords) · 0.3 (Milk & Honey) · 0.2 (Underworld) · 0.1 (Aether)
+        Previous: 0.7 (Biomes of Darkness) · 0.6 (Demons & Angels) · 0.5 (Pets) · 0.4 (Swords) · 0.3 (Milk & Honey) · 0.2 (Underworld) · 0.1 (Aether)
       </div>
-      <button id="cc-release-close" style="display: block; width: 100%; background: #4a1a00; color: #ffd866; border: none; padding: 12px; font-size: 15px; font-weight: 600; border-radius: 10px; cursor: pointer;">Let's play! 🌲🌙🧟</button>
+      <button id="cc-release-close" style="display: block; width: 100%; background: #4a1a00; color: #ffd866; border: none; padding: 12px; font-size: 15px; font-weight: 600; border-radius: 10px; cursor: pointer;">Let's play! 🐄🛏️🌧️</button>
     </div>
   </div>
 
   <div id="cc-start" style="position: absolute; inset: 0; background: rgba(0,0,0,0.78); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 20; padding: 20px; text-align: center; overflow-y: auto;">
     <div style="font-size: 30px; font-weight: 500; letter-spacing: 2px; margin-bottom: 4px;">CLAUDECRAFT</div>
-    <div style="font-size: 17px; color: #ffd866; font-weight: 500; margin-bottom: 6px;">🌲🌑 0.7 — Biomes of Darkness! 🌑🌲</div>
+    <div style="font-size: 17px; color: #ffd866; font-weight: 500; margin-bottom: 6px;">🐄🛏️ 0.7.1 — Topped Up! 🌧️🐑</div>
     <div style="font-size: 12px; color: #ffaa44; margin-bottom: 4px;">⏰ 30 minute challenge — FOUR worlds!</div>
     <div style="font-size: 12px; color: #8be0ff; margin-bottom: 12px;">🌍 The Overworld never ends — walk 1,000 blocks out to find the Far Lands 🌌</div>
     <div style="font-size: 12px; opacity: 0.85; margin-bottom: 12px; max-width: 540px; line-height: 1.6; text-align: left;">
@@ -58,13 +66,14 @@
       <b>Creative:</b> double-tap C (or ⬆️) to fly · C up · Shift down<br>
       <b>Night:</b> every 5 minutes the sun sets and zombies come out 🧟 — hit them, or hide!<br>
       <b>Villages:</b> click villagers to say hello · open chests for food, supplies &amp; weapons · F eats<br>
+      <b>Farm:</b> click cows for milk 🥛, chickens for eggs 🥚, sheep for wool 🐑 · <b>Beds:</b> 3 wool + 3 wood, click at night to sleep 🛏️<br>
       <b>Commands:</b> T or / (or 💬) · /tp x y z · /tp x z · /tp spawn · /help<br>
       <b>Mobile:</b> joystick · tap-drag to look · ⛏️🧱⬆️🛠️ buttons
     </div>
-    <div id="cc-ver-badge" style="font-size:11px;color:#4ade80;background:rgba(74,222,128,0.15);border:1px solid #4ade80;padding:4px 10px;border-radius:6px;margin-bottom:10px;font-weight:600;">🎮 Playing version 0.7 — Biomes of Darkness</div>
+    <div id="cc-ver-badge" style="font-size:11px;color:#4ade80;background:rgba(74,222,128,0.15);border:1px solid #4ade80;padding:4px 10px;border-radius:6px;margin-bottom:10px;font-weight:600;">🎮 Playing version 0.7.1 — Topped Up</div>
     <button id="cc-play" style="background: linear-gradient(135deg, #4ade80, #16a34a); color: #042c1f; border: none; padding: 14px 36px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer; margin-bottom: 12px;">🌍 Play — choose a world</button>
     <div style="display: flex; gap: 8px;">
-      <button id="cc-show-release" style="background: transparent; color: #4ade80; border: 1px solid #4ade80; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">📋 What's New in 0.7</button>
+      <button id="cc-show-release" style="background: transparent; color: #4ade80; border: 1px solid #4ade80; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">📋 What's New in 0.7.1</button>
       <button id="cc-settings-btn" style="background: transparent; color: #4ade80; border: 1px solid #4ade80; padding: 6px 16px; font-size: 12px; border-radius: 6px; cursor: pointer;">⚙️ Settings</button>
     </div>
   </div>
@@ -189,6 +198,7 @@
     <input id="cc-cmd-in" autocomplete="off" spellcheck="false" placeholder="/tp x y z  ·  /locate village  ·  /time night  ·  /help" style="width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.35); background: rgba(0,0,0,0.75); color: white; font-family: monospace; font-size: 14px; outline: none;">
   </div>
 
+  <div id="cc-sleep" style="position: absolute; inset: 0; background: #05040d; opacity: 0; transition: opacity 0.6s; pointer-events: none; z-index: 9; display: flex; align-items: center; justify-content: center; color: #e8ecff; font-size: 28px; font-weight: 600;">💤 Zzz…</div>
   <div id="cc-pause" style="position: absolute; inset: 0; background: rgba(0,0,0,0.78); display: none; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 11; text-align: center;">
     <div style="font-size: 44px; margin-bottom: 8px;">⏸️</div>
     <div style="font-size: 28px; font-weight: 500; margin-bottom: 4px;">Paused</div>
@@ -235,7 +245,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function(){
-  const CURRENT_VERSION = '0.7';
+  const CURRENT_VERSION = '0.7.1';
 
   // ===== VERSION SWITCHER =====
   // Player can pick which version of the game to play. Older versions disable newer features.
@@ -246,21 +256,31 @@
     {v:'0.4', name:'Swords', desc:'+ Craft swords from any ore'},
     {v:'0.5', name:'Pets', desc:'+ Wolves & cats you can tame'},
     {v:'0.6', name:'Demons & Angels', desc:'+ Fireball-shooting demons in Underworld, healing angels in Aether'},
-    {v:'0.7', name:'Biomes of Darkness', desc:'+ Endless world, Far Lands, biomes, villages, day & night, zombies, seeds & game modes'}
+    {v:'0.7', name:'Biomes of Darkness', desc:'+ Endless world, Far Lands, biomes, villages, day & night, zombies, seeds & game modes'},
+    {v:'0.7.1', name:'Topped Up', desc:'+ Farm animals, beds, rain & snow, and a hotbar that fills itself'}
   ];
-  let selectedVersion = '0.7';
+  let selectedVersion = '0.7.1';
   try {
     const saved = localStorage.getItem('cc_play_version');
     if (saved && VERSIONS.some(x => x.v === saved)) selectedVersion = saved;
   } catch (e) {}
   // Feature flags based on selected version
-  function vAtLeast(v) { return parseFloat(selectedVersion) >= parseFloat(v); }
+  // Compared part by part, so 0.7.1 comes after 0.7 (parseFloat would call them equal)
+  function vAtLeast(v) {
+    const a = selectedVersion.split('.').map(Number), b = v.split('.').map(Number);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      const x = a[i] || 0, y = b[i] || 0;
+      if (x !== y) return x > y;
+    }
+    return true;
+  }
   const FEAT = {
     underworld: vAtLeast('0.2'),
     milkhoney: vAtLeast('0.3'),
     swords: vAtLeast('0.4'),
     pets: vAtLeast('0.5'),
-    entities: vAtLeast('0.6')
+    entities: vAtLeast('0.6'),
+    topup: vAtLeast('0.7.1')
   };
 
   const releaseEl = document.getElementById('cc-release');
@@ -351,7 +371,8 @@
     FIRE_PORTAL:24,NETHERSTONE:25,LAVA:26,FIRE:27,DEMON:28,FIRECHEST:29,
     MILK:30,HONEY:31,HONEYCOMB:32,MILKCLOUD:33,HONEYTREE:34,GUARDIAN:35,WOLF:36,CAT:37,
     SAND:38,CACTUS:39,SNOW_GRASS:40,SNOW:41,SPRUCE_LOG:42,SPRUCE_LEAF:43,SANDSTONE:44,
-    PLANKS:45,COBBLESTONE:46,PATH:47,GLASS:48,VCHEST:49,VCHEST_EMPTY:50,DARK_MATTER:51
+    PLANKS:45,COBBLESTONE:46,PATH:47,GLASS:48,VCHEST:49,VCHEST_EMPTY:50,DARK_MATTER:51,
+    WOOL_WHITE:52,WOOL_BLACK:53,WOOL_BROWN:54,WOOL_PINK:55,BED:56
   };
   const BLOCK_INFO = {
     [B.GRASS]:{name:'Grass',colors:{top:0x6abe30,side:0x8B5A2B,bot:0x8B5A2B},needs:0},
@@ -403,8 +424,14 @@
     [B.GLASS]:{name:'Glass',color:0xcfeeff,needs:0},
     [B.VCHEST]:{name:'Village chest',colors:{top:0xa0702e,side:0x8a5a22,bot:0x8a5a22},needs:0},
     [B.VCHEST_EMPTY]:{name:'Empty chest',colors:{top:0x80592a,side:0x6e481c,bot:0x6e481c},needs:0},
-    [B.DARK_MATTER]:{name:'Dark matter',color:0x07030f,needs:4}
+    [B.DARK_MATTER]:{name:'Dark matter',color:0x07030f,needs:4},
+    [B.WOOL_WHITE]:{name:'White wool',color:0xeeeeea,needs:0},
+    [B.WOOL_BLACK]:{name:'Black wool',color:0x2e2a30,needs:0},
+    [B.WOOL_BROWN]:{name:'Brown wool',color:0x7a5236,needs:0},
+    [B.WOOL_PINK]:{name:'Pink wool',color:0xf2a6c2,needs:0},
+    [B.BED]:{name:'Bed',colors:{top:0xc8343a,side:0xc8343a,bot:0x8a5a3b},needs:0}
   };
+  const WOOLS=[B.WOOL_WHITE,B.WOOL_BLACK,B.WOOL_BROWN,B.WOOL_PINK];
   const PICK_TIERS = ['Hands','Wooden pick','Stone pick','Iron pick','Diamond pick'];
   const SWORD_TIERS = ['No sword','Wood sword','Stone sword','Iron sword','Gold sword','Diamond sword'];
   const SWORD_DAMAGE = [0, 2, 3, 4, 4, 6];
@@ -679,6 +706,31 @@
     }
   }
 
+  // About a third of grassy chunks hold a little herd of one kind of animal,
+  // chosen from the chunk and the seed so the same world has the same herds.
+  // Sheep come in four colours (mostly white), and their wool matches.
+  function spawnAnimals(cx,cz){
+    if(isFarLands(cx*CHUNK,cz*CHUNK))return;
+    const rng=mulberry32((cx*92837111)^(cz*689287499)^worldSeed^0x5eed);
+    if(rng()>0.34)return;
+    const biome=biomeAt(cx*CHUNK+8,cz*CHUNK+8);
+    if(biome===BIOME.DESERT||biome===BIOME.MOUNTAINS)return;
+    const kinds=biome===BIOME.TAIGA?['sheep','sheep','cow']:['cow','sheep','chicken'];
+    const type=kinds[Math.floor(rng()*kinds.length)];
+    const n=2+Math.floor(rng()*3);
+    for(let i=0;i<n;i++){
+      const x=cx*CHUNK+1+Math.floor(rng()*14), z=cz*CHUNK+1+Math.floor(rng()*14);
+      if(treeAt(x,z))continue;
+      const h=heightAt(x,z);
+      if(h>=ROCK_LINE)continue;
+      const w=rng();
+      entities.push({id:'a'+cx+','+cz+':'+i, kind:'animal', type, realm:'overworld',
+        x:x+0.5, y:h+1, z:z+0.5, home:{x:x+0.5,z:z+0.5},
+        wool:type==='sheep'?(w<0.7?B.WOOL_WHITE:w<0.82?B.WOOL_BLACK:w<0.94?B.WOOL_BROWN:B.WOOL_PINK):null,
+        sheared:false, ready:0, vx:0, vz:0, vy:0, kx:0, kz:0, wanderT:rng()*3, walkT:0});
+    }
+  }
+
   function genOverworldChunk(cx,cz){
     const H=WORLD_HEIGHT, a=new Uint8Array(CHUNK*CHUNK*H);
     overworld.chunks.set(cx+','+cz,a);
@@ -754,6 +806,7 @@
       stampVillage(v,(x,y,z,b)=>{if(inside(x,y,z))a[idx(x,y,z)]=b;});
       if((v.x>>4)===cx&&(v.z>>4)===cz)spawnVillagers(v);
     }
+    if(FEAT.topup)spawnAnimals(cx,cz);
     // The obsidian pillar dungeon, stamped over whatever was there
     if(pillar){
       for(let dy=0;dy<10;dy++)for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){
@@ -1087,6 +1140,22 @@
         if(x===0||x===7||y===0||y===7||(side&&y===2))f*=0.65;
         if(side&&x>=3&&x<=4&&y>=2&&y<=3)c=0xeeeeee;
       }
+      else if(WOOLS.includes(id)){
+        // Soft and knobbly: little curls of lighter and darker fluff
+        f=0.92+r(0)*0.12;
+        if((x+y*3)%4===0)f*=1.1; else if((x*3+y)%5===0)f*=0.86;
+      }
+      else if(id===B.BED){
+        if(kind===0){
+          if(y<3)c=x===0||x===7?0xd8d8d0:0xf4f4ee;           // the pillow
+          else if(y===3)f*=0.75;                                // the fold of the blanket
+        } else if(side){
+          if(y>=5)c=0x8a5a3b;                                   // the wooden frame
+          if(y===7&&(x===0||x===7))f*=0.6;                     // its little legs
+          else if(y===7)c=0x241a10;
+          if(y<2)c=0xf4f4ee;                                    // sheet showing at the top
+        }
+      }
       else if(LIQUIDS.includes(id))f=0.85+0.3*(0.5+0.5*Math.sin((x+y*0.7)*1.3+rnd3(id,y,6)*2));
       else if(id===B.CRYSTAL){if(x===y||x===y+1)f*=1.25;}
       else if(id===B.HONEYCOMB){if(y%4===0||(x+(Math.floor(y/4)%2?2:0))%4===0)f*=0.75;}
@@ -1384,7 +1453,69 @@
     }
     return g;
   }
+  // ===== FARM ANIMALS (0.7.1) =====
+  // Built like the other mobs: boxes, with legs that pivot at the hip so they
+  // can trot. A sheep carries two bodies — its fleece and its bare skin — and
+  // shows whichever it has at the moment.
+  const WOOL_COLOR={[B.WOOL_WHITE]:0xeeeeea,[B.WOOL_BLACK]:0x34303a,[B.WOOL_BROWN]:0x7a5236,[B.WOOL_PINK]:0xf2a6c2};
+  function boxPart(g,w,h,d,mat,x,y,z){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);g.add(m);return m;}
+  function addLegs(g,mat,w,h,spots){
+    const legs=[];
+    for(const [lx,lz] of spots){
+      const hip=new THREE.Group(); hip.position.set(lx,h,lz);
+      const leg=new THREE.Mesh(new THREE.BoxGeometry(w,h,w),mat); leg.position.y=-h/2;
+      hip.add(leg); g.add(hip); legs.push(hip);
+    }
+    return legs;
+  }
+  function createAnimalMesh(e){
+    const g=new THREE.Group();
+    const eye=new THREE.MeshBasicMaterial({color:0x111111});
+    if(e.type==='cow'){
+      const white=new THREE.MeshLambertMaterial({color:0xf2efe8}), brown=new THREE.MeshLambertMaterial({color:0x5a3a22});
+      const pink=new THREE.MeshLambertMaterial({color:0xf0a8a8}), horn=new THREE.MeshLambertMaterial({color:0xe8e0c8});
+      g.userData.legs=addLegs(g,brown,0.22,0.55,[[-0.25,0.42],[0.25,0.42],[-0.25,-0.42],[0.25,-0.42]]);
+      boxPart(g,0.75,0.6,1.25,white,0,0.85,0);
+      boxPart(g,0.77,0.35,0.4,brown,0,0.95,0.2);              // the patches
+      boxPart(g,0.6,0.3,0.35,brown,0.1,0.8,-0.35);
+      boxPart(g,0.5,0.5,0.45,brown,0,1.1,0.8);                // head
+      boxPart(g,0.4,0.22,0.12,pink,0,0.98,1.06);              // muzzle
+      boxPart(g,0.08,0.18,0.08,horn,-0.2,1.42,0.75); boxPart(g,0.08,0.18,0.08,horn,0.2,1.42,0.75);
+      boxPart(g,0.08,0.08,0.03,eye,-0.14,1.18,1.03); boxPart(g,0.08,0.08,0.03,eye,0.14,1.18,1.03);
+      boxPart(g,0.3,0.12,0.25,pink,0,0.52,-0.1);              // udder
+    } else if(e.type==='sheep'){
+      const face=new THREE.MeshLambertMaterial({color:0x3a302c}), skin=new THREE.MeshLambertMaterial({color:0xe6d2c0});
+      const wool=new THREE.MeshLambertMaterial({color:WOOL_COLOR[e.wool]||0xeeeeea});
+      g.userData.legs=addLegs(g,face,0.18,0.45,[[-0.2,0.32],[0.2,0.32],[-0.2,-0.32],[0.2,-0.32]]);
+      g.userData.fleece=boxPart(g,0.78,0.62,1.05,wool,0,0.78,0);
+      g.userData.skin=boxPart(g,0.56,0.44,0.92,skin,0,0.72,0);
+      boxPart(g,0.4,0.42,0.4,face,0,1.05,0.62);
+      boxPart(g,0.46,0.18,0.3,wool,0,1.28,0.58);              // a woolly fringe
+      boxPart(g,0.08,0.08,0.03,new THREE.MeshBasicMaterial({color:0xffffff}),-0.11,1.1,0.83);
+      boxPart(g,0.08,0.08,0.03,new THREE.MeshBasicMaterial({color:0xffffff}),0.11,1.1,0.83);
+    } else {
+      const white=new THREE.MeshLambertMaterial({color:0xfafaf5}), red=new THREE.MeshLambertMaterial({color:0xe03030});
+      const yellow=new THREE.MeshLambertMaterial({color:0xffb020});
+      g.userData.legs=addLegs(g,yellow,0.06,0.25,[[-0.08,0],[0.08,0]]);
+      boxPart(g,0.34,0.3,0.45,white,0,0.42,0);
+      boxPart(g,0.06,0.2,0.3,white,-0.2,0.45,0); boxPart(g,0.06,0.2,0.3,white,0.2,0.45,0);   // wings
+      boxPart(g,0.24,0.28,0.22,white,0,0.68,0.18);
+      boxPart(g,0.1,0.08,0.12,yellow,0,0.66,0.34);            // beak
+      boxPart(g,0.06,0.12,0.12,red,0,0.86,0.18);              // comb
+      boxPart(g,0.08,0.1,0.06,red,0,0.58,0.3);                // wattle
+      boxPart(g,0.05,0.05,0.03,eye,-0.08,0.72,0.3); boxPart(g,0.05,0.05,0.03,eye,0.08,0.72,0.3);
+    }
+    showFleece(g,e);
+    return g;
+  }
+  function showFleece(g,e){
+    if(!g.userData.fleece)return;
+    g.userData.fleece.visible=!e.sheared;
+    g.userData.skin.visible=!!e.sheared;
+  }
+
   function meshFor(e) {
+    if (e.kind === 'animal') return createAnimalMesh(e);
     if (e.kind === 'demon') return createDemonMesh();
     if (e.kind === 'zombie') return createZombieMesh();
     if (e.kind === 'villager') return createVillagerMesh(e.robe);
@@ -1435,6 +1566,81 @@
     return new THREE.Points(g,new THREE.PointsMaterial({color:0xffffff,size:2,sizeAttenuation:false,fog:false,transparent:true,depthWrite:false}));
   })();
   scene.add(stars);
+  // ===== WEATHER (0.7.1) =====
+  // Showers come and go every few minutes. What falls depends on where you
+  // stand: rain on the grass, snow in the taiga and up on the peaks, and
+  // nothing at all in the desert. The drops live in a box that follows you.
+  const WX_HALF=18, WX_H=24, RAIN_N=900, SNOW_N=700;
+  let weather='clear', weatherT=150+Math.random()*120, rainAmt=0, snowAmt=0, wxClock=0;
+  const wxGrey=new THREE.Color(0x7d8590);
+  const rainPos=new Float32Array(RAIN_N*6), snowPos=new Float32Array(SNOW_N*3);
+  const rainGeo=new THREE.BufferGeometry(), snowGeo=new THREE.BufferGeometry();
+  rainGeo.setAttribute('position',new THREE.BufferAttribute(rainPos,3));
+  snowGeo.setAttribute('position',new THREE.BufferAttribute(snowPos,3));
+  const rainMesh=new THREE.LineSegments(rainGeo,new THREE.LineBasicMaterial({color:0xa9c4e6,transparent:true,opacity:0.55}));
+  const snowMesh=new THREE.Points(snowGeo,new THREE.PointsMaterial({color:0xffffff,size:0.16,transparent:true,opacity:0.9}));
+  rainMesh.frustumCulled=snowMesh.frustumCulled=false;
+  rainMesh.visible=snowMesh.visible=false;
+  scene.add(rainMesh,snowMesh);
+  let wxSeeded=false;
+  function seedDrops(){
+    const c=camera.position;
+    for(let i=0;i<RAIN_N;i++){const x=c.x+(Math.random()*2-1)*WX_HALF,y=c.y+(Math.random()-0.5)*WX_H,z=c.z+(Math.random()*2-1)*WX_HALF;rainPos.set([x,y,z,x,y-0.7,z],i*6);}
+    for(let i=0;i<SNOW_N;i++)snowPos.set([c.x+(Math.random()*2-1)*WX_HALF,c.y+(Math.random()-0.5)*WX_H,c.z+(Math.random()*2-1)*WX_HALF],i*3);
+    wxSeeded=true;
+  }
+  function precipHere(){
+    const b=biomeAt(Math.floor(player.pos.x),Math.floor(player.pos.z));
+    if(b===BIOME.DESERT)return 'none';
+    if(b===BIOME.TAIGA||player.pos.y>=SNOW_LINE-2)return 'snow';
+    return 'rain';
+  }
+  // Keep a drop inside the box round the camera, wrapping it to the far side
+  const wrap=(v,c,h)=>v<c-h?v+2*h:v>c+h?v-2*h:v;
+  function updateWeather(dt){
+    if(!FEAT.topup)return;
+    weatherT-=dt;
+    if(weatherT<=0){
+      weather=weather==='clear'&&Math.random()<0.55?'rain':'clear';
+      weatherT=weather==='rain'?70+Math.random()*90:150+Math.random()*180;
+      const here=precipHere();
+      if(currentRealm==='overworld'&&here!=='none')toast(weather==='rain'?(here==='snow'?'🌨️ It\'s starting to snow…':'🌧️ It\'s starting to rain…'):'🌤️ The '+(here==='snow'?'snow':'rain')+' has stopped.');
+    }
+    const outside=currentRealm==='overworld'&&weather==='rain';
+    const kind=outside?precipHere():'none';
+    const k=Math.min(1,dt*0.6);
+    rainAmt+=((kind==='rain'?1:0)-rainAmt)*k;
+    snowAmt+=((kind==='snow'?1:0)-snowAmt)*k;
+    rainMesh.visible=rainAmt>0.02; snowMesh.visible=snowAmt>0.02;
+    if(!rainMesh.visible&&!snowMesh.visible)return;
+    if(!wxSeeded)seedDrops();
+    const c=camera.position; wxClock+=dt;
+    if(rainMesh.visible){
+      const n=Math.floor(RAIN_N*rainAmt);
+      for(let i=0;i<n;i++){
+        const o=i*6;
+        let x=wrap(rainPos[o],c.x,WX_HALF), z=wrap(rainPos[o+2],c.z,WX_HALF), y=rainPos[o+1]-22*dt;
+        if(y<c.y-WX_H/2)y+=WX_H; else if(y>c.y+WX_H/2)y-=WX_H;
+        rainPos[o]=x; rainPos[o+1]=y; rainPos[o+2]=z;
+        rainPos[o+3]=x-0.05; rainPos[o+4]=y-0.7; rainPos[o+5]=z;
+      }
+      rainGeo.setDrawRange(0,n*2); rainGeo.attributes.position.needsUpdate=true;
+      rainMesh.material.opacity=0.55*rainAmt;
+    }
+    if(snowMesh.visible){
+      const n=Math.floor(SNOW_N*snowAmt);
+      for(let i=0;i<n;i++){
+        const o=i*3;
+        const sway=Math.sin(wxClock*1.3+i)*0.6*dt;
+        let x=wrap(snowPos[o]+sway,c.x,WX_HALF), z=wrap(snowPos[o+2]+sway*0.6,c.z,WX_HALF), y=snowPos[o+1]-2.2*dt;
+        if(y<c.y-WX_H/2)y+=WX_H; else if(y>c.y+WX_H/2)y-=WX_H;
+        snowPos[o]=x; snowPos[o+1]=y; snowPos[o+2]=z;
+      }
+      snowGeo.setDrawRange(0,n); snowGeo.attributes.position.needsUpdate=true;
+      snowMesh.material.opacity=0.9*snowAmt;
+    }
+  }
+
   const sunHeight=()=>Math.sin(dayTime/DAY_LENGTH*Math.PI*2);
   // 0 at night, 1 in full day, ramping through dawn and dusk
   const daylight=()=>Math.min(1,Math.max(0,(sunHeight()+0.1)/0.35));
@@ -1448,8 +1654,11 @@
     const L=daylight(), h=sunHeight(), t=dayTime/DAY_LENGTH;
     const dusk=Math.max(0,1-Math.abs(h-0.05)/0.25);   // orange glow while the sun is near the horizon
     skyCol.copy(SKY_NIGHT).lerp(SKY_DAY,L).lerp(SKY_DUSK,dusk*0.75);
+    // Clouds over: a greyer sky and a dimmer sun while it rains or snows
+    const wx=Math.max(rainAmt,snowAmt);
+    if(wx>0)skyCol.lerp(wxGrey.clone().multiplyScalar(0.25+0.75*L),wx*0.55);
     scene.background.copy(skyCol); scene.fog.color.copy(skyCol);
-    sun.intensity=0.12+0.73*L; ambient.intensity=0.18+0.27*L;
+    sun.intensity=(0.12+0.73*L)*(1-0.35*wx); ambient.intensity=0.18+0.27*L;
     // Rises in the east (+x), sets in the west; the moon is always opposite
     const a=t*Math.PI*2;
     sunDir.set(Math.cos(a),Math.sin(a),0.25).normalize();
@@ -1464,7 +1673,28 @@
       else toast('☀️ Morning! Zombies burn in the sunlight.',4000);
     }
     dayEl.style.display='inline-block';
-    dayEl.textContent=night?'🌙 Night':dusk>0.35?(t<0.25||t>0.9?'🌅 Sunrise':'🌇 Sunset'):'☀️ Day';
+    dayEl.textContent=(night?'🌙 Night':dusk>0.35?(t<0.25||t>0.9?'🌅 Sunrise':'🌇 Sunset'):'☀️ Day')
+      +(snowAmt>0.5?' · 🌨️ Snow':rainAmt>0.5?' · 🌧️ Rain':'');
+  }
+
+  // ===== BEDS (0.7.1) =====
+  // Sleep through the night: the screen fades, and you wake at sunrise. Not
+  // with zombies close by, though — they won't let you.
+  function sleepInBed(){
+    const near=entities.some(e=>e.kind==='zombie'&&Math.hypot(e.x-player.pos.x,e.z-player.pos.z)<10);
+    if(near){toast('🧟 You can\'t sleep — there are zombies nearby!');return;}
+    const fade=document.getElementById('cc-sleep');
+    fade.style.opacity='1';
+    paused=true;
+    setTimeout(()=>{
+      dayTime=DAY_LENGTH*0.02;
+      for(let i=entities.length-1;i>=0;i--)if(entities[i].kind==='zombie'){if(entities[i].mesh)entityMeshGroup.remove(entities[i].mesh);entities.splice(i,1);}
+      if(playerHearts<3&&!isCreative()){playerHearts=3;renderHearts();}
+      paused=false;
+      fade.style.opacity='0';
+      toast('🛏️ Good morning! You slept through the night.',4000);
+      if(!achievements.slept){achievements.slept=true;toast('🏆 Sleep through the night');renderAchievements();}
+    },1400);
   }
 
   // ===== THE WATCHER =====
@@ -1574,6 +1804,71 @@
     if(Math.abs(e.vx)+Math.abs(e.vz)>0.05)e.mesh.rotation.y=Math.atan2(e.vx,e.vz);
     else if(distXZ<6)e.mesh.rotation.y=Math.atan2(dx,dz);
   }
+  // Animals amble about near where they were born, stop to graze, and turn to
+  // look at you when you come close. Out of sight they just stand still.
+  function updateAnimal(e,dt,dx,dz,distXZ){
+    if(distXZ>80){e.mesh.visible=false;return;}
+    e.mesh.visible=true;
+    if(e.ready>0)e.ready-=dt;
+    if(e.sheared&&e.ready<=0){e.sheared=false;showFleece(e.mesh,e);}
+    e.wanderT-=dt;
+    if(e.wanderT<=0){
+      const hx=e.home.x-e.x, hz=e.home.z-e.z, hd=Math.hypot(hx,hz);
+      const sp=e.type==='chicken'?1.3:0.9;
+      if(hd>10){e.vx=hx/hd*sp;e.vz=hz/hd*sp;}
+      else if(Math.random()<0.5){e.vx=0;e.vz=0;}               // graze a while
+      else{const a=Math.random()*Math.PI*2;e.vx=Math.cos(a)*sp;e.vz=Math.sin(a)*sp;}
+      e.wanderT=1.5+Math.random()*3;
+    }
+    moveGrounded(e,e.vx,e.vz,dt);
+    if(e.y<-5){e.y=WORLD_HEIGHT;e.x=e.home.x;e.z=e.home.z;e.vy=0;}
+    const moving=Math.abs(e.vx)+Math.abs(e.vz)>0.05;
+    if(moving){e.walkT+=dt*(e.type==='chicken'?14:8);e.mesh.rotation.y=Math.atan2(e.vx,e.vz);}
+    else if(distXZ<5)e.mesh.rotation.y=Math.atan2(dx,dz);
+    const legs=e.mesh.userData.legs, sw=moving?Math.sin(e.walkT)*0.5:0;
+    legs.forEach((l,i)=>{l.rotation.x=(i===0||i===3)?sw:-sw;});
+  }
+  // Nobody gets hurt: cows give milk, chickens lay an egg, and sheep are given
+  // a haircut — each needs a little while before it can give again.
+  function useAnimal(e){
+    if(e.type==='cow'){
+      if(e.ready>0){toast('🐄 Mooo! Come back soon for more milk.');return;}
+      giveItem('milkcup',1); e.ready=40;
+      toast('🥛 You milked the cow! +1 milk');
+      if(!achievements.milkCow){achievements.milkCow=true;toast('🏆 Milk a cow');renderAchievements();}
+    } else if(e.type==='chicken'){
+      if(e.ready>0){toast('🐔 Bawk! No egg yet.');return;}
+      giveItem('egg',1); e.ready=30;
+      toast('🥚 The chicken laid an egg for you! +1 egg');
+    } else {
+      if(e.sheared){toast('🐑 Baa! Its wool is growing back.');return;}
+      giveItem(e.wool,2); e.sheared=true; e.ready=60; showFleece(e.mesh,e);
+      toast('🐑 Snip snip! +2 '+BLOCK_INFO[e.wool].name.toLowerCase());
+      if(!achievements.shearSheep){achievements.shearSheep=true;toast('🏆 Shear a sheep');renderAchievements();}
+    }
+    renderHotbar(); renderFood(); checkAchievements();
+  }
+
+  // ===== THE HOTBAR FILLS ITSELF (0.7.1) =====
+  // Something new picked up goes into a slot that has run out, so it can be
+  // placed. If none has, it takes the slot holding the least. The crafting
+  // table, once made, keeps its place.
+  function giveItem(id,n){
+    inventory[id]=(inventory[id]||0)+n;
+    if(!FEAT.topup||isCreative()||typeof id!=='number'||hotbarSlots.includes(id))return;
+    const info=BLOCK_INFO[id];
+    if(!info||info.needs>=99)return;
+    let best=-1, least=Infinity;
+    hotbarSlots.forEach((bid,i)=>{
+      if(bid===B.CRAFTING&&(inventory[B.CRAFTING]||0)>0)return;
+      const c=inventory[bid]||0;
+      if(c<least){least=c;best=i;}
+    });
+    if(best<0)return;
+    hotbarSlots[best]=id;
+    renderHotbar();
+  }
+
   const VILLAGER_GIFTS=[[B.IRON,3,'Iron'],[B.GOLD,2,'Gold'],[B.COAL,5,'Coal'],['bread',3,'🍞 Bread'],['apple',3,'🍎 Apples'],[B.DIAMOND,1,'💎 Diamond']];
   const VILLAGER_LINES=['🧑‍🌾 "Hrmm."','🧑‍🌾 "Mind the zombies after dark!"','🧑‍🌾 "Lovely weather for mining."','🧑‍🌾 "Hrmm hrmm. Safe travels."'];
   const giftedVillagers=new Set();
@@ -1583,7 +1878,7 @@
     let hsh=0;
     for(const ch of String(e.id))hsh=(hsh*31+ch.charCodeAt(0))|0;
     const [item,n,name]=VILLAGER_GIFTS[Math.abs(hsh)%VILLAGER_GIFTS.length];
-    inventory[item]=(inventory[item]||0)+n;
+    giveItem(item,n);
     renderHotbar(); renderFood(); checkAchievements();
     toast('🧑‍🌾 "Welcome, traveller! Take these." +'+n+' '+name,4500);
   }
@@ -1595,7 +1890,7 @@
   function openVillageChest(x,y,z){
     const rng=mulberry32((x*73856093)^(y*19349663)^(z*83492791)^worldSeed);
     const got=[];
-    const add=(item,n,label)=>{inventory[item]=(inventory[item]||0)+n;got.push('+'+n+' '+label);};
+    const add=(item,n,label)=>{giveItem(item,n);got.push('+'+n+' '+label);};
     if(rng()<0.6)add('bread',2+Math.floor(rng()*3),'🍞 Bread');
     else add('apple',2+Math.floor(rng()*3),'🍎 Apples');
     const supplies=[[B.WOOD,4,8,'Wood'],[B.COAL,3,6,'Coal'],[B.IRON,2,4,'Iron'],[B.GOLD,1,3,'Gold'],[B.STONE,6,12,'Stone']];
@@ -1616,22 +1911,23 @@
     if(!achievements.villageChest){achievements.villageChest=true;renderAchievements();}
     checkAchievements();
   }
+  const FOODS=[['bread','🍞 Yum!'],['apple','🍎 Crunchy!'],['milkcup','🥛 Mmm, fresh milk!'],['egg','🥚 A tasty egg!']];
   function renderFood(){
-    const n=(inventory.bread||0)+(inventory.apple||0);
+    const n=FOODS.reduce((t,[f])=>t+(inventory[f]||0),0);
     const btn=document.getElementById('cc-eat-btn');
     btn.style.display=n>0&&!isCreative()?'block':'none';
     btn.textContent='🍞 Eat ('+n+')';
   }
-  // Bread or an apple: +1 heart
+  // Bread, an apple, milk or an egg: +1 heart
   function eatFood(){
     if(isCreative()||gameOver)return;
-    const item=(inventory.bread||0)>0?'bread':(inventory.apple||0)>0?'apple':null;
-    if(!item){toast('🍽️ You have no food — try a village chest!');return;}
+    const food=FOODS.find(([f])=>(inventory[f]||0)>0);
+    if(!food){toast(FEAT.topup?'🍽️ You have no food — try a village chest, a cow or a chicken!':'🍽️ You have no food — try a village chest!');return;}
     if(playerHearts>=3){toast('❤️ You\'re already at full health');return;}
-    inventory[item]--;
+    inventory[food[0]]--;
     playerHearts++;
     renderHearts(); renderFood();
-    toast(item==='bread'?'🍞 Yum! +1 ❤️':'🍎 Crunchy! +1 ❤️');
+    toast(food[1]+' +1 ❤️');
   }
 
   // Returns true when the zombie should be removed
@@ -1710,6 +2006,11 @@
     {id:'villageChest',label:'📦 Loot a village chest',check:()=>achievements.villageChest},
     {id:'darkMatter',label:'🌑 Collect dark matter',check:()=>(inventory[B.DARK_MATTER]||0)>=1}
   ];
+  if(FEAT.topup)ACHIEVEMENTS.push(
+    {id:'milkCow',label:'🥛 Milk a cow',check:()=>achievements.milkCow},
+    {id:'shearSheep',label:'🐑 Shear a sheep',check:()=>achievements.shearSheep},
+    {id:'slept',label:'🛏️ Sleep through the night',check:()=>achievements.slept}
+  );
 
   function checkAchievements(){
     let changed=false;
@@ -1803,6 +2104,15 @@
     );
   }
 
+  if (FEAT.topup) {
+    recipes.push({id:'bed',name:'🛏️ Bed',cost:{[B.WOOD]:3},wool:3,requiresTable:true,action:()=>{giveItem(B.BED,1);toast('🛏️ Crafted a bed! Place it, then click it at night to sleep.');}});
+  }
+  const woolCount=()=>WOOLS.reduce((t,w)=>t+(inventory[w]||0),0);
+  // Takes wool from whichever colours there is most of
+  function takeWool(n){
+    while(n>0){const w=WOOLS.reduce((a,b)=>(inventory[b]||0)>(inventory[a]||0)?b:a);inventory[w]--;n--;}
+  }
+
   function nearCraftingTable(){
     const px=Math.floor(player.pos.x),py=Math.floor(player.pos.y),pz=Math.floor(player.pos.z);
     for(let dx=-5;dx<=5;dx++)for(let dy=-5;dy<=5;dy++)for(let dz=-5;dz<=5;dz++)if(getBlock(px+dx,py+dy,pz+dz)===B.CRAFTING)return true;
@@ -1814,10 +2124,10 @@
     const el=document.getElementById('cc-craft-recipes');
     el.innerHTML='';
     recipes.forEach(r=>{
-      const canAfford=isCreative()||Object.entries(r.cost).every(([bid,n])=>(inventory[+bid]||0)>=n);
+      const canAfford=isCreative()||(Object.entries(r.cost).every(([bid,n])=>(inventory[+bid]||0)>=n)&&(!r.wool||woolCount()>=r.wool));
       const tableOk=isCreative()||!r.requiresTable||near;
       const enabled=canAfford&&tableOk;
-      const costStr=Object.entries(r.cost).map(([bid,n])=>`${n} ${BLOCK_INFO[+bid].name.toLowerCase()}`).join(', ');
+      const costStr=(r.wool?[r.wool+' wool (any colour)']:[]).concat(Object.entries(r.cost).map(([bid,n])=>`${n} ${BLOCK_INFO[+bid].name.toLowerCase()}`)).join(', ');
       const row=document.createElement('div');
       row.style.cssText=`display:flex;justify-content:space-between;align-items:center;background:${enabled?'#3a3a3a':'#252525'};padding:6px 10px;border-radius:6px;opacity:${enabled?1:0.5};`;
       row.innerHTML=`<div><div style="font-weight:500;font-size:13px;">${r.name}</div><div style="font-size:10px;opacity:0.75;">${costStr}${r.requiresTable?' · needs table':''}</div></div>`;
@@ -1825,7 +2135,7 @@
       btn.textContent='Craft';
       btn.disabled=!enabled;
       btn.style.cssText=`background:${enabled?'#4ade80':'#555'};color:${enabled?'#042c1f':'#aaa'};border:none;padding:6px 14px;border-radius:4px;cursor:${enabled?'pointer':'not-allowed'};font-weight:500;`;
-      btn.onclick=()=>{if(!enabled)return;if(!isCreative())Object.entries(r.cost).forEach(([bid,n])=>{inventory[+bid]-=n;});r.action();renderHotbar();renderTools();renderArmor();renderCraft();checkAchievements();};
+      btn.onclick=()=>{if(!enabled)return;if(!isCreative()){Object.entries(r.cost).forEach(([bid,n])=>{inventory[+bid]-=n;});if(r.wool)takeWool(r.wool);}r.action();renderHotbar();renderTools();renderArmor();renderCraft();checkAchievements();};
       row.appendChild(btn);
       el.appendChild(row);
     });
@@ -2195,7 +2505,7 @@
     const cmd=(parts[0]||'').toLowerCase(), args=parts.slice(1);
     if(!cmd)return true;
     if(cmd==='help'){
-      cmdSay('/tp x y z     teleport (e.g. /tp 100 20 -50)\n/tp x z       teleport to the surface\n/tp ~ ~10 ~   ~ means "where I am now", plus or minus\n/tp spawn     back to 0, 0\n/seed         show this world\'s seed\n/time night   day · noon · sunset · night · midnight\n/locate village   find the nearest village\nT or / opens this bar · Esc closes it');
+      cmdSay('/tp x y z     teleport (e.g. /tp 100 20 -50)\n/tp x z       teleport to the surface\n/tp ~ ~10 ~   ~ means "where I am now", plus or minus\n/tp spawn     back to 0, 0\n/seed         show this world\'s seed\n/time night   day · noon · sunset · night · midnight\n/locate village   find the nearest village\n'+(FEAT.topup?'/weather rain   clear · rain · snow\n':'')+'T or / opens this bar · Esc closes it');
       return false;
     }
     if(cmd==='seed'){cmdSay('Seed: '+worldSeed);return false;}
@@ -2218,6 +2528,14 @@
       if(when===undefined){cmdSay('Usage: /time day · noon · sunset · night · midnight');return false;}
       dayTime=when*DAY_LENGTH;
       toast('🕒 Time set to '+args[0].toLowerCase());
+      return true;
+    }
+    if(cmd==='weather'&&FEAT.topup){
+      const w=(args[0]||'').toLowerCase();
+      if(w!=='clear'&&w!=='rain'&&w!=='snow'){cmdSay('Usage: /weather clear · rain · snow');return false;}
+      weather=w==='clear'?'clear':'rain'; weatherT=w==='clear'?240:180;
+      const here=precipHere();
+      toast(w==='clear'?'🌤️ Clear skies!':here==='none'?'🏜️ Clouds gather… but it never rains in the desert.':here==='snow'?'🌨️ Let it snow!':w==='snow'?'🌧️ Too warm for snow here — have some rain! (Try the taiga.)':'🌧️ Here comes the rain!');
       return true;
     }
     if(cmd==='tp'||cmd==='teleport'){
@@ -2465,12 +2783,15 @@
     // Check if player clicked a demon (kill it if holding sword)
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
-      if ((e.kind !== 'demon' && e.kind !== 'zombie' && e.kind !== 'villager') || e.realm !== currentRealm) continue;
-      const dx = e.x - origin.x, dy = (e.y + (e.kind === 'demon' ? 0.6 : 1.0)) - origin.y, dz = e.z - origin.z;
+      if ((e.kind !== 'demon' && e.kind !== 'zombie' && e.kind !== 'villager' && e.kind !== 'animal') || e.realm !== currentRealm) continue;
+      const midY = e.kind === 'demon' ? 0.6 : e.kind === 'animal' ? (e.type === 'chicken' ? 0.45 : 0.8) : 1.0;
+      const dx = e.x - origin.x, dy = (e.y + midY) - origin.y, dz = e.z - origin.z;
       const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
       if (dist > 5) continue;
       const dot = (dx*dir.x + dy*dir.y + dz*dir.z) / dist;
       if (dot > 0.9 && e.kind === 'villager') { talkToVillager(e); return; }
+      // a chicken is small, so it gets a little more leeway
+      if (e.kind === 'animal') { if (dot > (e.type === 'chicken' ? 0.86 : 0.9)) { useAnimal(e); return; } continue; }
       if (dot > 0.9 && e.kind === 'zombie') {
         // Fists do 1, swords their usual damage; every hit knocks it back
         const dmg = Math.max(1, SWORD_DAMAGE[tools.swordTier] || 0, tools.flameSword ? 5 : 0);
@@ -2564,6 +2885,10 @@
       return;
     }
     if(r.blockId===B.VCHEST){openVillageChest(r.x,r.y,r.z);return;}
+    if(r.blockId===B.BED){
+      if(currentRealm==='overworld'&&isNight()){sleepInBed();return;}
+      toast('🛏️ Picked up your bed — sleep in it when night falls!');
+    }
     if(r.blockId===B.VCHEST_EMPTY){toast('📦 This chest is empty.');return;}
     if(r.blockId===B.CHEST){
       inventory[B.AETHERSTONE]=(inventory[B.AETHERSTONE]||0)+5;
@@ -2603,7 +2928,7 @@
     let drop=r.blockId;
     if(r.blockId===B.GRASS||r.blockId===B.SNOW_GRASS||r.blockId===B.PATH)drop=B.DIRT;
     if(r.blockId===B.SPRUCE_LOG)drop=B.WOOD;   // so spruce counts toward wooden recipes
-    inventory[drop]=(inventory[drop]||0)+1;
+    giveItem(drop,1);
     setBlock(r.x,r.y,r.z,B.AIR);
     rebuildMesh(); renderHotbar(); checkAchievements();
     if(waitingForPuzzleSolve)checkPuzzleSolved();
@@ -2874,6 +3199,8 @@
         if (updateZombie(e, dt, dx, dz, distXZ)) (gone || (gone = [])).push(e);
       } else if (e.kind === 'villager') {
         updateVillager(e, dt, dx, dz, distXZ);
+      } else if (e.kind === 'animal') {
+        updateAnimal(e, dt, dx, dz, distXZ);
       } else if (e.kind === 'angel') {
         // Gentle floating bob
         e.floatT = (e.floatT||0) + dt;
@@ -2940,6 +3267,7 @@
     }
 
     updateSky(dt);
+    updateWeather(dt);
     updateWatcher(dt);
     spawnZombies(dt);
     // Natural regeneration: a heart back every 15s once you've avoided damage for that long
