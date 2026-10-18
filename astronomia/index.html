@@ -2781,6 +2781,10 @@ function computeAccel() {
       const bj = bs[j], pj = bj.p;
       const dx = pj.x - pi.x, dy = pj.y - pi.y, dz = pj.z - pi.z;
       const d2 = dx * dx + dy * dy + dz * dz;
+      // A satellite being carried round its host analytically (see
+      // carryOrbits) gets that pull from the orbit itself, not from here — and
+      // its tight orbit must not drag the step size down either.
+      if (bi.rotHost === bj || bj.rotHost === bi) continue;
 
       // Keeps the force finite when two objects are overlapping instead of
       // blowing up. For a pair of ordinary bodies this is exactly 0.35·(rᵢ+rⱼ),
@@ -2824,21 +2828,128 @@ function computeAccel() {
 
 /* ------------------------------------------------------------- integration */
 
+/* ---------------------------------------------------- orbits too fast to step */
+/*
+ * At high time speeds one step can be longer than a moon takes to go round
+ * its planet — Phobos laps Mars in under a day — and an integrator asked to
+ * cross a whole orbit in one jump slingshots the moon off into space. So each
+ * frame, every body is matched with the thing it is orbiting (whatever pulls
+ * on it hardest, among heavier bodies); if the step is too coarse for that
+ * orbit, the body is carried round it instead: its position and velocity
+ * relative to the host are turned about the orbit's own axis by exactly the
+ * angle it would sweep in the time. That keeps any orbit for ever, at any
+ * speed. Hosts are moved before their satellites, so a moon follows its planet
+ * as the planet follows the Sun. At ordinary speeds nothing is carried and the
+ * full physics runs as before.
+ */
+const carried = [];
+const _q = new THREE.Quaternion(), _ax = new THREE.Vector3(), _ra = new THREE.Vector3(), _hp = new THREE.Vector3();
+const ORBIT_STEPS = 40;                // a step must be under 1/40 of an orbit's fastest stretch
+
+function assignOrbitHosts(dt) {
+  const bs = sim.bodies, gm = G * settings.gravity;
+  carried.length = 0;
+  for (const b of bs) { b._wasHost = b.rotHost || null; b.rotHost = null; b._depth = -1; }
+  for (const b of bs) {
+    b.domHost = null;
+    if (b.kind === 'gal' || b.kind === 'wh' || b.kind === 'gas') continue;
+    let best = null, pull = 0;
+    for (const o of bs) {
+      if (o === b || o.m <= b.m || o.kind === 'wh') continue;
+      const g = o.m / Math.max(o.p.distanceToSquared(b.p), 1e-30);
+      if (g > pull) { pull = g; best = o; }
+    }
+    if (!best) continue;
+    b.domHost = best;
+    const r = b.p.distanceTo(best.p);
+    const mu = gm * (best.m + b.m);
+    const v2 = b.v.distanceToSquared(best.v);
+    const E = v2 / 2 - mu / r;
+    if (E >= 0) continue;                             // not bound to it: fly free
+    /* What sets the step an orbit needs is its fastest part, at closest
+       approach — so a stretched orbit is judged by the time it takes to
+       swing round its near end, not by its whole period. */
+    const sma = -mu / (2 * E);
+    _ax.subVectors(b.p, best.p).cross(_ra.subVectors(b.v, best.v));
+    const ecc = Math.sqrt(Math.max(0, 1 - _ax.lengthSq() / (mu * sma)));
+    const swing = TAU * Math.sqrt(sma * sma * sma / mu) * Math.pow(1 - Math.min(ecc, 0.95), 1.5);
+    if (dt * ORBIT_STEPS > swing) b.rotHost = best;
+  }
+  const depth = (b) => b._depth >= 0 ? b._depth : (b._depth = b.rotHost ? depth(b.rotHost) + 1 : 0);
+  for (const b of bs) if (b.rotHost) {
+    if (!b._rr) { b._rr = new THREE.Vector3(); b._rv = new THREE.Vector3(); }
+    if (!b.rotHost._p0) b.rotHost._p0 = new THREE.Vector3();
+    depth(b);
+    carried.push(b);
+  }
+  carried.sort((a, b) => a._depth - b._depth);
+  /* If anything has just started or stopped being carried, the stored
+     accelerations still hold (or still lack) that pair's pull, and the next
+     half-kick would use them — one stale tug from a close moon over a long
+     step is enough to throw a planet out. So work them out afresh. */
+  if (bs.some(b => b.rotHost !== b._wasHost)) computeAccel();
+}
+
+function carryOrbits(dt) {
+  for (const b of carried) {
+    const H = b.rotHost;
+    if (!H.alive || !b.alive) continue;
+    _ax.crossVectors(b._rr, b._rv);
+    const hm = _ax.length(), r2 = b._rr.lengthSq();
+    if (hm > 0 && r2 > 0) {
+      const ang = hm / r2 * dt;                       // mean motion × time
+      _ax.divideScalar(hm);
+      // Fill the arc into the trail, so a fast orbit is still a smooth curve.
+      if (b.trail && b.trailSeg > 0) {
+        const r = Math.sqrt(r2), k = Math.min(Math.ceil(ang * r / b.trailSeg), 48);
+        for (let j = 1; j < k; j++) {
+          _q.setFromAxisAngle(_ax, ang * j / k);
+          _ra.copy(b._rr).applyQuaternion(_q);
+          _hp.copy(H._p0).lerp(H.p, j / k).add(_ra);
+          trailPush(b, _hp.x, _hp.y, _hp.z);
+        }
+      }
+      _q.setFromAxisAngle(_ax, ang % TAU);
+      b._rr.applyQuaternion(_q);
+      b._rv.applyQuaternion(_q);
+    }
+    b.p.copy(H.p).add(b._rr);
+  }
+}
+
+/* The velocity is set only once the host has had its second half-kick:
+   taken mid-step, the host's velocity is half a kick out, and that error
+   piles up step after step until the satellite drifts loose. */
+function carryVelocities() {
+  for (const b of carried) if (b.alive && b.rotHost.alive) b.v.copy(b.rotHost.v).add(b._rv);
+}
+
 function step(dt) {
   const bs = sim.bodies;
   const h = dt * 0.5;
   lastStepDt = dt;
+  // Where every carried satellite stands relative to its host, before the step
+  for (const b of carried) {
+    b._rr.copy(b.p).sub(b.rotHost.p);
+    b._rv.copy(b.v).sub(b.rotHost.v);
+    b.rotHost._p0.copy(b.rotHost.p);
+  }
   for (let i = 0; i < bs.length; i++) {
     const b = bs[i];
+    b.rot += (b.spin ? TAU / b.spin : 0) * dt;
+    if (b.rotHost) continue;
     b.v.x += b.a.x * h; b.v.y += b.a.y * h; b.v.z += b.a.z * h;
     b.p.x += b.v.x * dt; b.p.y += b.v.y * dt; b.p.z += b.v.z * dt;
-    b.rot += (b.spin ? TAU / b.spin : 0) * dt;
   }
+  carryOrbits(dt);
   computeAccel();
   for (let i = 0; i < bs.length; i++) {
     const b = bs[i];
+    if (b.rotHost) continue;
     b.v.x += b.a.x * h; b.v.y += b.a.y * h; b.v.z += b.a.z * h;
   }
+  carryVelocities();
+  for (const b of bs) if (b.trail) trailSample(b);
   sim.time += dt;
   resolveCollisions();
   if (settings.tidal) updateTides(dt);
@@ -2885,6 +2996,7 @@ function advance(frameSeconds) {
   const budget = clamp(Math.floor(260000 / (n * n + 1)), 1, 64);
   const steps = clamp(Math.ceil(target / safe), 1, budget);
   const dt = target / steps;
+  assignOrbitHosts(dt);
   for (let s = 0; s < steps; s++) step(dt);
 
   // Stellar evolution runs once per frame rather than per substep: a star's
@@ -9801,7 +9913,6 @@ function updateFx(realDt, simDt) {
 
 const TRAIL_CAP = 320;
 const MAX_TRAILS = 28;
-let trailTick = 0;
 
 function buildTrail(b) { b.trail = null; }
 
@@ -9846,23 +9957,49 @@ function updateTrails() {
     if (!keep.has(b) && b.trail) killTrail(b);
     if (keep.has(b) && !b.trail) makeTrail(b);
   }
-  trailTick++;
-  if (trailTick % 2) return;
+  /* A point every 1/TRAIL_PER_ORBIT of the way round whatever the body is
+     orbiting: so a trail is the same shape — the same smooth curve, the same
+     couple of orbits long — at one day a second or a billion years. */
   for (const b of ranked) {
     const t = b.trail;
     if (!t) continue;
-    if (t.n < TRAIL_CAP) {
-      const i = t.n * 3;
-      t.arr[i] = b.p.x - t.o.x; t.arr[i + 1] = b.p.y - t.o.y; t.arr[i + 2] = b.p.z - t.o.z;
-      t.n++;
-    } else {
-      t.arr.copyWithin(0, 3);
-      const i = (TRAIL_CAP - 1) * 3;
-      t.arr[i] = b.p.x - t.o.x; t.arr[i + 1] = b.p.y - t.o.y; t.arr[i + 2] = b.p.z - t.o.z;
-    }
-    t.geo.setDrawRange(0, t.n);
-    t.geo.attributes.position.needsUpdate = true;
+    const host = b.rotHost || b.domHost;
+    b.trailSeg = host ? TAU * b.p.distanceTo(host.p) / TRAIL_PER_ORBIT : visRadius(b) * 6;
+    if (t.n === 0) trailPush(b, b.p.x, b.p.y, b.p.z, true);
+    trailCommit(b);
   }
+}
+
+const TRAIL_PER_ORBIT = 160;
+/** Lay a point down if the body has moved far enough since the last one. */
+function trailSample(b) {
+  const t = b.trail;
+  if (!b.trailSeg) return;
+  const lx = t.lx, ly = t.ly, lz = t.lz;
+  if (lx === undefined) { trailPush(b, b.p.x, b.p.y, b.p.z); return; }
+  const dx = b.p.x - lx, dy = b.p.y - ly, dz = b.p.z - lz;
+  if (dx * dx + dy * dy + dz * dz >= b.trailSeg * b.trailSeg) trailPush(b, b.p.x, b.p.y, b.p.z);
+}
+/** Queue a point; queued points join the line once a frame, in one shift. */
+function trailPush(b, x, y, z, now) {
+  const t = b.trail;
+  if (!t.q) t.q = [];
+  if (t.q.length >= TRAIL_CAP * 3) t.q.splice(0, 3);
+  t.q.push(x - t.o.x, y - t.o.y, z - t.o.z);
+  t.lx = x; t.ly = y; t.lz = z;
+  if (now) trailCommit(b);
+}
+function trailCommit(b) {
+  const t = b.trail, q = t.q;
+  if (!q || !q.length) return;
+  const k = q.length / 3;
+  const keep = Math.min(t.n, TRAIL_CAP - k);
+  if (keep < t.n) t.arr.copyWithin(0, (t.n - keep) * 3, t.n * 3);
+  t.arr.set(q, keep * 3);
+  t.n = keep + k;
+  q.length = 0;
+  t.geo.setDrawRange(0, t.n);
+  t.geo.attributes.position.needsUpdate = true;
 }
 
 function clearTrails() {
@@ -9870,6 +10007,7 @@ function clearTrails() {
     if (!b.trail) continue;
     b.trail.n = 0; b.trail.geo.setDrawRange(0, 0);
     b.trail.o.copy(b.p); b.trail.line.position.copy(b.p);
+    b.trail.q = null; b.trail.lx = undefined;
   }
 }
 
@@ -12879,7 +13017,14 @@ function buildSolarSystem(c, v) {
   ];
   const by = {};
   data.forEach((d, i) => {
-    by[d[0]] = orbitBody(d[0], sun, d[1], { ang: i * 0.83 + 0.4, ecc: d[2] });
+    /* Pluto is started level with Neptune: as both go round, Neptune is then
+       a quarter-orbit away whenever Pluto swings in close, which is the real
+       3:2 resonance that keeps them from ever meeting. Pluto's orbit is also
+       tipped 17°. Started anywhere else, Neptune can fling it out. */
+    const pluto = d[0] === 'sol_pluto';
+    by[d[0]] = orbitBody(d[0], sun, d[1], {
+      ang: pluto ? 7 * 0.83 + 0.4 : i * 0.83 + 0.4, ecc: d[2], inc: pluto ? 0.2995 : 0
+    });
   });
   orbitBody('sol_ceres', sun, 413.7, { ang: 2.9, ecc: 0.0785 });
 
@@ -12934,8 +13079,15 @@ function buildSolarSystem(c, v) {
      Sun-like stars 23 times Earth's distance apart, and Proxima, a red dwarf a
      fifth of a light-year from them, with its planet. Only gravity's direction
      towards our Sun is real here; the rest of the sky is not mapped. */
-  const ac = c.clone().addScaledVector(eclipticDir(239.5, -42.6), 4.37 * LY_GM);
-  const acA = makeBody('sun_like', ac.clone(), v.clone(), { name: 'Alpha Centauri A', mass: 1.1 * M_SUN });
+  const toAC = eclipticDir(239.5, -42.6);
+  const ac = c.clone().addScaledVector(toAC, 4.37 * LY_GM);
+  /* Its real motion: closing at 22.4 km/s while sliding sideways at 23.5, so
+     it sweeps past us (closest, 3.1 light-years, in about 28,000 years) and
+     away again. Left still, the two systems would slowly fall together. */
+  const kms = 0.0864;                                   // 1 km/s in Gm per day
+  const side = new THREE.Vector3(0, 1, 0).cross(toAC).normalize();
+  const acV = v.clone().addScaledVector(toAC, -22.4 * kms).addScaledVector(side, 23.5 * kms);
+  const acA = makeBody('sun_like', ac.clone(), acV, { name: 'Alpha Centauri A', mass: 1.1 * M_SUN });
   orbitBody('sun_like', acA, 23.4 * AU, { ang: 0.7, ecc: 0.52, over: { name: 'Alpha Centauri B', mass: 0.907 * M_SUN } });
   const prox = orbitBody('red_dwarf', acA, 13000 * AU, { ang: 2.2, inc: 0.6, over: { name: 'Proxima Centauri', mass: 0.122 * M_SUN } });
   orbitBody('sol_proxima_b', prox, 0.0485 * AU, { ang: 1.0 });
