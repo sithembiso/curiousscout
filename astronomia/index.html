@@ -2228,10 +2228,115 @@ const TYPES = {
     surf: 'ice', spin: -6.3872, tilt: 2.1386,
     opts: { pal: [[0, [96, 74, 62]], [0.5, [186, 166, 150]], [1, [238, 230, 214]] ] },
     blurb: 'A dwarf planet since 2006, and still everyone\'s favourite. It has a heart-shaped plain of frozen nitrogen and a moon half its own width.'
+  },
+  sol_ceres: {
+    label: 'Ceres', group: 'SOLAR SYSTEM', pname: 'Ceres', mass: 0.000157, rad: 0.0742,
+    surf: 'rock', spin: 0.3781, opts: { craters: 120, dark: true },
+    blurb: 'The biggest thing in the Asteroid Belt — big enough to have pulled itself round, so it counts as a dwarf planet. It may hide a salty ocean under its crust.'
+  },
+
+  /* ---- the moons of the other planets, at their real masses and sizes ---- */
+  sol_phobos: {
+    label: 'Phobos', group: 'MOONS OF THE PLANETS', pname: 'Phobos', mass: 1.78e-9, rad: 0.00177,
+    surf: 'rock', spin: 0.3189, lumpy: 0.30, opts: { dark: true, craters: 60 },
+    blurb: 'Mars\'s bigger moon, a lumpy potato 22 km long. It is spiralling inwards and will be torn into a ring around Mars in about 50 million years.'
+  },
+  sol_deimos: {
+    label: 'Deimos', group: 'MOONS OF THE PLANETS', pname: 'Deimos', mass: 2.5e-10, rad: 0.00097,
+    surf: 'rock', spin: 1.263, lumpy: 0.28, opts: { dark: true, craters: 30 },
+    blurb: 'Mars\'s little moon — so small and so weak that you could jump off it into space.'
+  },
+  sol_io: {
+    label: 'Io', group: 'MOONS OF THE PLANETS', pname: 'Io', mass: 0.01496, rad: 0.2859,
+    surf: 'desert', spin: 1.769, glowHot: 0.12,
+    opts: { pal: [[0, [96, 54, 22]], [0.35, [214, 168, 52]], [0.6, [238, 214, 96]], [0.85, [250, 238, 176]], [1, [168, 80, 34]]], craters: 0, caps: 0 },
+    blurb: 'The most volcanic place in the Solar System. Jupiter\'s tides knead it like dough, and hundreds of volcanoes paint it yellow and orange with sulphur.'
+  },
+  sol_europa: {
+    label: 'Europa', group: 'MOONS OF THE PLANETS', pname: 'Europa', mass: 0.008, rad: 0.245,
+    surf: 'ice', spin: 3.551,
+    opts: { pal: [[0, [150, 112, 84]], [0.4, [212, 196, 172]], [1, [246, 242, 232]]] },
+    blurb: 'A cracked shell of ice over a hidden ocean with twice as much water as all of Earth\'s seas. One of the best places to look for life.'
+  },
+  sol_ganymede: {
+    label: 'Ganymede', group: 'MOONS OF THE PLANETS', pname: 'Ganymede', mass: 0.0248, rad: 0.4135,
+    surf: 'rock', spin: 7.155, opts: { craters: 120 },
+    blurb: 'The biggest moon in the Solar System — bigger than the planet Mercury — and the only moon with its own magnetic field.'
+  },
+  sol_callisto: {
+    label: 'Callisto', group: 'MOONS OF THE PLANETS', pname: 'Callisto', mass: 0.018, rad: 0.378,
+    surf: 'rock', spin: 16.689, opts: { craters: 260, dark: true },
+    blurb: 'The most heavily cratered thing we know of. Nothing has happened on its surface for four billion years except being hit.'
+  },
+  sol_titan: {
+    label: 'Titan', group: 'MOONS OF THE PLANETS', pname: 'Titan', mass: 0.0225, rad: 0.404,
+    surf: 'desert', spin: 15.945, atmo: [255, 168, 70], clouds: 0.85,
+    opts: { pal: [[0, [70, 46, 22]], [0.5, [150, 104, 52]], [1, [210, 166, 96]]], craters: 4, caps: 0 },
+    blurb: 'A moon with a thick orange sky, methane rain and real lakes and rivers — of liquid natural gas. Its air is thicker than Earth\'s.'
+  },
+  sol_rhea: {
+    label: 'Rhea', group: 'MOONS OF THE PLANETS', pname: 'Rhea', mass: 3.86e-4, rad: 0.1199,
+    surf: 'ice', spin: 4.518, opts: { pal: [[0, [120, 116, 110]], [1, [226, 224, 218]]] },
+    blurb: 'Saturn\'s second-biggest moon: a dirty snowball of ice and rock, cratered all over.'
+  },
+  sol_iapetus: {
+    label: 'Iapetus', group: 'MOONS OF THE PLANETS', pname: 'Iapetus', mass: 3.03e-4, rad: 0.1153,
+    surf: 'rock', spin: 79.32, opts: { craters: 90 },
+    blurb: 'The two-faced moon: one side is as dark as coal and the other as bright as snow, and a mountain ridge runs round its middle like the seam on a walnut.'
+  },
+  sol_dione: {
+    label: 'Dione', group: 'MOONS OF THE PLANETS', pname: 'Dione', mass: 1.84e-4, rad: 0.088,
+    surf: 'ice', spin: 2.737, opts: { pal: [[0, [130, 130, 128]], [1, [232, 232, 228]]] },
+    blurb: 'An icy moon streaked with bright cliffs of ice hundreds of metres high.'
+  },
+  sol_enceladus: {
+    label: 'Enceladus', group: 'MOONS OF THE PLANETS', pname: 'Enceladus', mass: 1.81e-5, rad: 0.0396,
+    surf: 'ice', spin: 1.370, opts: { pal: [[0, [200, 214, 226]], [1, [252, 254, 255]]] },
+    blurb: 'The whitest thing in the Solar System. Geysers at its south pole spray an ocean\'s water into space, and that spray feeds one of Saturn\'s rings.'
+  },
+  sol_mimas: {
+    label: 'Mimas', group: 'MOONS OF THE PLANETS', pname: 'Mimas', mass: 6.3e-6, rad: 0.0311,
+    surf: 'rock', spin: 0.942, opts: { craters: 140 },
+    blurb: 'The "Death Star" moon — one crater, Herschel, is a third as wide as the whole moon.'
+  },
+  sol_titania: {
+    label: 'Titania', group: 'MOONS OF THE PLANETS', pname: 'Titania', mass: 5.7e-4, rad: 0.1237,
+    surf: 'ice', spin: 8.706, opts: { pal: [[0, [110, 104, 100]], [1, [206, 200, 194]]] },
+    blurb: 'Uranus\'s biggest moon. Like all of them it orbits on its side, the same way Uranus is tipped over.'
+  },
+  sol_oberon: {
+    label: 'Oberon', group: 'MOONS OF THE PLANETS', pname: 'Oberon', mass: 5.2e-4, rad: 0.1194,
+    surf: 'rock', spin: 13.463, opts: { craters: 110, dark: true },
+    blurb: 'The outermost of Uranus\'s big moons: old, dark and covered in craters.'
+  },
+  sol_ariel: {
+    label: 'Ariel', group: 'MOONS OF THE PLANETS', pname: 'Ariel', mass: 2.1e-4, rad: 0.0908,
+    surf: 'ice', spin: 2.520, opts: { pal: [[0, [130, 128, 126]], [1, [236, 236, 234]]] },
+    blurb: 'The brightest of Uranus\'s moons, criss-crossed by long canyons.'
+  },
+  sol_umbriel: {
+    label: 'Umbriel', group: 'MOONS OF THE PLANETS', pname: 'Umbriel', mass: 2.1e-4, rad: 0.0918,
+    surf: 'rock', spin: 4.144, opts: { craters: 120, dark: true },
+    blurb: 'The darkest of Uranus\'s big moons, with one strange bright ring on its face.'
+  },
+  sol_miranda: {
+    label: 'Miranda', group: 'MOONS OF THE PLANETS', pname: 'Miranda', mass: 1.1e-5, rad: 0.0370,
+    surf: 'ice', spin: 1.413, opts: { pal: [[0, [100, 98, 96]], [0.5, [170, 168, 164]], [1, [226, 226, 222]]] },
+    blurb: 'A patchwork moon that looks as if it was smashed apart and stuck back together. It has a cliff 20 km high — the tallest in the Solar System.'
+  },
+  sol_triton: {
+    label: 'Triton', group: 'MOONS OF THE PLANETS', pname: 'Triton', mass: 0.00359, rad: 0.2122,
+    surf: 'ice', spin: -5.877, opts: { pal: [[0, [150, 120, 112]], [0.5, [214, 190, 178]], [1, [246, 236, 228]]] },
+    blurb: 'Neptune\'s big moon goes round backwards, so it was probably captured from the Kuiper Belt. It has geysers of nitrogen, and it is slowly falling in.'
+  },
+  sol_charon: {
+    label: 'Charon', group: 'MOONS OF THE PLANETS', pname: 'Charon', mass: 2.66e-4, rad: 0.0951,
+    surf: 'rock', spin: 6.387, opts: { craters: 60 },
+    blurb: 'Half as wide as Pluto, so big that Pluto and Charon swing round a point in the space between them — almost a double planet. It has a rusty-red cap on its north pole.'
   }
 };
 
-const GROUPS = ['STARS', 'PLANETS', 'MOONS & DEBRIS', 'EXOTIC', 'HYPOTHETICAL', 'DISCS & GALAXIES', 'COSMIC', 'SOLAR SYSTEM'];
+const GROUPS = ['STARS', 'PLANETS', 'MOONS & DEBRIS', 'EXOTIC', 'HYPOTHETICAL', 'DISCS & GALAXIES', 'COSMIC', 'SOLAR SYSTEM', 'MOONS OF THE PLANETS'];
 
 /* Representative swatch colour for each palette entry. */
 const SWATCH = {
@@ -2253,7 +2358,11 @@ const SWATCH = {
   protostar: '#ffb46a', galaxy: '#c8a2ff',
   sol_sun: '#ffe08a', sol_mercury: '#9c948c', sol_venus: '#e8c98a', sol_earth: '#3f7fd6',
   sol_luna: '#c9c4bc', sol_mars: '#c1502a', sol_jupiter: '#d6a870', sol_saturn: '#e8d3a0',
-  sol_uranus: '#9fdcdc', sol_neptune: '#2f56c8', sol_pluto: '#cbbfae'
+  sol_uranus: '#9fdcdc', sol_neptune: '#2f56c8', sol_pluto: '#cbbfae', sol_ceres: '#8f8a84',
+  sol_phobos: '#7a6a5c', sol_deimos: '#8c7c6c', sol_io: '#e8cf5a', sol_europa: '#e6dccb', sol_ganymede: '#9c9286',
+  sol_callisto: '#6e665c', sol_titan: '#d89a44', sol_rhea: '#c9c7c2', sol_iapetus: '#8a8278', sol_dione: '#d2d2ce',
+  sol_enceladus: '#f4f8ff', sol_mimas: '#b8b6b0', sol_titania: '#bab2aa', sol_oberon: '#8e8478', sol_ariel: '#d8d8d4',
+  sol_umbriel: '#6e6a66', sol_miranda: '#b0aea8', sol_triton: '#dcc6ba', sol_charon: '#9c948c'
 };
 
 const NAME_POOL = {
@@ -12413,6 +12522,129 @@ function binaryPair(typeA, mA, typeB, mB, sep, center) {
 
 const rE = (radiiEarth) => radiiEarth * R_EARTH;
 
+/* ============================================================ asteroid belts */
+/*
+ * Thousands of rocks on their own orbits round a star, worked out directly
+ * from Kepler's laws rather than integrated: an asteroid this small is pulled
+ * about by nothing that matters on screen, and an orbit that is calculated
+ * cannot go wrong at any speed of time. Drawn camera-relative so a belt stays
+ * sharp even 26,000 light-years out in the Milky Way.
+ *
+ *   MAIN       the Asteroid Belt, 2.1–3.3 AU, between Mars and Jupiter
+ *   TROJANS    two swarms sharing Jupiter's orbit, 60° ahead and 60° behind
+ *   KUIPER     the icy belt beyond Neptune, 30–50 AU, where Pluto lives
+ */
+const BELT_MAX = 12000;
+const belts = [];
+const beltx = { pos: null, col: null, siz: null, geo: null, pts: null };
+const BELT_KINDS = {
+  main:   { n: 3600, a: [2.1, 3.3], inc: 0.20, col: [[0.62, 0.55, 0.48], [0.42, 0.40, 0.38], [0.72, 0.52, 0.40]] },
+  trojan: { n: 1100, a: [0.96, 1.04], inc: 0.30, col: [[0.50, 0.40, 0.34], [0.40, 0.34, 0.30]] },
+  kuiper: { n: 3200, a: [30, 50], inc: 0.30, col: [[0.62, 0.70, 0.82], [0.70, 0.62, 0.58], [0.55, 0.62, 0.72]] }
+};
+
+function makeBelt(host, kind, ref) {
+  const spec = BELT_KINDS[kind];
+  const rng = mulberry32(hashStr(kind + host.id));
+  const n = spec.n;
+  const b = { host, kind, ref, n, a: new Float64Array(n), th: new Float64Array(n), mm: new Float64Array(n),
+    u: new Float32Array(n * 3), w: new Float32Array(n * 3), col: new Float32Array(n * 3), siz: new Float32Array(n) };
+  const gm = G * host.m;
+  for (let i = 0; i < n; i++) {
+    // Kirkwood gaps: Jupiter has cleared narrow lanes out of the main belt
+    let aAU;
+    do { aAU = lerp(spec.a[0], spec.a[1], kind === 'kuiper' ? Math.pow(rng(), 0.7) : rng()); }
+    while (kind === 'main' && [2.50, 2.82, 2.95].some(g => Math.abs(aAU - g) < 0.025));
+    const a = kind === 'trojan' ? aAU : aAU * AU;     // trojans: a fraction of Jupiter's distance
+    const node = rng() * TAU, inc = (rng() + rng() - 1) * spec.inc;
+    const i3 = i * 3;
+    b.u[i3] = Math.cos(node); b.u[i3 + 1] = 0; b.u[i3 + 2] = Math.sin(node);
+    b.w[i3] = -Math.sin(node) * Math.cos(inc); b.w[i3 + 1] = Math.sin(inc); b.w[i3 + 2] = Math.cos(node) * Math.cos(inc);
+    b.a[i] = a;
+    if (kind === 'trojan') {
+      // 60° ahead or behind, spread round the point in a tadpole-shaped cloud
+      b.th[i] = (i % 2 ? 1 : -1) * Math.PI / 3 + (rng() + rng() - 1) * 0.45;
+      b.mm[i] = (rng() - 0.5) * 0.002;                // a slow drift to and fro
+    } else {
+      b.th[i] = rng() * TAU;
+      b.mm[i] = Math.sqrt(gm / (a * a * a));         // radians per day
+    }
+    const pal = spec.col[(rng() * spec.col.length) | 0];
+    const br = 0.8 + rng() * 0.6;
+    b.col[i3] = pal[0] * br; b.col[i3 + 1] = pal[1] * br; b.col[i3 + 2] = pal[2] * br;
+    b.siz[i] = 1.1 + Math.pow(rng(), 3) * 1.6;
+  }
+  belts.push(b);
+  return b;
+}
+
+/** The Sun's three belts; the Trojans need Jupiter to follow. */
+function addSolarBelts(sun, jupiter) {
+  makeBelt(sun, 'main');
+  if (jupiter) makeBelt(sun, 'trojan', jupiter);
+  makeBelt(sun, 'kuiper');
+}
+
+function clearBelts() { belts.length = 0; }
+
+function updateBelts() {
+  for (let i = belts.length - 1; i >= 0; i--) if (!belts[i].host.alive) belts.splice(i, 1);
+  if (!belts.length) { if (beltx.pts) beltx.geo.setDrawRange(0, 0); return; }
+  if (!beltx.pts) {
+    beltx.pos = new Float32Array(BELT_MAX * 3);
+    beltx.col = new Float32Array(BELT_MAX * 3);
+    beltx.siz = new Float32Array(BELT_MAX);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(beltx.pos, 3));
+    geo.setAttribute('aCol', new THREE.BufferAttribute(beltx.col, 3));
+    geo.setAttribute('aSize', new THREE.BufferAttribute(beltx.siz, 1));
+    beltx.geo = geo;
+    beltx.pts = new THREE.Points(geo, new THREE.ShaderMaterial({
+      uniforms: { uMap: { value: TEX_GLOW }, uDpr: { value: VIEW.dpr } },
+      vertexShader: FX_VERT, fragmentShader: FX_FRAG,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+    }));
+    beltx.pts.frustumCulled = false;
+    beltx.pts.renderOrder = 2;
+    scene.add(beltx.pts);
+  }
+  const o = camera.position, t = sim.time;
+  let n = 0;
+  for (const b of belts) {
+    const h = b.host.p;
+    const d = o.distanceTo(h);
+    // From far away a belt is just glare piled on its star; and in the Milky
+    // Way map it must not give the Sun away from across the galaxy.
+    const far = b.kind === 'kuiper' ? 50 * AU : 3.3 * AU;
+    if (d > far * 400 || (b.host.shy && d > SHY_RANGE && b.host !== sim.selected)) continue;
+    const hx = h.x - o.x, hy = h.y - o.y, hz = h.z - o.z;
+    let rJ = 0, thJ = 0;
+    if (b.kind === 'trojan') {
+      if (!b.ref || !b.ref.alive) continue;
+      const dx = b.ref.p.x - h.x, dz = b.ref.p.z - h.z;
+      rJ = Math.hypot(dx, dz); thJ = Math.atan2(dz, dx);
+    }
+    for (let i = 0; i < b.n && n < BELT_MAX; i++) {
+      const i3 = i * 3;
+      let a, th;
+      if (b.kind === 'trojan') { a = b.a[i] * rJ; th = thJ + b.th[i] + Math.sin(t * 0.0009 + i) * 0.08 + b.mm[i]; }
+      else { a = b.a[i]; th = (b.th[i] + b.mm[i] * t) % TAU; }
+      const c = Math.cos(th) * a, sn = Math.sin(th) * a;
+      const n3 = n * 3;
+      beltx.pos[n3] = hx + b.u[i3] * c + b.w[i3] * sn;
+      beltx.pos[n3 + 1] = hy + b.u[i3 + 1] * c + b.w[i3 + 1] * sn;
+      beltx.pos[n3 + 2] = hz + b.u[i3 + 2] * c + b.w[i3 + 2] * sn;
+      beltx.col[n3] = b.col[i3]; beltx.col[n3 + 1] = b.col[i3 + 1]; beltx.col[n3 + 2] = b.col[i3 + 2];
+      beltx.siz[n] = b.siz[i];
+      n++;
+    }
+  }
+  beltx.geo.setDrawRange(0, n);
+  for (const k of ['position', 'aCol', 'aSize']) beltx.geo.attributes[k].needsUpdate = true;
+  beltx.pts.position.copy(o);
+  beltx.pts.material.uniforms.uDpr.value = VIEW.dpr;
+}
+
 /** The Sun and its worlds, at their real distances, centred on `c` and all
     carried along at velocity `v` (zero on its own; the galactic orbit in the
     Milky Way). */
@@ -12430,18 +12662,51 @@ function buildSolarSystem(c, v) {
     ['sol_neptune', 4515.0, 0.0113],
     ['sol_pluto', 5906.4, 0.2488]
   ];
-  let earth = null;
+  const by = {};
   data.forEach((d, i) => {
-    const b = orbitBody(d[0], sun, d[1], { ang: i * 0.83 + 0.4, ecc: d[2] });
-    if (d[0] === 'sol_earth') earth = b;
+    by[d[0]] = orbitBody(d[0], sun, d[1], { ang: i * 0.83 + 0.4, ecc: d[2] });
   });
-  if (earth) orbitBody('sol_luna', earth, 0.3844, { ang: 1.1 });
+  orbitBody('sol_ceres', sun, 413.7, { ang: 2.9, ecc: 0.0785 });
+
+  /* The major moons: [type, planet, distance in Gm, extra]. Uranus's family
+     orbits on its side with the planet; Triton goes round backwards. */
+  const MOONS = [
+    ['sol_luna', 'sol_earth', 0.3844],
+    ['sol_phobos', 'sol_mars', 0.009376], ['sol_deimos', 'sol_mars', 0.023463],
+    ['sol_io', 'sol_jupiter', 0.4217], ['sol_europa', 'sol_jupiter', 0.6711],
+    ['sol_ganymede', 'sol_jupiter', 1.0704], ['sol_callisto', 'sol_jupiter', 1.8827],
+    ['sol_mimas', 'sol_saturn', 0.18552], ['sol_enceladus', 'sol_saturn', 0.238],
+    ['sol_dione', 'sol_saturn', 0.3774], ['sol_rhea', 'sol_saturn', 0.5271],
+    ['sol_titan', 'sol_saturn', 1.2219], ['sol_iapetus', 'sol_saturn', 3.5608],
+    ['sol_miranda', 'sol_uranus', 0.1299, { inc: 1.70 }], ['sol_ariel', 'sol_uranus', 0.1909, { inc: 1.70 }],
+    ['sol_umbriel', 'sol_uranus', 0.266, { inc: 1.70 }], ['sol_titania', 'sol_uranus', 0.4363, { inc: 1.70 }],
+    ['sol_oberon', 'sol_uranus', 0.5835, { inc: 1.70 }],
+    ['sol_triton', 'sol_neptune', 0.35476, { retro: true, inc: 0.4 }],
+    ['sol_charon', 'sol_pluto', 0.019591]
+  ];
+  const lastA = {};
+  MOONS.forEach((m, i) => {
+    const host = by[m[1]];
+    if (!host) return;
+    /* Planets are drawn several times bigger than life so they can be found,
+       and a few moons (Phobos, Mimas) orbit inside that drawn size — they
+       would crash at once. Those are moved just clear of it, and the moons
+       outside them shuffled out too, so they keep their real order and never
+       share an orbit. */
+    const clear = (host.r + TYPES[m[0]].rad * R_EARTH) * settings.bodyScale * 1.6;
+    const a = Math.max(m[2], clear, (lastA[m[1]] || 0) * 1.25);
+    lastA[m[1]] = a;
+    orbitBody(m[0], host, a, Object.assign({ ang: i * 1.37 + 0.6 }, m[3] || {}));
+  });
+
+  // The belts of rubble left over from building the planets.
+  addSolarBelts(sun, by.sol_jupiter);
   return sun;
 }
 
 const PRESETS = [
   {
-    name: 'The Solar System', desc: 'Our own eight planets at their real distances, on real orbital periods — plus Pluto, because it counts.',
+    name: 'The Solar System', desc: 'Our own eight planets at their real distances, on real orbital periods — with their major moons, Pluto and Ceres, the Asteroid Belt, Jupiter\'s Trojans and the Kuiper Belt.',
     dist: 3400,
     build() { buildSolarSystem(new V3(), new V3()); }
   },
@@ -12794,6 +13059,7 @@ function clearAll() {
   clearGalaxyStars();
   clearSupernovae();
   clearUniverses();
+  clearBelts();
   clearDiscs();
   grewBodies.clear();
   pSources = [];
@@ -12919,6 +13185,9 @@ function loadUniverse() {
   }
   if (data.rate != null) setRate(data.rate);
   else if (data.rateIdx != null) setRate(RATES[data.rateIdx]);
+  // Belts are not saved rock by rock; a saved Sun simply gets its belts back.
+  const sun = sim.bodies.find(b => b.type === 'sol_sun');
+  if (sun && !belts.length) addSolarBelts(sun, sim.bodies.find(b => b.type === 'sol_jupiter'));
   computeAccel();
   clearTrails();
   closeModal();
@@ -12973,6 +13242,8 @@ function openHelp() {
     '<li>A <b>brown dwarf</b> is a failed star: heavier than any planet, too light to fuse hydrogen. Here one keeps contracting until it <b>lights up as a red dwarf</b> after a hundred years (change that in Settings). A real one never manages it — it just fades for trillions of years — so this one is for fun.</li>' +
     '<li>A <b>galaxy</b> is eleven thousand individual stars wrapped in glowing clouds of gas, and every one of them is really orbiting. Drop two and crash them together — that is what <b>Galaxy Collision</b> in Systems sets up.</li>' +
     '</ul>' +
+    '<h3>THE SOLAR SYSTEM</h3>' +
+    '<p><b>The Solar System</b> map (and the Sun hidden in the Milky Way) has every planet with its major moons — Phobos and Deimos, Jupiter\'s Io, Europa, Ganymede and Callisto, Saturn\'s Titan, Rhea, Dione, Enceladus, Mimas and Iapetus, Uranus\'s five on their sideways orbits, Neptune\'s backwards Triton and Pluto\'s Charon — plus the dwarf planet Ceres. Thousands of rocks fill the <b>Asteroid Belt</b> between Mars and Jupiter (with the gaps Jupiter has cleared out of it), two swarms of <b>Trojan asteroids</b> ride 60° ahead of and behind Jupiter, and the icy <b>Kuiper Belt</b> rings everything beyond Neptune. Every moon can also be dropped on its own from <b>Moons of the Planets</b>.</p>' +
     '<h3>KINDS OF GALAXY</h3>' +
     '<ul>' +
     '<li><b>Galaxy</b> — a spiral, with a yellow bulge and blue arms.</li>' +
@@ -13181,6 +13452,7 @@ function loop(now) {
   if (!land.b) applyCamera();
   updateVisuals(realDt, simDt);
   if (land.b) applyLanded(realDt);
+  updateBelts();
   renderFrame();
   updateHud(realDt);
 
