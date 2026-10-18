@@ -3150,6 +3150,8 @@ function impact(a, b) {
   // Already sinking into one another: the engulfment owns this pair, and the
   // collision test will go on reporting them every step until it is done.
   if ((b.sink && b.sink.host === a) || (a.sink && a.sink.host === b)) return false;
+  // Still climbing out of the crater they were thrown from: leave them be.
+  if (emerging(a, b)) return false;
   triggerSlowmo(a, b);
 
   // White holes never merge — they shove things away instead.
@@ -3358,7 +3360,7 @@ function beginEngulf(a, b, vImp, vEsc) {
   const T = clamp(0.40 + 1.30 * (rb / Math.max(ra, 1e-9)), ENGULF_MIN_SEC, ENGULF_MAX_SEC);
   const hole = clamp(Math.cbrt(b.m / Math.max(a.m, 1e-12)) * 1.5, 0.14, 1.1);
   b.sink = {
-    host: a, t: 0, T: T, vImp: vImp, vEsc: vEsc, dir: dir, spray: 0,
+    host: a, t: 0, T: T, vImp: vImp, vEsc: vEsc, dir: dir, spray: 0, inbound: inbound,
     heat: impactHeatOf(a, b, vImp, vEsc),
     ra: ra, rb: rb, d0: ra + rb, d1: Math.max(ra - rb, 0),
     hole: hole, step: 0, bore: 0,
@@ -3616,6 +3618,8 @@ function merge(a, b, vImp, vEsc, mark) {
   // Where it was hit, captured before the survivor is moved to the barycentre.
   const hitDir = b.p.clone().sub(a.p);
   const inbound = b.v.clone().sub(a.v);
+  // Out of the crater: the way it came in, if it has been sinking in a while.
+  const aim = impactAim(b.sink && b.sink.dir ? b.sink.dir : hitDir, b.sink ? b.sink.inbound : inbound);
   const com = a.p.clone().multiplyScalar(a.m).addScaledVector(b.p, b.m).divideScalar(mTot);
   const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mTot);
   // Mixing a diffuse knot of gas into a solid world must not swell the world to
@@ -3654,13 +3658,13 @@ function merge(a, b, vImp, vEsc, mark) {
   // Big soft blobs of glowing melt, white-hot to yellow, that stay lit a while.
   const thrown = ejectMass > 0
     ? ejecta(com, vel, count, ejectMass, vEsc, [255, 236, 176], [120, 70, 44], visRadius(a),
-      { speed: 1, sizeMin: 10, sizeMax: 30, cool: 0.35 })
+      { speed: 1, sizeMin: 10, sizeMax: 30, cool: 0.35, aim: aim })
     : 0;
   // The vapour plume: more mass and more of it than the rubble, because at
   // these speeds rock does not chip, it boils — a bright cloud round the world.
   const gas = ejectMass > 0
     ? gasEjecta(com, vel, Math.round(count * 2.2), ejectMass * 2.4, vEsc, visRadius(a),
-      { speed: 0.8, sizeMin: 18, sizeMax: 52, warm: true })
+      { speed: 0.8, sizeMin: 18, sizeMax: 52, warm: true, aim: aim })
     : 0;
   a.m = mTot - thrown - gas;
   if (gasMix) a.r = natRadius(a);
@@ -3671,7 +3675,7 @@ function merge(a, b, vImp, vEsc, mark) {
   if (!gasMix && sev > 0.55 && b.m > a.m * 0.02) {
     const want = clamp(Math.round(2 + sev * 3 * heft), 1, 5);
     clumped = spawnClumps(com, vel, b.m * 0.14 * heft, want,
-      vEsc * rnd(0.9, 1.5), visRadius(a) * 1.3, 0.3);
+      vEsc * rnd(0.9, 1.5), visRadius(a) * 1.3, 0.3, aim, a);
     a.m -= clumped;
   }
 
@@ -3716,18 +3720,19 @@ function shatter(a, b, vImp) {
 
   const vEsc = vEscape(a, b);
   const ra0 = visRadius(a);
+  const aim = impactAim(hitDir, inbound);
 
   // Two tiers of real wreckage. A handful of large fragments become full N-body
   // objects that pull on everything; the fine ejecta becomes thousands of test
   // particles. Every gram is accounted for out of mTot.
   const fine = mTot * 0.07;
   const thrown = ejecta(com, vel, 430, fine, vEsc,
-    [255, 235, 195], [104, 90, 80], ra0, { speed: 1.35, sizeMin: 1.2, sizeMax: 7.5 });
+    [255, 235, 195], [104, 90, 80], ra0, { speed: 1.35, sizeMin: 1.2, sizeMax: 7.5, aim: aim });
   // Two worlds hitting each other hard enough to break both of them apart put
   // far more energy in than it takes to vaporise rock, so the plume outweighs
   // the gravel by better than two to one. This is where a debris disc — and
   // eventually a moon — comes from.
-  const gas = gasEjecta(com, vel, 700, mTot * 0.16, vEsc, ra0, { speed: 1.25 });
+  const gas = gasEjecta(com, vel, 700, mTot * 0.16, vEsc, ra0, { speed: 1.25, aim: aim });
 
   const keep = clamp(0.35 + 0.3 * (1 - b.m / a.m), 0.2, 0.72);
   const bigFrags = Math.min(clamp(Math.round(6 + (1 - keep) * 16), 4, 18), freeSlots());
@@ -3751,12 +3756,12 @@ function shatter(a, b, vImp) {
   let rest = rubbleM;
   if (rest > 0) {
     const knots = clamp(Math.round(3 + Math.random() * 3), 2, 6);
-    rest -= spawnClumps(com, vel, rest * 0.42, knots, vImp * 0.4, visRadius(a) * 1.4, 0.32);
+    rest -= spawnClumps(com, vel, rest * 0.42, knots, vImp * 0.4, visRadius(a) * 1.4, 0.32, aim, a);
   }
   // Recount the slots: the knots above have taken some of them.
   const nFrags = Math.min(bigFrags, freeSlots());
   if (nFrags > 0 && rest > 0) {
-    spawnDebris(com, vel, rest / nFrags, nFrags, vImp * 0.45, visRadius(a) * 1.2, a.rFactor);
+    spawnDebris(com, vel, rest / nFrags, nFrags, vImp * 0.45, visRadius(a) * 1.2, a.rFactor, aim, a);
   } else if (rest > 0) {
     a.m += rest;                       // nowhere to put it: the survivor keeps it
     a.r = natRadius(a);
@@ -3789,24 +3794,29 @@ function conserveMomentum(frags, expectedP) {
  * on keeps a chip off a low-density rubble pile as loose as the pile was, rather
  * than having it appear as a dense speck a thousandth of the size.
  */
-function spawnDebris(center, baseVel, massEach, count, spread, minDist, puff) {
+function spawnDebris(center, baseVel, massEach, count, spread, minDist, puff, aim, recoil) {
   const made = [];
   const blow = puff > 0 ? puff : 1;
   for (let i = 0; i < count; i++) {
     if (sim.bodies.length >= MAX_BODIES) break;
-    const dir = new THREE.Vector3(rnd(-1, 1), rnd(-0.45, 0.45), rnd(-1, 1));
-    if (dir.lengthSq() < 1e-6) dir.set(1, 0, 0);
-    dir.normalize();
-    const pos = center.clone().addScaledVector(dir, minDist * rnd(1.05, 2.2));
-    const vel = baseVel.clone().addScaledVector(dir, spread * rnd(0.35, 1.15));
+    let dir;
+    if (aim) dir = plumeDir(aim);
+    else {
+      dir = new THREE.Vector3(rnd(-1, 1), rnd(-0.45, 0.45), rnd(-1, 1));
+      if (dir.lengthSq() < 1e-6) dir.set(1, 0, 0);
+      dir.normalize();
+    }
+    const pos = aim
+      ? plumeStart(center, aim, dir, minDist * 0.8, minDist * rnd(0.05, 0.3))
+      : center.clone().addScaledVector(dir, minDist * rnd(1.05, 2.2));
+    const vel = baseVel.clone().addScaledVector(dir, spread * (aim ? rnd(0.7, 1.15) : rnd(0.35, 1.15)));
     const type = massEach > 0.004 ? 'moon' : 'asteroid';
     const fm = Math.max(massEach, 1e-7);
     made.push(makeBody(type, pos, vel, { mass: fm, r: trueRadius(type, fm) * blow,
       name: 'Debris ' + (sim.nextId), rubble: true }));
   }
-  let tot = 0;
-  for (const f of made) tot += f.m;
-  conserveMomentum(made, baseVel.clone().multiplyScalar(tot));
+  settleMomentum(made, baseVel, aim ? recoil : null);
+  if (aim) markEmerging(made, ++emergeSeq, recoil, sim.time + 4 * minDist / Math.max(spread * 0.35, 1e-9));
   return made;
 }
 
@@ -5422,7 +5432,7 @@ function updateTides(dt) {
     const sdef = TYPES[s.type];
     // Stars and anything genuinely massive hold themselves together by their
     // own gravity far better than a moon does; rubble has already been shredded.
-    const immune = sdef.star || s.m > 40 || s.disrupted || !!s.sink;
+    const immune = sdef.star || s.m > 40 || s.disrupted || !!s.sink || (s.emerge && sim.time < s.emerge.until);
 
     // Find the primary raising the biggest tide on this body.
     let best = null, bestX = 0, bestD = 0;
@@ -7194,11 +7204,89 @@ function disperseClump(b, quiet) {
   compact();
 }
 
+/* ------------------------------------------------- out of the crater ----- */
+/*
+ * Debris does not appear in a shell all round a world that has been hit: it
+ * comes out of the hole. An impact throws up a curtain of material at about
+ * forty-five degrees to the ground, all round the crater, leaning downrange
+ * when the impactor came in at a slant.
+ */
+
+/* Pieces thrown out of a crater start IN it, overlapping the world and each
+   other, so for the moment it takes them to climb clear they are not allowed to
+   hit what they came off or each other. */
+let emergeSeq = 0;
+function emerging(a, b) {
+  const t = sim.time;
+  const ea = a.emerge && t < a.emerge.until ? a.emerge : null;
+  const eb = b.emerge && t < b.emerge.until ? b.emerge : null;
+  if (!ea && !eb) return false;
+  if (ea && eb && ea.key === eb.key) return true;
+  return (ea && ea.from === b.id) || (eb && eb.from === a.id);
+}
+function markEmerging(made, key, from, until) {
+  for (const f of made) f.emerge = { key: key, from: from ? from.id : -1, until: until };
+}
+
+/** The way the plume points: up out of the crater, leaning downrange. */
+function impactAim(hitDir, inbound) {
+  if (!hitDir || hitDir.lengthSq() < 1e-30) return null;
+  const n = hitDir.clone().normalize();
+  if (inbound && inbound.lengthSq() > 0) {
+    const tan = inbound.clone().addScaledVector(n, -inbound.dot(n));
+    const sinA = clamp(tan.length() / inbound.length(), 0, 1);
+    if (tan.lengthSq() > 1e-30) n.addScaledVector(tan.normalize(), 0.75 * sinA).normalize();
+  }
+  return n;
+}
+
+const _pu = new THREE.Vector3(), _pw = new THREE.Vector3();
+/** A random direction in the ejecta cone round `aim` (or anywhere, with none). */
+function plumeDir(aim, out) {
+  out = out || new THREE.Vector3();
+  if (!aim) {
+    const u = rnd(-1, 1), th = rnd(0, TAU), sr = Math.sqrt(Math.max(0, 1 - u * u));
+    return out.set(sr * Math.cos(th), u, sr * Math.sin(th));
+  }
+  _pu.set(0, 1, 0);
+  if (Math.abs(aim.dot(_pu)) > 0.9) _pu.set(1, 0, 0);
+  _pu.crossVectors(aim, _pu).normalize();
+  _pw.crossVectors(aim, _pu);
+  // Mostly in a curtain 20–65° off the vertical, a little straight up.
+  const t = rnd(0.12, 1.15), ph = rnd(0, TAU);
+  const st = Math.sin(t);
+  return out.copy(aim).multiplyScalar(Math.cos(t))
+    .addScaledVector(_pu, st * Math.cos(ph)).addScaledVector(_pw, st * Math.sin(ph));
+}
+
+/** Where a piece starts: at the crater, `reach` out along its own direction. */
+function plumeStart(center, aim, dir, surface, reach, out) {
+  out = out || new THREE.Vector3();
+  if (!aim) return out.copy(center).addScaledVector(dir, reach);
+  out.copy(center).addScaledVector(aim, surface).addScaledVector(dir, reach);
+  return out;
+}
+
+/**
+ * Fragments thrown out of a crater all go the same way, so their momentum does
+ * not cancel: the world they came off takes the kick back, the way a gun
+ * recoils. With nothing to take it, the set is evened out instead.
+ */
+function settleMomentum(made, baseVel, recoil) {
+  let tot = 0;
+  const p = new THREE.Vector3();
+  for (const f of made) { tot += f.m; p.addScaledVector(f.v, f.m); }
+  if (recoil && recoil.alive && recoil.m > 0) {
+    p.addScaledVector(baseVel, -tot);
+    recoil.v.addScaledVector(p, -1 / recoil.m);
+  } else conserveMomentum(made, baseVel.clone().multiplyScalar(tot));
+}
+
 /**
  * Throw off a handful of selectable knots after a collision — mostly gas, some
  * solid. Returns the mass actually used, which the caller must subtract.
  */
-function spawnClumps(center, baseVel, totalMass, count, spread, minDist, solidChance) {
+function spawnClumps(center, baseVel, totalMass, count, spread, minDist, solidChance, aim, recoil) {
   const n = Math.min(count, freeSlots());
   if (n <= 0 || totalMass <= 0) return 0;
   const each = totalMass / n;
@@ -7209,11 +7297,19 @@ function spawnClumps(center, baseVel, totalMass, count, spread, minDist, solidCh
   const gap = Math.max(minDist, trueRadius('gas_clump', each) * settings.bodyScale * 2.6);
 
   for (let i = 0; i < n; i++) {
-    const dir = new THREE.Vector3(rnd(-1, 1), rnd(-0.5, 0.5), rnd(-1, 1));
-    if (dir.lengthSq() < 1e-6) dir.set(1, 0, 0);
-    dir.normalize();
-    const pos = center.clone().addScaledVector(dir, gap * rnd(1.2, 2.8));
-    const vel = baseVel.clone().addScaledVector(dir, spread * rnd(0.3, 1.05));
+    let dir;
+    if (aim) dir = plumeDir(aim);
+    else {
+      dir = new THREE.Vector3(rnd(-1, 1), rnd(-0.5, 0.5), rnd(-1, 1));
+      if (dir.lengthSq() < 1e-6) dir.set(1, 0, 0);
+      dir.normalize();
+    }
+    // Out of the crater, spaced along the curtain so they do not touch.
+    const pos = aim
+      ? plumeStart(center, aim, dir, minDist * 0.72, gap * rnd(0.05, 0.3))
+      : center.clone().addScaledVector(dir, gap * rnd(1.2, 2.8));
+    // From the bottom of the crater they need real speed to get anywhere.
+    const vel = baseVel.clone().addScaledVector(dir, spread * (aim ? rnd(0.8, 1.15) : rnd(0.3, 1.05)));
 
     // Solid knots are the pieces that never got hot enough to boil.
     const solid = Math.random() < (solidChance != null ? solidChance : 0.3);
@@ -7229,9 +7325,9 @@ function spawnClumps(center, baseVel, totalMass, count, spread, minDist, solidCh
     }
   }
   // The set as a whole must drift exactly as the mass it came from did.
-  let tot = 0;
-  for (const f of made) tot += f.m;
-  conserveMomentum(made, baseVel.clone().multiplyScalar(tot));
+  settleMomentum(made, baseVel, aim ? recoil : null);
+  // Long enough to climb a few of their own widths clear at their slowest.
+  if (aim) markEmerging(made, ++emergeSeq, recoil, sim.time + 3 * (gap + minDist) / Math.max(spread * 0.3, 1e-9));
   return each * n;
 }
 
@@ -9766,6 +9862,7 @@ function updateForms(realDt) {
  *
  * Returns the mass actually used — less than requested if the pool is full.
  */
+const _ed = new THREE.Vector3(), _ep = new THREE.Vector3();
 function ejecta(center, baseVel, count, totalMass, vEsc, hotCol, coolCol, radius, opts) {
   const o = opts || {};
   const coolRate = COOL_IMPACT * (o.cool != null ? o.cool : 1);
@@ -9780,9 +9877,9 @@ function ejecta(center, baseVel, count, totalMass, vEsc, hotCol, coolCol, radius
     const k = parts.free.pop();
     const k3 = k * 3;
 
-    // uniform direction on the sphere
-    const u = rnd(-1, 1), th = rnd(0, TAU), sr = Math.sqrt(Math.max(0, 1 - u * u));
-    const dx = sr * Math.cos(th), dy = u, dz = sr * Math.sin(th);
+    // Out of the crater when there is one, else anywhere on the sphere.
+    plumeDir(o.aim, _ed);
+    const dx = _ed.x, dy = _ed.y, dz = _ed.z;
 
     // Power law, so most fragments are slow and a few really fly.
     const frac = Math.pow(Math.random(), 1.9);
@@ -9790,10 +9887,10 @@ function ejecta(center, baseVel, count, totalMass, vEsc, hotCol, coolCol, radius
 
     // Start clear of the surface. Spawned inside the collision radius, a grain
     // is absorbed on the very next step and the whole burst vanishes at once.
-    const off = radius * rnd(1.15, 2.3);
-    parts.pos[k3] = center.x + dx * off;
-    parts.pos[k3 + 1] = center.y + dy * off;
-    parts.pos[k3 + 2] = center.z + dz * off;
+    plumeStart(center, o.aim, _ed, radius * 1.08, o.aim ? radius * rnd(0.05, 0.6) : radius * rnd(1.15, 2.3), _ep);
+    parts.pos[k3] = _ep.x;
+    parts.pos[k3 + 1] = _ep.y;
+    parts.pos[k3 + 2] = _ep.z;
 
     parts.vel[k3] = baseVel.x + dx * sp;
     parts.vel[k3 + 1] = baseVel.y + dy * sp;
@@ -9853,18 +9950,19 @@ function gasEjecta(center, baseVel, count, totalMass, vEsc, radius, opts) {
     const k = parts.free.pop();
     const k3 = k * 3;
 
-    const u = rnd(-1, 1), th = rnd(0, TAU), sr = Math.sqrt(Math.max(0, 1 - u * u));
-    const dx = sr * Math.cos(th), dy = u * (o.flat != null ? o.flat : 1), dz = sr * Math.sin(th);
+    plumeDir(o.aim, _ed);
+    const dx = _ed.x, dy = _ed.y * (o.aim || o.flat == null ? 1 : o.flat), dz = _ed.z;
 
     // Gas leaves faster and far more evenly than rubble does — it is pushed by
     // its own pressure, not thrown.
     const frac = Math.pow(Math.random(), 1.15);
     const sp = vEsc * push * (0.4 + frac * 1.5);
 
-    const off = radius * rnd(1.05, 2.6);
-    parts.pos[k3] = center.x + dx * off;
-    parts.pos[k3 + 1] = center.y + dy * off;
-    parts.pos[k3 + 2] = center.z + dz * off;
+    _ed.set(dx, dy, dz);
+    plumeStart(center, o.aim, _ed, radius * 1.05, o.aim ? radius * rnd(0.05, 0.9) : radius * rnd(1.05, 2.6), _ep);
+    parts.pos[k3] = _ep.x;
+    parts.pos[k3 + 1] = _ep.y;
+    parts.pos[k3 + 2] = _ep.z;
     parts.vel[k3] = baseVel.x + dx * sp;
     parts.vel[k3 + 1] = baseVel.y + dy * sp;
     parts.vel[k3 + 2] = baseVel.z + dz * sp;
@@ -10120,7 +10218,12 @@ function stepParticles(dt) {
       const dx = b.p.x - px, dy = b.p.y - py, dz = b.p.z - pz;
       const d2 = dx * dx + dy * dy + dz * dz;
       const rv = visRadius(b);
-      if (d2 < rv * rv) { hit = b; break; }          // landed / swallowed
+      if (d2 < rv * rv) {
+        // A knot still climbing out of the crater is passing through its own
+        // spray, not landing in it.
+        if (b.emerge && sim.time < b.emerge.until) continue;
+        hit = b; break;                                // landed / swallowed
+      }
       const soft = 0.35 * b.r;
       const dd = d2 + soft * soft;
       const f = gm * b.m / (dd * Math.sqrt(dd)) * (b.kind === 'wh' ? -1 : 1);
