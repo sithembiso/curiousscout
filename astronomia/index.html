@@ -10967,6 +10967,88 @@ function dominantAt(pos, exclude) {
   return best;
 }
 
+/**
+ * Two bodies orbit their shared centre of mass — the barycentre — not one
+ * another. A new body was being given its orbital speed while the thing it
+ * orbits stood still, so the pair as a whole carried all that momentum and
+ * drifted off together in whatever direction the newcomer happened to be
+ * thrown. Here the momentum is shared out instead: the newcomer and its
+ * primary move in opposite directions in proportion to their masses, so the
+ * barycentre carries on exactly as the primary was going. Anything already
+ * orbiting the primary (its planets) moves with it.
+ *
+ * A tapped auto-orbit is also made circular for the pair: the relative speed
+ * comes from both masses, as a real binary's does, not the primary's alone.
+ */
+function shareMomentum(b, P, circular) {
+  if (P === b || P.kind === 'gal' || P.kind === 'wh' || !(P.m > 0)) return;
+  const mP = P.m, mb = b.m, M = mP + mb;
+  const vrel = b.v.clone().sub(P.v);
+  const r = b.p.distanceTo(P.p);
+  const mu = G * settings.gravity * M;
+  if (circular) vrel.multiplyScalar(Math.sqrt(M / mP));
+  // Only a pair that will stay together shares a barycentre; something thrown
+  // past at escape speed just flies by.
+  if (vrel.lengthSq() / 2 - mu / Math.max(r, 1e-12) >= 0) return;
+  // Everything the primary is already carrying round, which must come with it.
+  const family = sim.bodies.filter(o => o !== b && o !== P && o.alive && dominantAt(o.p, o) === P);
+  const vcm = P.v.clone();
+  const dv = vrel.clone().multiplyScalar(-mb / M);
+  P.v.copy(vcm).add(dv);
+  for (const o of family) o.v.add(dv);
+  b.v.copy(vcm).addScaledVector(vrel, mP / M);
+}
+
+/* ---------------------------------------------------------------- barycentres */
+/*
+ * Where a pair is heavy enough on both sides for it to show — a binary star,
+ * Pluto and Charon — the point they both swing round is marked with a small
+ * crosshair.
+ */
+const BARY_MAX = 24;
+const baryPool = [];
+let TEX_BARY = null;
+function baryTexture() {
+  const N = 64, cv = newCanvas(N, N), c = cv.getContext('2d');
+  c.strokeStyle = 'rgba(255,255,255,1)';
+  c.lineWidth = 4;
+  c.beginPath(); c.arc(N / 2, N / 2, N * 0.30, 0, TAU); c.stroke();
+  c.beginPath();
+  c.moveTo(N / 2, 2); c.lineTo(N / 2, N * 0.30); c.moveTo(N / 2, N * 0.70); c.lineTo(N / 2, N - 2);
+  c.moveTo(2, N / 2); c.lineTo(N * 0.30, N / 2); c.moveTo(N * 0.70, N / 2); c.lineTo(N - 2, N / 2);
+  c.stroke();
+  return new THREE.CanvasTexture(cv);
+}
+
+function updateBarycentres() {
+  let n = 0;
+  const gm = G * settings.gravity;
+  if (settings.labels) {
+    for (const b of sim.bodies) {
+      if (n >= BARY_MAX) break;
+      if (!b.alive || b.kind === 'gal' || b.kind === 'gas' || shyFar(b)) continue;
+      const P = dominantAt(b.p, b);
+      if (!P || P.m < b.m || b.m / P.m < 0.05 || P.kind === 'gal' || P.kind === 'wh') continue;
+      const r = b.p.distanceTo(P.p);
+      if (b.v.distanceToSquared(P.v) / 2 - gm * (P.m + b.m) / Math.max(r, 1e-12) >= 0) continue;
+      if (!TEX_BARY) TEX_BARY = baryTexture();
+      let sp = baryPool[n];
+      if (!sp) {
+        sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_BARY, color: new THREE.Color(0xff9ad8),
+          transparent: true, depthWrite: false, depthTest: false, opacity: 0.75 }));
+        sp.renderOrder = 7;
+        scene.add(sp);
+        baryPool[n] = sp;
+      }
+      sp.position.copy(P.p).multiplyScalar(P.m).addScaledVector(b.p, b.m).divideScalar(P.m + b.m);
+      sp.scale.setScalar(13 * worldPerPixel(Math.max(camera.position.distanceTo(sp.position), 1e-9)));
+      sp.visible = true;
+      n++;
+    }
+  }
+  for (let i = n; i < baryPool.length; i++) baryPool[i].visible = false;
+}
+
 /** Circular-orbit velocity about `primary` at `pos`, in the horizontal plane. */
 function circularVelocity(primary, pos) {
   const rel = pos.clone().sub(primary.p);
@@ -11140,6 +11222,8 @@ function dropArmed() {
   if (!input.armed || !input.placePos) return;
   if (sim.bodies.length >= MAX_BODIES) { toast('Universe is full — clear some bodies'); return; }
   const vel = velocityFromDrag();
+  const primary = dominantAt(input.placePos, null);
+  const tapped = Math.hypot(input.x - input.x0, input.y - input.y0) < 6;
   if (TYPES[input.armed].kind === 'uni') {
     const u = makeUniverse(input.placePos, vel);
     select(u);
@@ -11149,6 +11233,7 @@ function dropArmed() {
     return;
   }
   const b = makeBody(input.armed, input.placePos, vel);
+  if (primary && primary.alive && (b.kind === 'body' || b.kind === 'bh')) shareMomentum(b, primary, tapped);
   select(b);
   // A galaxy is tens of thousands of light-years wide: pull back to see it.
   if (b.kind === 'gal') frameOn(b, 2.6);
@@ -13849,6 +13934,7 @@ function loop(now) {
   if (land.b) applyLanded(realDt);
   updateBelts();
   if (marks.length) updateMarks();
+  updateBarycentres();
   renderFrame();
   updateHud(realDt);
 
