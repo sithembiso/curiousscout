@@ -6460,46 +6460,20 @@ function meltTexture(seed, size) {
  * through. Drawn additively, so this is pure light laid over the crater.
  */
 function scarFireTexture(seed, size) {
+  /* The glow of fresh melt over the pool: a round disc of light, white-hot in
+     the middle and orange at the edge, exactly the pool's size — no rim and
+     no streaks, which made a fresh mark read as a rayed crater. */
   const cv = newCanvas(size, size);
   const ctx = cv.getContext('2d');
-  const r = mulberry32(seed);
   const c = size / 2;
-
-  // Cracks first, reaching further out than the melt itself.
-  const cracks = 12 + (r() * 10) | 0;
-  for (let i = 0; i < cracks; i++) {
-    const a = r() * TAU;
-    const len = c * (0.42 + r() * 0.52);
-    ctx.save();
-    ctx.translate(c, c); ctx.rotate(a);
-    const g = ctx.createLinearGradient(0, 0, len, 0);
-    g.addColorStop(0, 'rgba(255,236,190,0.95)');
-    g.addColorStop(0.35, 'rgba(255,132,26,0.65)');
-    g.addColorStop(1, 'rgba(150,22,6,0)');
-    ctx.strokeStyle = g;
-    ctx.lineWidth = size * (0.004 + r() * 0.012);
-    ctx.beginPath();
-    ctx.moveTo(c * 0.10, 0);
-    // a couple of kinks, so a crack is not a drawn ruler line
-    ctx.quadraticCurveTo(len * 0.5, (r() - 0.5) * len * 0.28, len, (r() - 0.5) * len * 0.18);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  // The melt sheet, then the molten floor on top of it.
-  let g = ctx.createRadialGradient(c, c, c * 0.05, c, c, c * 0.46);
-  g.addColorStop(0, 'rgba(255,246,224,0.98)');
-  g.addColorStop(0.22, 'rgba(255,196,86,0.92)');
-  g.addColorStop(0.46, 'rgba(255,108,20,0.66)');
-  g.addColorStop(0.74, 'rgba(176,32,8,0.30)');
-  g.addColorStop(1, 'rgba(90,10,4,0)');
+  const g = ctx.createRadialGradient(c, c, 0, c, c, c * 0.62);
+  g.addColorStop(0, 'rgba(255,248,228,1)');
+  g.addColorStop(0.35, 'rgba(255,206,100,0.9)');
+  g.addColorStop(0.7, 'rgba(255,118,24,0.55)');
+  g.addColorStop(0.9, 'rgba(200,44,8,0.18)');
+  g.addColorStop(1, 'rgba(120,16,4,0)');
   ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(c, c, c * 0.46, 0, TAU); ctx.fill();
-
-  // A brighter rim right at the lip of the bowl, where the melt pooled.
-  ctx.strokeStyle = 'rgba(255,222,150,0.85)';
-  ctx.lineWidth = size / 64;
-  ctx.beginPath(); ctx.arc(c, c, c * 0.275, 0, TAU); ctx.stroke();
+  ctx.beginPath(); ctx.arc(c, c, c * 0.62, 0, TAU); ctx.fill();
   return cv;
 }
 
@@ -6794,8 +6768,8 @@ function paintScars(b) {
     sk.fire.material.opacity = lit * 0.95;
     sk.fire.visible = true;
 
-    // The pool: lost in the white flash at first, then showing through it.
-    sk.pit.material.opacity = 0.95 * smoothstep(clamp((t - 0.05) / 0.45, 0, 1));
+    // The pool is there from the first moment, the flash glowing over it.
+    sk.pit.material.opacity = 0.6 + 0.35 * smoothstep(clamp(t / 0.4, 0, 1));
     sk.pit.visible = sk.pit.material.opacity > 0.004;
   }
   return anyHot;
