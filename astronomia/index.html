@@ -7054,6 +7054,7 @@ function initGalaxyStars() {
   sm.frustumCulled = false;
   scene.add(sm);
   galx.mesh = sm;
+  initNebulae();
 }
 
 /**
@@ -7068,6 +7069,7 @@ function galVCirc(m, r, soft) {
 
 /** Free every star belonging to a galaxy — called when one is removed. */
 function freeGalaxyStars(id) {
+  removeNebulae(id);
   for (let k = 0; k < GAL_MAX; k++) {
     if (galx.own[k] !== id) continue;
     galx.own[k] = -1;
@@ -7079,6 +7081,7 @@ function freeGalaxyStars(id) {
 }
 
 function clearGalaxyStars() {
+  nebulae.length = 0;
   if (!galx.own) return;
   for (let k = 0; k < GAL_MAX; k++) {
     if (galx.own[k] < 0) continue;
@@ -7262,6 +7265,7 @@ function seedGalaxyStars(b) {
     galx.live++;
   }
   galx.dirty = true;
+  if (nebx.pts) seedNebulae(b);
 }
 
 /** Every galaxy core in the scene, with the softening its own disc implies. */
@@ -7376,6 +7380,7 @@ function mergeGalaxies(a, b) {
 
   // Hand the other galaxy's stars over where they stand.
   for (let k = 0; k < GAL_MAX; k++) if (galx.own[k] === b.id) galx.own[k] = a.id;
+  for (const nb of nebulae) if (nb.gal === b.id) nb.gal = a.id;
   galx.dirty = true;
 
   fx.flash(a.p, a.galR * 0.25, [255, 240, 210], 0.9);
@@ -7445,7 +7450,13 @@ function updateGalaxies() {
     // The glow standing in for the unresolved crowd of stars in the bulge.
     if (b.parts.galCore) {
       b.parts.galCore.scale.setScalar(Math.max(b.galR * 0.22, 18 * wpp));
-      b.parts.galCore.material.opacity = clamp(0.55 - (b.galMerged ? 0.2 : 0), 0.2, 0.6);
+      // Seen from outside it stands in for the bulge's unresolved glare. From
+      // inside the galaxy the bulge is resolved into its own clouds and stars,
+      // and a sprite that size round the camera only floods the view.
+      const dc = camera.position.distanceTo(b.p) / b.galR;
+      const out = clamp((dc - 0.7) / 1.3, 0, 1);
+      b.parts.galCore.material.opacity = clamp(0.55 - (b.galMerged ? 0.2 : 0), 0.2, 0.6) * out;
+      b.parts.galCore.visible = out > 0.01;
     }
     if (b.parts.dot) b.parts.dot.visible = false;
   }
@@ -7456,7 +7467,10 @@ function updateGalaxies() {
     galx.pts.material.uniforms.uScale.value = S;
     galx.stars.material.uniforms.uScale.value = S;
     if (galx.live > 0) placeGalaxyStars(S);
-    else if (galx.mesh) galx.mesh.count = 0;
+    else {
+      if (galx.mesh) galx.mesh.count = 0;
+      if (nebx.geo) nebx.geo.setDrawRange(0, 0);
+    }
     if (galx.dirty) {
       galx.geo.attributes.aSCol.needsUpdate = true;
       galx.geo.attributes.aRad.needsUpdate = true;
@@ -7511,6 +7525,7 @@ function placeGalaxyStars(S) {
   sm.instanceMatrix.needsUpdate = true;
   sm.instanceColor.needsUpdate = true;
   sm.material.uniforms.uTime.value = performance.now() / 1000;
+  placeNebulae(S, o);
 }
 
 /* ================================================================ universes */
@@ -7765,6 +7780,258 @@ function updateUniverses(realDt, simDt) {
       }
     }
   }
+}
+
+/* ================================================================== nebulae */
+/*
+ * Clouds of glowing gas inside the galaxies, at their real sizes. Each one is
+ * pinned to a star in its galaxy (`k`, a galaxy-star slot) so it is carried
+ * round with the disc, and drawn as a few dozen cloudy billboards from a small
+ * atlas of noise textures, camera-relative like the stars.
+ *
+ *   EMISSION    stellar nurseries: hydrogen glowing red-pink, oxygen teal at
+ *               the hot middle. Hundreds of light-years across (Orion, Carina,
+ *               the Tarantula). Strung along the young spiral arms.
+ *   REFLECTION  dust with no light of its own, lit blue by nearby stars.
+ *   PLANETARY   the shell a dying Sun-like star puffs off: a small glowing ring.
+ *   REMNANT     the blast shell of a supernova, red and green filaments.
+ *
+ * At the scale of a whole galaxy they are specks — as they really are. Zoom in
+ * on an arm and they open up; click one to lock on and fly into it.
+ */
+const NEB_MAX = 24000;                 // billboards across every nebula
+const NEB_KINDS = {
+  emission:   { name: 'emission nebula',  R: [90, 420], n: 34,
+    note: 'a cloud of hydrogen glowing red where new stars are being born' },
+  reflection: { name: 'reflection nebula', R: [12, 45], n: 18,
+    note: 'cold dust with no light of its own, lit blue by the stars inside it' },
+  planetary:  { name: 'planetary nebula',  R: [0.6, 2.5], n: 54,
+    note: 'the glowing shell a dying Sun-like star has puffed off — the Sun will make one in five billion years' },
+  remnant:    { name: 'supernova remnant', R: [15, 70], n: 96,
+    note: 'the still-expanding blast shell of a star that exploded' }
+};
+// How many of each a galaxy of each shape gets: young galaxies are full of
+// nurseries; an elliptical has almost no gas left and only dying stars' shells.
+const NEB_MIX = {
+  spiral:     { emission: 26, reflection: 8, planetary: 6, remnant: 4 },
+  barred:     { emission: 24, reflection: 8, planetary: 6, remnant: 4 },
+  ring:       { emission: 22, reflection: 5, planetary: 4, remnant: 3 },
+  irregular:  { emission: 20, reflection: 5, planetary: 3, remnant: 3 },
+  dwarf:      { emission: 5,  reflection: 1, planetary: 1, remnant: 1 },
+  elliptical: { emission: 0,  reflection: 0, planetary: 5, remnant: 1 }
+};
+const nebulae = [];
+const nebx = { pos: null, col: null, siz: null, rot: null, geo: null, pts: null, n: 0 };
+
+const GNEB_VERT = `
+  attribute vec3 aCol;
+  attribute float aSize;
+  attribute float aRot;
+  uniform float uScale;
+  varying vec3 vCol;
+  varying float vA;
+  varying float vRot;
+  varying float vTile;
+  void main() {
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mv;
+    float px = aSize * uScale / max(-mv.z, 1e-9);
+    vCol = aCol;
+    vRot = fract(aRot) * 6.2831853;
+    vTile = floor(aRot);
+    // too small to resolve: fade with area rather than shrink to a dot
+    vA = aSize > 0.0 ? min(1.0, px * px / 36.0) : 0.0;
+    gl_PointSize = aSize > 0.0 ? clamp(px, 2.0, 700.0) : 0.0;
+    if (aSize <= 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+  }`;
+const GNEB_FRAG = `
+  uniform sampler2D uMap;
+  uniform float uGain;
+  varying vec3 vCol;
+  varying float vA;
+  varying float vRot;
+  varying float vTile;
+  void main() {
+    vec2 q = gl_PointCoord - 0.5;
+    float c = cos(vRot), s = sin(vRot);
+    q = vec2(c * q.x - s * q.y, s * q.x + c * q.y) + 0.5;
+    if (q.x < 0.0 || q.x > 1.0 || q.y < 0.0 || q.y > 1.0) discard;
+    vec2 tile = vec2(mod(vTile, 2.0), floor(vTile / 2.0)) * 0.5;
+    float a = texture2D(uMap, tile + q * 0.5).a;
+    gl_FragColor = vec4(vCol * uGain, a * vA);
+  }`;
+
+/** Four cloudy blobs in a 2×2 atlas: soft-edged fractal noise. */
+function nebulaAtlas() {
+  const N = 256, cv = newCanvas(N * 2, N * 2);
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(N * 2, N * 2), d = img.data;
+  for (let t = 0; t < 4; t++) {
+    const f = fbm(7001 + t * 131, 3, 3, 5, 0.55);
+    const ox = (t % 2) * N, oy = ((t / 2) | 0) * N;
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        const u = x / N, v = y / N;
+        const r = Math.hypot(u - 0.5, v - 0.5) * 2;
+        const edge = clamp(1 - r, 0, 1);
+        // wispy: the noise is pushed hard, so most of the blob is threads and gaps
+        const n = Math.pow(clamp((f(u, v) - 0.32) * 2.2, 0, 1), 1.6);
+        const a = n * Math.pow(edge, 1.3) * 255;
+        const i = ((oy + y) * N * 2 + ox + x) * 4;
+        d[i] = d[i + 1] = d[i + 2] = 255; d[i + 3] = a;
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return new THREE.CanvasTexture(cv);
+}
+
+function initNebulae() {
+  nebx.pos = new Float32Array(NEB_MAX * 3);
+  nebx.col = new Float32Array(NEB_MAX * 3);
+  nebx.siz = new Float32Array(NEB_MAX);
+  nebx.rot = new Float32Array(NEB_MAX);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(nebx.pos, 3));
+  geo.setAttribute('aCol', new THREE.BufferAttribute(nebx.col, 3));
+  geo.setAttribute('aSize', new THREE.BufferAttribute(nebx.siz, 1));
+  geo.setAttribute('aRot', new THREE.BufferAttribute(nebx.rot, 1));
+  geo.setDrawRange(0, 0);
+  nebx.geo = geo;
+  nebx.pts = new THREE.Points(geo, new THREE.ShaderMaterial({
+    uniforms: { uMap: { value: nebulaAtlas() }, uScale: { value: 1 }, uGain: { value: 0.55 } },
+    vertexShader: GNEB_VERT, fragmentShader: GNEB_FRAG,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+  }));
+  nebx.pts.frustumCulled = false;
+  nebx.pts.renderOrder = -4;
+  scene.add(nebx.pts);
+}
+
+const NEB_PREFIX = ['NGC', 'IC', 'Sh2-', 'RCW', 'M', 'NGC'];
+/** Give a galaxy its nebulae, pinned to stars of the right kind. */
+function seedNebulae(b) {
+  removeNebulae(b.id);
+  const shape = TYPES[b.type].shape || 'spiral';
+  const mix = NEB_MIX[shape];
+  const rng = mulberry32(b.seed ^ 0x6e6562);
+  // Candidate anchors: blue giants and young disc stars for nurseries and
+  // reflection nebulae, any star for the shells of dying ones.
+  const young = [], any = [];
+  for (let k = 0; k < GAL_MAX; k++) {
+    if (galx.own[k] !== b.id) continue;
+    any.push(k);
+    if (galx.kind[k] === 3 || galx.kind[k] === 2) young.push(k);
+  }
+  if (!any.length) return;
+  for (const kind in mix) {
+    const spec = NEB_KINDS[kind];
+    const pool = (kind === 'emission' || kind === 'reflection') && young.length ? young : any;
+    for (let i = 0; i < mix[kind]; i++) {
+      const k = pool[(rng() * pool.length) | 0];
+      const R = lerp(spec.R[0], spec.R[1], Math.pow(rng(), 1.6)) * LY_GM;
+      nebulae.push(makeNebula(b.id, k, kind, R, rng));
+    }
+  }
+}
+
+function makeNebula(gal, k, kind, R, rng) {
+  const g = () => (rng() + rng() + rng() - 1.5) / 1.5;
+  const name = NEB_PREFIX[(rng() * NEB_PREFIX.length) | 0] + ' ' + (10 + ((rng() * 7800) | 0));
+  const puffs = [];
+  const n = NEB_KINDS[kind].n;
+  // a random tilt for rings and shells
+  const ax = new THREE.Vector3(g(), g(), g()).normalize();
+  const e1 = new THREE.Vector3(0, 0, 1).cross(ax);
+  if (e1.lengthSq() < 1e-6) e1.set(1, 0, 0);
+  e1.normalize();
+  const e2 = new THREE.Vector3().crossVectors(ax, e1);
+  for (let i = 0; i < n; i++) {
+    let o, size, col;
+    if (kind === 'emission') {
+      // lumpy: a few sub-clumps, the teal oxygen glow only round the hot middle
+      const core = i < n * 0.2;
+      o = new THREE.Vector3(g(), g() * 0.7, g()).multiplyScalar(R * (core ? 0.18 : 0.5));
+      size = R * (core ? 0.25 + rng() * 0.2 : 0.3 + rng() * 0.4);
+      col = core ? [0.35, 0.95, 0.85] : mix([1.0, 0.22, 0.38], [1.0, 0.5, 0.72], rng());
+    } else if (kind === 'reflection') {
+      o = new THREE.Vector3(g(), g() * 0.4, g()).multiplyScalar(R * 0.55);
+      size = R * (0.35 + rng() * 0.45);
+      col = mix([0.30, 0.50, 1.0], [0.55, 0.75, 1.0], rng());
+    } else if (kind === 'planetary') {
+      const a = (i / n) * TAU + rng() * 0.2;
+      const rim = i % 3 === 0;
+      const rr = R * (rim ? 0.92 : 0.66);
+      o = e1.clone().multiplyScalar(Math.cos(a) * rr).addScaledVector(e2, Math.sin(a) * rr)
+        .addScaledVector(ax, g() * R * 0.12);
+      size = R * (rim ? 0.3 : 0.4);
+      col = rim ? [1.0, 0.3, 0.35] : [0.3, 1.0, 0.85];
+    } else {
+      // a ragged shell: points on a sphere, thin filaments of red and green
+      const d = new THREE.Vector3(g(), g(), g()).normalize();
+      o = d.multiplyScalar(R * (0.85 + rng() * 0.15));
+      size = R * (0.18 + rng() * 0.16);
+      col = rng() < 0.55 ? [1.0, 0.28, 0.3] : [0.4, 1.0, 0.6];
+    }
+    puffs.push({ o, size, col, rot: ((rng() * 4) | 0) + rng() * 0.999 });
+  }
+  return { gal, k, kind, R, name, puffs };
+}
+
+function removeNebulae(galId) {
+  for (let i = nebulae.length - 1; i >= 0; i--) if (nebulae[i].gal === galId) nebulae.splice(i, 1);
+}
+
+/** Lay every nebula's billboards out around its anchor star, camera-relative. */
+function placeNebulae(S, o) {
+  if (!nebx.pts) return;
+  let n = 0;
+  const pos = galx.pos;
+  for (const nb of nebulae) {
+    if (galx.own[nb.k] < 0) continue;
+    const k3 = nb.k * 3;
+    const cx = pos[k3] - o.x, cy = pos[k3 + 1] - o.y, cz = pos[k3 + 2] - o.z;
+    for (const pf of nb.puffs) {
+      if (n >= NEB_MAX) break;
+      const i3 = n * 3;
+      nebx.pos[i3] = cx + pf.o.x; nebx.pos[i3 + 1] = cy + pf.o.y; nebx.pos[i3 + 2] = cz + pf.o.z;
+      nebx.col[i3] = pf.col[0]; nebx.col[i3 + 1] = pf.col[1]; nebx.col[i3 + 2] = pf.col[2];
+      nebx.siz[n] = pf.size; nebx.rot[n] = pf.rot;
+      n++;
+    }
+  }
+  nebx.n = n;
+  nebx.geo.setDrawRange(0, n);
+  for (const a of ['position', 'aCol', 'aSize', 'aRot']) nebx.geo.attributes[a].needsUpdate = true;
+  nebx.pts.position.copy(o);
+  nebx.pts.material.uniforms.uScale.value = S;
+}
+
+/** The nebula under a click, if one is big enough on screen to aim at. */
+function pickNebula(sx, sy) {
+  let best = null, bestPx = 0;
+  for (const nb of nebulae) {
+    if (galx.own[nb.k] < 0) continue;
+    const k3 = nb.k * 3;
+    _lp.set(galx.pos[k3], galx.pos[k3 + 1], galx.pos[k3 + 2]);
+    const dist = camera.position.distanceTo(_lp);
+    const px = nb.R / worldPerPixel(Math.max(dist, 1e-9));
+    if (px < 10) continue;
+    _lp.project(camera);
+    if (_lp.z < -1 || _lp.z > 1) continue;
+    const d = Math.hypot((_lp.x + 1) * 0.5 * VIEW.w - sx, (1 - _lp.y) * 0.5 * VIEW.h - sy);
+    // the smallest one under the cursor wins, so a ring inside a big cloud can be picked
+    if (d < Math.max(px * 0.7, 12) && (!best || px < bestPx)) { best = nb; bestPx = px; }
+  }
+  return best;
+}
+
+function focusNebula(nb) {
+  galx.focus = nb.k;
+  sim.follow = null;
+  const spec = NEB_KINDS[nb.kind];
+  const ly = nb.R * 2 / LY_GM;
+  toast('Locked on to ' + nb.name + ' — ' + (/^[aeiou]/.test(spec.name) ? 'an ' : 'a ') + spec.name + ', ' +
+    (ly < 10 ? ly.toFixed(1) : Math.round(ly).toLocaleString()) + ' light-years across: ' + spec.note + '.');
 }
 
 /** The galaxy star nearest a click, or -1. */
@@ -10104,9 +10371,11 @@ function bindInput() {
       hideAim();
     } else if (input.mode === 'orbit' && !input.moved) {
       const hit = pickBody(e.clientX, e.clientY);
-      const star = hit ? -1 : pickGalaxyStar(e.clientX, e.clientY);
+      const neb = hit ? null : pickNebula(e.clientX, e.clientY);
+      const star = hit || neb ? -1 : pickGalaxyStar(e.clientX, e.clientY);
       select(hit);
-      if (star >= 0) focusGalaxyStar(star);
+      if (neb) focusNebula(neb);
+      else if (star >= 0) focusGalaxyStar(star);
     }
     if (input.pointers.size === 0) input.mode = null;
     else if (input.pointers.size === 1) {
@@ -12237,6 +12506,7 @@ function openHelp() {
     '<li><b>Ring</b> — a core inside a perfect ring of new stars, like Hoag\'s Object.</li>' +
     '<li><b>Dwarf</b> — a tiny galaxy a few thousand light-years across. The most common kind in the universe.</li>' +
     '</ul>' +
+    '<p>Every galaxy is full of <b>nebulae</b> at their real sizes: pink <b>emission nebulae</b> where stars are being born, blue <b>reflection nebulae</b>, the small glowing rings of <b>planetary nebulae</b> and the red-and-green shells of <b>supernova remnants</b>. From a whole galaxy away they are specks — zoom in on an arm and they open up. Click one to lock on and fly into it. Ellipticals have almost no gas left, so they only have the shells of dying stars.</p>' +
     '<h3>SINGULARITIES AND UNIVERSES</h3>' +
     '<ul>' +
     '<li>A <b>Singularity</b> (under <b>Cosmic</b>) is a point of infinite density with no event horizon around it. It swallows anything that touches it, and it shimmers through every colour.</li>' +
