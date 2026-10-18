@@ -2911,6 +2911,21 @@ function assignOrbitHosts(dt) {
       if (g > pull) { pull = g; best = o; }
     }
     if (!best) continue;
+    /* The hardest pull is not always what a body orbits. The Sun tugs on the
+       Moon twice as hard as Earth does, yet the Moon goes round Earth, because
+       it sits well inside Earth's Hill sphere — the region where Earth's pull,
+       measured against the Sun's tide, wins. So a body deep inside another
+       orbiter's Hill sphere belongs to that orbiter instead. */
+    let inner = null, innerD = Infinity;
+    for (const o of bs) {
+      if (o === b || o === best || o.m <= b.m || o.kind === 'wh' || o.kind === 'gal') continue;
+      const dHost = o.p.distanceTo(best.p);
+      if (!(dHost > 0) || o.m >= best.m) continue;
+      const hill = dHost * Math.cbrt(o.m / (3 * best.m));
+      const d = b.p.distanceTo(o.p);
+      if (d < hill * 0.5 && d < innerD) { inner = o; innerD = d; }
+    }
+    if (inner) best = inner;
     b.domHost = best;
     const r = b.p.distanceTo(best.p);
     const mu = gm * (best.m + b.m);
@@ -14384,6 +14399,47 @@ const PRESETS = [
       orbitBody('ice_world', s, 3.4 * AU, { ang: 5.0, over: { name: 'Frostbite', mass: 0.8 } });
       sim.running = true;
       return s;
+    }
+  },
+  {
+    name: 'Noctaris System', desc: 'Three worlds round a single brown dwarf: Ignis, a molten Mercury with a lava moon of its own; Thalassa, a living world the size of Venus; and Taris, an ice giant as heavy as Neptune with four moons.',
+    dist: 100,
+    build() {
+      /* A newborn brown dwarf, still hot from forming: about 3,000 K and two
+         and a half times Jupiter's width. A cold old one is so faint that a living world
+         would have to hug it too tightly to keep anything in orbit round itself. */
+      const bd = makeBody('brown_dwarf', new V3(), new V3(), { name: 'Noctaris', r: rE(28) });
+      bd.temp = 3000;
+      updateLuminosity(bd);
+      refreshVisual(bd);
+
+      // Mercury's size and mass, molten all the way through.
+      const ignis = orbitBody('lava_world', bd, 7.5, { ang: 0.5, inc: 0.01,
+        over: { name: 'Ignis', mass: 0.0553, r: rE(0.3829) } });
+      // Venus's size and mass, in the warm band where the seas stay liquid.
+      orbitBody('terrestrial', bd, 10, { ang: 2.4, inc: -0.01,
+        over: { name: 'Thalassa', mass: 0.815, r: rE(0.9499) } });
+      // Neptune's mass, far enough out to hold a family of moons.
+      const taris = orbitBody('ice_giant', bd, 40, { ang: 4.3, inc: 0.02,
+        over: { name: 'Taris', mass: 17.147 } });
+
+      /* Moons, each kept clear of its planet's drawn size and of the moon
+         inside it, the way the Solar System's are. */
+      const moon = (type, host, a, name, over, ang) => {
+        const r = over && over.r != null ? over.r : TYPES[type].rad * R_EARTH;
+        const clear = (host.r + r) * settings.bodyScale * 1.6;
+        return orbitBody(type, host, Math.max(a, clear), { ang: ang,
+          over: Object.assign({ name: name }, over || {}) });
+      };
+      // A lava moon with Pluto's size and mass.
+      // Outside Ignis's Roche limit, but well inside the reach of its gravity.
+      moon('lava_world', ignis, 0.024, 'Cinis', { mass: 0.00218, r: rE(0.1868) }, 1.1);
+      moon('sol_io', taris, 0.14, 'Aris', null, 0.3);         // volcanic, like Io
+      moon('sol_miranda', taris, 0.21, 'Tar', null, 1.9);     // patchwork, like Miranda
+      moon('sol_titan', taris, 0.32, 'Ris', null, 3.4);       // hazy, like Titan
+      moon('sol_europa', taris, 0.48, 'Tris', null, 5.0);     // ice over an ocean, like Europa
+      sim.running = true;
+      return bd;
     }
   },
   {
