@@ -11,7 +11,7 @@ There is **no package.json, bundler, test runner, linter, or CI**. Everything is
 ## Layout
 
 - `index.html` — the landing page. Contains a `<main>` of game cards.
-- `<game name>/index.html` — each game is **one fully self-contained file** (all CSS and JS inline) in its own directory: `astronomia/`, `balloon pop/`, `claudecraft/`, `cluckdown/`, `football rivals/`, `geo-jump/`, `math mine/`. Directory names may contain spaces.
+- `<game name>/index.html` — each game is **one fully self-contained file** (all CSS and JS inline) in its own directory: `astronomia/`, `balloon pop/`, `claudecraft/`, `cluckdown/`, `football rivals/`, `geo-jump/`, `math mine/`, `toon studio/`. Directory names may contain spaces.
 
 - `analytics.js` — the one shared local script in the repo, loaded by the landing page and every game. See **Analytics** below.
 
@@ -41,7 +41,7 @@ Convention: **commit straight to `main` and push — no PRs.** The site deploys 
 `<script defer src="../analytics.js"></script>` just before `</head>`. It is the
 **one shared local script** in the repo — a deliberate exception to the
 "self-contained file" rule, so the PostHog key and event logic live in one place
-instead of being duplicated across eight files.
+instead of being duplicated across nine files.
 
 It sends four events, all carrying a `game` property taken from the directory
 name (so a **new game needs no edit to `analytics.js`** — just the script tag):
@@ -88,4 +88,4 @@ Conventions to preserve:
 - **URL-encode spaces** in the `href` (e.g. `football%20rivals/`, `math%20mine/`).
 - Each card sets a per-game accent color via the inline `--accent` custom property and carries a hand-drawn inline `<svg>` icon.
 - The `<span class="ver">` badge holds the version label — free-form (e.g. `1.0`, `WC`, `0.6`). ClaudeCraft uses a `0.x` lineage (0.1 Aether → 0.2 Underworld → 0.3 Milk & Honey → 0.4 Swords → 0.5 Pets → 0.6 Demons & Angels → 0.7 Biomes of Darkness), which supersedes any older `5.0`-style number.
-- Games namespace their DOM ids with a short prefix (`cc-` ClaudeCraft, `mtc-` math mine, `round-` balloon pop). Since each game is its own page this is stylistic scoping, not a hard requirement — but match the game's existing prefix when editing one.
+- Games namespace their DOM ids with a short prefix (`cc-` ClaudeCraft, `mtc-` math mine, `round-` balloon pop, `ts-` Toon Studio). Since each game is its own page this is stylistic scoping, not a hard requirement — but match the game's existing prefix when editing one.
