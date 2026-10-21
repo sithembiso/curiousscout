@@ -5247,56 +5247,90 @@ const NEB_FRAG = `
  * bleached away exactly where the cloud is thickest and most interesting.
  * Starting deep buys several layers of overlap before the hue washes out.
  */
+/* Every remnant is different. Its shape is one of five, each with its own
+   proportions, and its colours one of six palettes — both picked by the
+   explosion's own seed, and the whole cloud is tilted its own way too.
+     0 SHELL      a thin ragged bubble with an empty middle (Cassiopeia A)
+     1 BUTTERFLY  two lobes blown out either side of a pinched waist
+     2 CRAB       filled with tangled filaments, densest in the middle
+     3 BROKEN     a lopsided shell, bright on one side, torn open on the other
+     4 HOURGLASS  stretched long, narrow in the middle, with bright rings
+   Palettes: [outer A, outer B, where they meet, inner glow]. */
+const REMNANT_PALETTES = [
+  [[1.00, 0.28, 0.30], [0.40, 1.00, 0.60], [1.00, 0.45, 0.70], [0.35, 0.95, 0.85]],   // hydrogen red & oxygen green
+  [[1.00, 0.40, 0.75], [0.30, 0.80, 1.00], [0.80, 0.50, 1.00], [1.00, 0.85, 0.95]],   // pink & sky blue
+  [[1.00, 0.55, 0.15], [0.30, 0.55, 1.00], [1.00, 0.85, 0.40], [0.80, 0.90, 1.00]],   // orange & blue (the Crab)
+  [[0.70, 0.30, 1.00], [1.00, 0.80, 0.30], [1.00, 0.45, 0.60], [1.00, 0.95, 0.80]],   // violet & gold
+  [[0.20, 0.90, 0.80], [1.00, 0.30, 0.45], [0.60, 0.70, 1.00], [0.80, 1.00, 0.95]],   // teal & rose
+  [[1.00, 0.30, 0.25], [1.00, 0.75, 0.30], [1.00, 0.50, 0.30], [1.00, 0.95, 0.80]]    // fire red & amber
+];
+const KILO_PALETTE = [[0.30, 0.45, 1.00], [0.35, 0.90, 1.00], [0.70, 0.45, 1.00], [0.75, 0.95, 1.00]];
 function nebulaCloud(variant, n, blue) {
   const key = 'neb:' + variant + ':' + n + (blue ? ':b' : '');
   if (geoCache.has(key)) return geoCache.get(key);
   const rng = mulberry32(hashStr(key));
   const lump = fbm(hashStr('lump' + variant), 4, 2, 4);
   const hue = fbm(hashStr('hue' + variant), 3, 2, 3);
-
-  /* A kilonova's debris is a different beast from a supernova's: far hotter to
-     begin with and stuffed with freshly built heavy elements, so it starts out
-     a fierce electric blue instead of the gold and rose of an ordinary remnant. */
-  /* Coloured like the remnants in the galaxies: the shell is threads of
-     glowing hydrogen (red) and oxygen (green), with a teal-and-pink glow on
-     the inside where it is still lit from within. */
-  const RED = blue ? [0.30, 0.45, 1.00] : [1.00, 0.28, 0.30];
-  const GREEN = blue ? [0.35, 0.90, 1.00] : [0.40, 1.00, 0.60];
-  const PINK = blue ? [0.70, 0.45, 1.00] : [1.00, 0.45, 0.70];
-  const TEAL = blue ? [0.75, 0.95, 1.00] : [0.35, 0.95, 0.85];
+  const shape = variant % 5;
+  // A kilonova is hotter and full of new heavy elements: always electric blue
+  const [A, Bc, MEET, IN] = blue ? KILO_PALETTE : REMNANT_PALETTES[Math.floor(variant / 5) % REMNANT_PALETTES.length];
+  // each one also has its own proportions
+  const sx = 0.8 + rng() * 0.45, sy = 0.75 + rng() * 0.5, sz = 0.8 + rng() * 0.4;
+  const fill = shape === 2 ? 0.25 : 0.03;
 
   const pos = [], col = [], siz = [], rot = [];
   let guard = 0;
-  while (siz.length < n && guard++ < n * 40) {
+  while (siz.length < n && guard++ < n * 60) {
     const z = rng() * 2 - 1, ph = rng() * TAU, s = Math.sqrt(Math.max(0, 1 - z * z));
     const dx = s * Math.cos(ph), dy = s * Math.sin(ph), dz = z;
     const u = ((Math.atan2(dy, dx) / TAU) + 1) % 1;
     const v = Math.acos(clamp(dz, -1, 1)) / Math.PI;
 
     const lb = clamp(lump(u, v) * 1.9 - 0.5, 0, 1);
-    if (rng() > 0.03 + lb * 1.0) continue;    // leave gaps, or it is just a ball
+    if (rng() > fill + lb * 1.0) continue;    // leave gaps, or it is just a ball
 
-    /* A hollow, lumpy shell rather than a filled ball. This is what a remnant
-       physically is — the blast sweeps the middle empty — and it also fixes the
-       worst artefact of additive blending: a filled ball has its longest
-       sightline dead centre, so the middle always clips to white and the whole
-       thing bands into a bullseye. With the centre empty there is no such peak. */
-    // a thin, ragged shell with an empty middle — like the remnants in the galaxies
-    const r = (0.8 + Math.pow(rng(), 0.6) * 0.2) * (0.86 + lb * 0.22);
-    // Break the radial regularity so the shell never reads as a smooth surface.
+    let r, x, y, zz;
+    if (shape === 1) {
+      // butterfly: two lobes along y, pinched at the waist
+      const lobe = Math.abs(dy);
+      r = (0.75 + Math.pow(rng(), 0.6) * 0.25) * (0.86 + lb * 0.22);
+      const pinch = 0.25 + 0.75 * Math.pow(lobe, 0.6);
+      x = dx * r * pinch; y = dy * r * 1.35; zz = dz * r * pinch;
+    } else if (shape === 2) {
+      // crab: filled, a tangle of filaments, denser towards the middle
+      r = Math.pow(rng(), 0.7) * (0.75 + lb * 0.4);
+      x = dx * r; y = dy * r * 0.8; zz = dz * r;
+    } else if (shape === 3) {
+      // broken: thick and bright towards +x, thin and torn away on the far side
+      const side = (dx + 1) / 2;
+      if (rng() > 0.25 + side * 0.85) continue;
+      r = (0.8 + Math.pow(rng(), 0.6) * 0.2) * (0.86 + lb * 0.22) * (0.85 + side * 0.25);
+      x = dx * r + 0.12; y = dy * r; zz = dz * r;
+    } else if (shape === 4) {
+      // hourglass: long along y, narrow waist, with denser rings round each end
+      const t = dy;
+      const w = 0.3 + 0.7 * Math.abs(t);
+      r = (0.82 + Math.pow(rng(), 0.6) * 0.18) * (0.86 + lb * 0.2);
+      x = dx * r * w * 0.8; y = t * r * 1.6; zz = dz * r * w * 0.8;
+    } else {
+      // shell: a thin ragged bubble with an empty middle
+      r = (0.8 + Math.pow(rng(), 0.6) * 0.2) * (0.86 + lb * 0.22);
+      x = dx * r; y = dy * r; zz = dz * r;
+    }
+    // Break the regularity so it never reads as a smooth surface.
     const off = () => (rng() - 0.5) * 0.16;
-    pos.push(dx * r + off(), dy * r + off(), dz * r + off());
+    pos.push(x * sx + off(), y * sy + off(), zz * sz + off());
 
-    // patches of red and of green, with a little pink where they meet
+    // patches of the two colours, blended where they meet
     const h = clamp(hue(u, v) * 1.6 - 0.3, 0, 1);
-    let c = h < 0.42 ? RED : h > 0.58 ? GREEN : mix(RED, PINK, 0.6);
-    // the inside of the shell glows teal and pink
-    c = mix(c, rng() < 0.5 ? TEAL : PINK, clamp(1.75 - r * 1.9, 0, 1) * 0.6);
+    let c = h < 0.42 ? A : h > 0.58 ? Bc : mix(A, MEET, 0.6);
+    // the inside still glows, lit from within
+    c = mix(c, rng() < 0.5 ? IN : MEET, clamp(1.75 - r * 1.9, 0, 1) * (shape === 2 ? 0.45 : 0.6));
     const j = 0.80 + rng() * 0.4;
     col.push(c[0] * j, c[1] * j, c[2] * j);
     // Wisps big enough to overlap into threads, each its own tile of the atlas
     // turned its own way, so the shell is filaments and not round blobs.
-    siz.push(0.1 + Math.pow(rng(), 2) * 0.28);
+    siz.push((shape === 2 ? 0.08 : 0.1) + Math.pow(rng(), 2) * 0.28);
     rot.push(((rng() * 4) | 0) + rng() * 0.999);
   }
 
@@ -5359,7 +5393,9 @@ function buildSNVisual(e) {
   shell.renderOrder = 4;
   g.add(shell);
 
-  const neb = new THREE.Points(nebulaCloud((e.id || 1) % 4, 900, e.flavour === 'kilo'), new THREE.ShaderMaterial({
+  // each explosion gets its own shape and colours (5 shapes × 6 palettes × 4 seeds)
+  if (e.nebVariant == null) e.nebVariant = Math.floor(Math.random() * 120);
+  const neb = new THREE.Points(nebulaCloud(e.nebVariant, 900, e.flavour === 'kilo'), new THREE.ShaderMaterial({
     uniforms: {
       uMap: { value: sharedNebAtlas() }, uOp: { value: 0 },
       uScale: { value: 1 }, uFocal: { value: 1 }
@@ -5369,6 +5405,9 @@ function buildSNVisual(e) {
   }));
   neb.frustumCulled = false;
   neb.renderOrder = 3;
+  // tilted its own way, so even two of the same shape don't line up
+  const tr = mulberry32(e.nebVariant * 7919 + 13);
+  neb.rotation.set(tr() * TAU, tr() * TAU, tr() * TAU);
   g.add(neb);
 
   const core = new THREE.Sprite(new THREE.SpriteMaterial({
