@@ -8540,7 +8540,9 @@ function updateGalaxyPairs(dt) {
       b.v.x -= rvx * k * mu / b.m; b.v.y -= rvy * k * mu / b.m; b.v.z -= rvz * k * mu / b.m;
 
       // Close enough that there is only one galaxy left.
-      if (d < reach * 0.055) { mergeGalaxies(a.m >= b.m ? a : b, a.m >= b.m ? b : a); return; }
+      // (Inside a Big Bang universe the ages decide when galaxies merge.)
+      if (d < reach * 0.055 && !(a.universe && a.universe === b.universe && uniAges(a.universe)))
+        { mergeGalaxies(a.m >= b.m ? a : b, a.m >= b.m ? b : a); return; }
     }
   }
 }
@@ -8761,6 +8763,36 @@ const UNI_R = 14 * GAL_R_MW;           // radius at birth, ~700,000 light-years
 const UNI_EXPAND = 2600;               // days for the bubble to double, early on
 const UNI_CRUNCH = 260;                // e-folding time of a crunch, in days
 // What a universe is made of, by rough share: spirals, then ellipticals and dwarfs.
+/* A universe born in a Big Bang starts crowded with a hundred galaxies, and
+   over the ages they merge into one another until, after a quintillion years,
+   the last one has gone dark and the bubble pops. [age in days, galaxies left,
+   the age as it is announced]. Between two marks the count falls steadily in
+   log time, reaching each mark exactly. */
+const UNI_BORN = 100;
+const UNI_AGES = [
+  [1 / 86400, 99, '1 second'], [60 / 86400, 90, '1 minute'], [300 / 86400, 85, '5 minutes'],
+  [365.25, 75, '1 year'], [365.25e2, 65, 'a century'], [365.25e3, 50, 'a thousand years'],
+  [365.25e6, 40, '1 million years'], [365.25e9, 30, '1 billion years'],
+  [365.25e11, 15, '100 billion years'], [365.25e12, 5, '1 trillion years'],
+  [365.25e15, 1, '1 quadrillion years'], [365.25e18, 0, '1 quintillion years']
+];
+/* A Big Bang universe keeps its own clock, separate from the sim's, that
+   speeds up as it goes: each second covers e^0.75 times as much time as the
+   last, so the first second, the first year and the first quintillion years
+   all get their turn on screen — about a minute and a half from bang to dark. */
+const UNI_CLOCK = 0.75;
+/** How many galaxies a Big Bang universe should still have at this age. */
+function uniGalaxiesAt(age) {
+  if (age < UNI_AGES[0][0]) return UNI_BORN;
+  for (let i = 1; i < UNI_AGES.length; i++) {
+    const [a1, n1] = UNI_AGES[i];
+    if (age >= a1) continue;
+    const [a0, n0] = UNI_AGES[i - 1];
+    const f = Math.log(age / a0) / Math.log(a1 / a0);
+    return Math.ceil(n0 + (n1 - n0) * f);
+  }
+  return 0;
+}
 const UNI_MIX = ['galaxy', 'galaxy', 'galaxy', 'barred_galaxy', 'barred_galaxy', 'elliptical_galaxy',
   'elliptical_galaxy', 'irregular_galaxy', 'ring_galaxy', 'dwarf_galaxy', 'dwarf_galaxy'];
 
@@ -8807,25 +8839,31 @@ function makeUniverse(at, vel, opts) {
     // is inside it.
     type: 'universe', p: at.clone(), v: vel.clone(), r: UNI_R, R: o.bang ? 0 : UNI_R,
     members: [], age: 0, crunch: false, flash: o.bang ? 0 : -1, seed: (rng() * 1e9) | 0,
+    ages: !!o.bang, mark: 0,             // a Big Bang universe thins out over the ages
     v0: vel.clone()                      // its drift at birth, which a crunch hands back
   };
   /* Galaxies, scattered through the ball and each launched outwards by
      Hubble's law — the further out, the faster it goes. */
-  const n = o.n || (6 + ((rng() * 4) | 0));
+  const n = o.n || (o.bang ? UNI_BORN : 6 + ((rng() * 4) | 0));
+  // Share the star budget out, so a hundred galaxies all get some.
+  const perGal = Math.min(3200, Math.floor(galx.free.length * 0.9 / n));
   const H = 1 / UNI_EXPAND;
   for (let i = 0; i < n; i++) {
     const dir = new THREE.Vector3(rng() * 2 - 1, rng() * 2 - 1, rng() * 2 - 1);
     if (dir.lengthSq() < 1e-4) dir.set(1, 0, 0);
     dir.normalize();
-    const dist = UNI_R * (o.bang ? 0.12 + rng() * 0.18 : 0.25 + Math.cbrt(rng()) * 0.6);
+    // A crowd of a hundred is spread through the whole fireball so they do
+    // not all start out on top of one another.
+    const dist = UNI_R * (o.bang ? (n > 20 ? 0.06 + Math.cbrt(rng()) * 0.5 : 0.12 + rng() * 0.18)
+      : 0.25 + Math.cbrt(rng()) * 0.6);
     const pos = at.clone().addScaledVector(dir, dist);
     const v = vel.clone().addScaledVector(dir, dist * H * (o.bang ? 2.4 : 1));
     if (sim.bodies.length >= MAX_BODIES) break;
     const kind = UNI_MIX[(rng() * UNI_MIX.length) | 0];
     const g = makeBody(kind, pos, v);
     const sc = TYPES[kind].scale || [0.5, 1.5];
-    g.galR = GAL_R_MW * lerp(sc[0], sc[1], rng()) * 0.6;
-    g.galN = kind === 'dwarf_galaxy' ? 1400 : 3200;
+    g.galR = GAL_R_MW * lerp(sc[0], sc[1], rng()) * (n > 20 ? 0.4 : 0.6);
+    g.galN = Math.min(kind === 'dwarf_galaxy' ? 1400 : 3200, kind === 'dwarf_galaxy' ? perGal >> 1 : perGal);
     g.m = galMassFor(g.galR);
     g.galAxis = new THREE.Vector3(rng() * 2 - 1, rng() * 2 - 1, rng() * 2 - 1).normalize();
     seedGalaxyStars(g);
@@ -8926,17 +8964,76 @@ function bigCrunch(u) {
   renderInspector();
 }
 
+/**
+ * The ages of a universe: while it has more galaxies than its age allows, the
+ * smallest is swallowed by its nearest neighbour, which takes its mass and
+ * grows a little. The very last one has no one to merge with — it simply
+ * burns out. Survivors are rebuilt with more stars once enough are free.
+ */
+function uniAges(id) {
+  for (const u of universes) if (u.id === id) return u.ages && !u.crunch;
+  return false;
+}
+
+function thinUniverse(u, age) {
+  const want = uniGalaxiesAt(age);
+  let gone = 0;
+  while (u.members.length > want) {
+    let small = u.members[0];
+    for (const g of u.members) if (g.m < small.m) small = g;
+    let near = null, nd = Infinity;
+    for (const g of u.members) {
+      if (g === small) continue;
+      const d = g.p.distanceToSquared(small.p);
+      if (d < nd) { nd = d; near = g; }
+    }
+    if (near) {
+      near.m += small.m;
+      near.galR = Math.min(near.galR * 1.04, GAL_R_MW * 1.2);
+      near.galMerged = (near.galMerged || 0) + 1 + (small.galMerged || 0);
+      if (sim.selected === small) select(near);
+      if (sim.follow === small) sim.follow = near;
+    }
+    fx.flash(small.p, small.galR * 0.3, [255, 236, 200], 0.6);
+    removeBody(small);
+    u.members.splice(u.members.indexOf(small), 1);
+    gone++;
+  }
+  if (gone) {
+    compact();
+    // Hand the freed stars to the survivors, a galaxy at a time.
+    const per = Math.min(3200, Math.floor((galx.free.length + u.members.reduce((s, g) => s + (g.galN || 0), 0)) * 0.9 / Math.max(u.members.length, 1)));
+    for (const g of u.members) {
+      const cap = g.type === 'dwarf_galaxy' ? per >> 1 : per;
+      if (cap > (g.galN || 0) * 1.6) { g.galN = cap; seedGalaxyStars(g); }
+    }
+    refreshGalCores();
+  }
+  // Announce each age as it is reached (only the latest, if several pass at once).
+  let said = -1;
+  while (u.mark < UNI_AGES.length && age >= UNI_AGES[u.mark][0]) said = u.mark++;
+  if (said >= 0 && said < UNI_AGES.length - 1) {
+    const left = u.members.length;
+    toast(u.name + ' is ' + UNI_AGES[said][2] + ' old — ' + (left === 1 ? 'one galaxy' : left + ' galaxies') + ' left.');
+  }
+}
+
 const _uc = new THREE.Vector3(), _uv = new THREE.Vector3();
 function updateUniverses(realDt, simDt) {
   for (let i = universes.length - 1; i >= 0; i--) {
     const u = universes[i];
     u.members = u.members.filter(g => g.alive);
+    const tick = u.ages && !u.crunch
+      ? (sim.running ? Math.max(u.age, 1 / 86400) * (Math.exp(UNI_CLOCK * realDt) - 1) : 0) : simDt;
+    if (u.ages && !u.crunch && tick > 0) thinUniverse(u, u.age + tick);
     if (u.members.length === 0) {
-      toast(u.name + ' is empty, and its bubble has popped.');
+      toast(u.ages && u.mark >= UNI_AGES.length
+        ? 'After a quintillion years the last galaxy in ' + u.name + ' has gone dark. Its bubble has popped.'
+        : u.name + ' is empty, and its bubble has popped.');
       disposeUniverse(u);
       continue;
     }
-    u.age += simDt;
+    u.age += tick;
     // Centre and drift: the mass-weighted middle of what is left in it.
     let M = 0;
     _uc.set(0, 0, 0); _uv.set(0, 0, 0);
@@ -13376,7 +13473,7 @@ function updateInspectorStats() {
   if (b.kind === 'uni') {
     inspRefs.ug.textContent = b.members.length;
     inspRefs.ur.textContent = fmtDist(b.R);
-    inspRefs.ua.textContent = b.age < 730 ? Math.round(b.age).toLocaleString() + ' days'
+    inspRefs.ua.textContent = b.ages ? fmtCosmicAge(b.age) : b.age < 730 ? Math.round(b.age).toLocaleString() + ' days'
       : (b.age / 365.25).toPrecision(3) + ' years';
     return;
   }
@@ -13916,6 +14013,18 @@ function peakLum(ni, rise, plateau, tPlat) {
 function fmtErg(foe) {
   const e = Math.floor(Math.log10(Math.max(foe, 1e-9))) + 51;
   return (foe / Math.pow(10, e - 51)).toFixed(2) + '×10' + sup(e) + ' erg';
+}
+
+/** 3.2e13 days → "87.6 billion years"; anything from a second to forever. */
+function fmtCosmicAge(days) {
+  const sec = days * 86400, y = days / 365.25;
+  if (sec < 60) return sec.toFixed(sec < 10 ? 1 : 0) + ' seconds';
+  if (sec < 3600) return (sec / 60).toFixed(1) + ' minutes';
+  if (days < 1) return (sec / 3600).toFixed(1) + ' hours';
+  if (y < 1) return Math.round(days) + ' days';
+  const big = [[1e18, 'quintillion'], [1e15, 'quadrillion'], [1e12, 'trillion'], [1e9, 'billion'], [1e6, 'million']];
+  for (const [v, w] of big) if (y >= v) return (y / v).toPrecision(3) + ' ' + w + ' years';
+  return y < 1000 ? y.toPrecision(3) + ' years' : Math.round(y).toLocaleString() + ' years';
 }
 
 function fmtYears(days) {
@@ -14956,7 +15065,8 @@ function openHelp() {
     '<h3>SINGULARITIES AND UNIVERSES</h3>' +
     '<ul>' +
     '<li>A <b>Singularity</b> (under <b>Cosmic</b>) is a point of infinite density with no event horizon around it. It swallows anything that touches it, and it shimmers through every colour.</li>' +
-    '<li>Select it and press <b>BIG BANG</b>: it explodes into a brand-new <b>Universe</b> — a bubble of space with half a dozen galaxies in it, all flying apart as it expands. Time speeds up so you can watch.</li>' +
+    '<li>Select it and press <b>BIG BANG</b>: it explodes into a brand-new <b>Universe</b> — a bubble of space crowded with <b>100 galaxies</b>, all flying apart as it expands. Time speeds up so you can watch.</li>' +
+    '<li>A newborn universe has its own clock that runs faster and faster. Over the ages its galaxies merge: 99 after a second, 90 after a minute, 75 after a year, 50 after a thousand years, 30 after a billion, 5 after a trillion, one after a quadrillion — and after a quintillion years the last one goes dark and the bubble pops. The whole life takes about a minute and a half.</li>' +
     '<li>You can also drop a Universe straight from the palette. Click any star in any of its galaxies to lock on and fly in.</li>' +
     '<li>Select a universe (click the middle of its bubble) and press <b>BIG CRUNCH</b>: the expansion turns round, the galaxies fall back together and merge, and the whole thing collapses into a single singularity — ready to go bang again.</li>' +
     '</ul>' +
