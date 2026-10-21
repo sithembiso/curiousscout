@@ -137,6 +137,7 @@
   }
 
   .an-tools { margin-left: auto; display: flex; gap: 6px; padding: 6px; }
+  #an-btn-music.off { opacity: 0.4; text-decoration: line-through; }
 
   /* ---------- palette (left) ---------- */
   .an-side {
@@ -517,6 +518,7 @@
     <div class="an-tools panel">
       <button id="an-btn-systems" title="Load a ready-made system">&#9733; <span>Systems</span></button>
       <button id="an-btn-settings" title="Simulation settings">&#9881; <span>Settings</span></button>
+      <button id="an-btn-music" title="Music on / off (M)">&#9835;</button>
       <button id="an-btn-help" title="How to play">?</button>
     </div>
   </div>
@@ -15092,6 +15094,7 @@ function openHelp() {
     '<div><kbd>F</kbd></div><span>Lock the camera onto the selected body</span>' +
     '<div><kbd>Del</kbd></div><span>Remove the selected body</span>' +
     '<div><kbd>T</kbd> <kbd>L</kbd></div><span>Toggle trails / labels</span>' +
+    '<div><kbd>M</kbd></div><span>Music on / off (or the &#9835; button)</span>' +
     '</div>' +
     '<p style="margin-top:8px">On a touch screen: one finger rotates, two fingers pinch to zoom and drag to pan.</p>' +
     '<h3>LANDING ON A WORLD</h3>' +
@@ -15227,6 +15230,137 @@ function showPanel(which) {
   document.body.classList.toggle('panel-open', !!which);
 }
 
+/* ==================================================================== music */
+/*
+ * Background music: an original piece for a huge church organ, in the spirit
+ * of the big space-film scores. Nothing is downloaded — every note is played
+ * live through Web Audio, so it never repeats exactly.
+ *
+ *   PEDAL      the root of each chord, two octaves down, held the whole bar
+ *   OSTINATO   a patient figure of quavers climbing through the chord
+ *   SWELL      long high notes that only come in when the music is loud
+ *
+ * The loudness breathes on a slow wave of a few minutes, so the layers arrive
+ * one by one, build to a full organ, and fall back to just the pedal.
+ * Browsers will not play sound until the page is touched, so it starts on the
+ * first click or key. The ♫ button (or M) turns it off, and that is remembered.
+ */
+const music = { ctx: null, on: true, started: false, next: 0, step: 0, t0: 0, timer: 0, out: null, filt: null, wave: null };
+const MUSIC_KEY = 'astronomia.music';
+const MUSIC_BEAT = 60 / 66 / 2;          // a quaver at 66 beats a minute
+// D minor: i – VI – iv – V, then i – III – VII – V. (MIDI note numbers.)
+const MUSIC_CHORDS = [
+  [62, 65, 69], [58, 62, 65], [55, 58, 62], [57, 61, 64],
+  [62, 65, 69], [53, 57, 60], [60, 64, 67], [57, 61, 64]
+];
+const MUSIC_FIGURE = [0, 1, 2, 4, 3, 2, 1, 2];    // indexes into the chord, spread over two octaves
+const midiHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+
+function initMusic() {
+  try { music.on = localStorage.getItem(MUSIC_KEY) !== 'off'; } catch (e) {}
+  const btn = $('an-btn-music');
+  btn.classList.toggle('off', !music.on);
+  btn.addEventListener('click', (e) => { e.stopPropagation(); setMusic(!music.on); });
+  const kick = () => { if (music.on && !music.started) startMusic(); };
+  window.addEventListener('pointerdown', kick, true);
+  window.addEventListener('keydown', (e) => {
+    if ((e.key === 'm' || e.key === 'M') && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) setMusic(!music.on);
+    else kick();
+  }, true);
+  document.addEventListener('visibilitychange', () => {
+    if (!music.ctx) return;
+    if (document.hidden) music.ctx.suspend(); else if (music.on) music.ctx.resume();
+  });
+}
+
+function setMusic(on) {
+  music.on = on;
+  try { localStorage.setItem(MUSIC_KEY, on ? 'on' : 'off'); } catch (e) {}
+  $('an-btn-music').classList.toggle('off', !on);
+  if (on) { if (!music.started) startMusic(); else music.ctx.resume(); }
+  else if (music.ctx) music.ctx.suspend();
+}
+
+function startMusic() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  const ctx = music.ctx = new AC();
+  music.started = true;
+  // A cathedral: a long tail of decaying noise as the impulse response.
+  const len = ctx.sampleRate * 5.5, ir = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = ir.getChannelData(c);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2);
+  }
+  const verb = ctx.createConvolver(); verb.buffer = ir;
+  const wet = ctx.createGain(); wet.gain.value = 0.55;
+  const dry = ctx.createGain(); dry.gain.value = 0.45;
+  const comp = ctx.createDynamicsCompressor();
+  const master = ctx.createGain(); master.gain.value = 0;
+  master.gain.linearRampToValueAtTime(0.32, ctx.currentTime + 6);   // fade in
+  music.filt = ctx.createBiquadFilter(); music.filt.type = 'lowpass'; music.filt.frequency.value = 1400;
+  music.out = music.filt;
+  music.filt.connect(dry); music.filt.connect(verb); verb.connect(wet);
+  dry.connect(comp); wet.connect(comp); comp.connect(master); master.connect(ctx.destination);
+  // An organ pipe: a handful of harmonics, the octaves strongest.
+  const re = new Float32Array([0, 1, 0.55, 0.22, 0.32, 0.06, 0.14, 0, 0.09]);
+  music.wave = ctx.createPeriodicWave(re, new Float32Array(re.length));
+  music.t0 = music.next = ctx.currentTime + 0.1;
+  music.step = 0;
+  music.timer = setInterval(scheduleMusic, 120);
+  if (!music.on) ctx.suspend();
+}
+
+/** How full the organ is right now, 0 to 1: a slow breath of about 3½ minutes. */
+function musicSwell(t) {
+  const x = (t - music.t0) / 210;
+  return 0.5 - 0.5 * Math.cos(x * TAU) * (x < 0.5 ? 1 : 0.9);
+}
+
+function organNote(midi, at, dur, vol) {
+  const ctx = music.ctx;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(vol, at + 0.06);
+  g.gain.setValueAtTime(vol, at + dur);
+  g.gain.linearRampToValueAtTime(0, at + dur + 0.5);
+  g.connect(music.out);
+  for (const det of [-4, 4]) {            // two ranks a hair apart, for the shimmer
+    const o = ctx.createOscillator();
+    o.setPeriodicWave(music.wave);
+    o.frequency.value = midiHz(midi);
+    o.detune.value = det;
+    o.connect(g);
+    o.start(at); o.stop(at + dur + 0.6);
+  }
+}
+
+function scheduleMusic() {
+  const ctx = music.ctx;
+  if (!ctx || ctx.state !== 'running') return;
+  while (music.next < ctx.currentTime + 0.6) {
+    const at = music.next, st = music.step;
+    const bar = Math.floor(st / 16), q = st % 16;          // two bars of quavers per chord
+    const chord = MUSIC_CHORDS[bar % MUSIC_CHORDS.length];
+    const sw = musicSwell(at);
+    music.filt.frequency.setTargetAtTime(700 + sw * 3800, at, 2);
+    if (q === 0) {
+      organNote(chord[0] - 24, at, MUSIC_BEAT * 16, 0.20);
+      organNote(chord[0] - 12, at, MUSIC_BEAT * 16, 0.08 + sw * 0.06);
+      if (sw > 0.25) for (const n of chord) organNote(n, at, MUSIC_BEAT * 16, 0.035 * sw);
+    }
+    if (sw > 0.12) {
+      const i = MUSIC_FIGURE[q % 8], n = chord[i % 3] + (i >= 3 ? 12 : 0) + (q >= 8 && sw > 0.6 ? 12 : 0);
+      organNote(n, at, MUSIC_BEAT * 0.9, (0.05 + sw * 0.07) * (q % 4 === 0 ? 1.25 : 1));
+    }
+    if (sw > 0.55 && (q === 0 || q === 8)) {
+      organNote(chord[(bar + q / 8) % 3] + 24, at, MUSIC_BEAT * 7.5, 0.03 * sw);
+    }
+    music.next += MUSIC_BEAT;
+    music.step++;
+  }
+}
+
 /* ================================================================ main loop */
 
 let lastFrame = 0;
@@ -15305,6 +15439,7 @@ function boot() {
   $('an-btn-systems').addEventListener('click', openSystems);
   $('an-btn-settings').addEventListener('click', openSettings);
   $('an-btn-help').addEventListener('click', openHelp);
+  initMusic();
   $('an-modal-close').addEventListener('click', closeModal);
   $('an-modal').addEventListener('click', (e) => { if (e.target === $('an-modal')) closeModal(); });
   $('an-mob-add').addEventListener('click', () => {
