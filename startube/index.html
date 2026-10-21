@@ -153,6 +153,39 @@
   .st-preview img { width: 160px; border-radius: 8px; }
   .st-private { background: #1f3a2c; color: #b6f5cd; border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.5; }
 
+  /* ---- sharing with everyone ---- */
+  .st-who { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .st-who button { text-align: left; background: var(--card); border: 2px solid var(--line); border-radius: 14px; padding: 12px 14px; line-height: 1.4; }
+  .st-who button b { display: block; font-size: 16px; }
+  .st-who button.on { border-color: var(--accent2); background: var(--bg2); }
+  .st-shareset { display: grid; gap: 12px; background: var(--bg2); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .st-shareset h3 { font-size: 16px; }
+  .st-rule { display: flex; gap: 10px; align-items: flex-start; font-weight: 400 !important; font-size: 15px !important; display: flex !important; cursor: pointer; }
+  .st-rule input { width: 20px; height: 20px; flex: none; accent-color: var(--accent2); margin-top: 1px; }
+  .st-kidname { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .st-kidname b { background: var(--card); padding: 6px 12px; border-radius: 10px; }
+  .st-gate { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 15px; }
+  .st-gate input { width: 80px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; outline: none; text-align: center; }
+  .st-progress { height: 8px; border-radius: 4px; background: var(--card); overflow: hidden; }
+  .st-progress i { display: block; height: 100%; width: 0; background: var(--accent2); transition: width 0.2s; }
+  .st-status { margin-top: 14px; border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.5; background: var(--card); }
+  .st-status.pub { background: #1f3a2c; color: #b6f5cd; }
+  .st-status.wait { background: #3a321a; color: #ffe6a6; }
+  .st-badge { position: absolute; left: 8px; bottom: 8px; background: rgba(0,0,0,0.75); padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .st-cheers { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 8px; }
+  .st-cheers button { background: var(--card); border-radius: 20px; padding: 6px 14px; font-size: 20px; display: flex; align-items: center; gap: 6px; }
+  .st-cheers button span { font-size: 14px; font-weight: 600; }
+  .st-cheers button.on { background: var(--sel); }
+  .st-cheers button:active { transform: scale(1.15); }
+  .st-report { color: var(--soft); font-size: 13px; text-decoration: underline; margin-top: 8px; }
+  .st-rv { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; background: var(--card); border-radius: 14px; padding: 12px; margin-bottom: 12px; }
+  .st-rv .st-thumb video, .st-rv .st-thumb img { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+  .st-rv p { margin: 4px 0; line-height: 1.4; overflow-wrap: anywhere; }
+  .st-rv .st-row { gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .st-guide { background: var(--bg2); border-radius: 12px; padding: 12px 16px; line-height: 1.6; font-size: 14px; margin-bottom: 18px; }
+  .st-guide li { margin-left: 18px; }
+  @media (max-width: 700px) { .st-who, .st-rv { grid-template-columns: 1fr; } }
+
   #st-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 10px; font-weight: 600; opacity: 0; transition: all 0.3s; z-index: 50; pointer-events: none; }
   #st-toast.show { opacity: 1; transform: translateX(-50%); }
 
@@ -216,7 +249,33 @@
   };
   const nice = (n) => n >= 1e6 ? (n / 1e6).toFixed(1).replace('.0', '') + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1).replace('.0', '') + 'K' : String(n);
   let toastT = 0;
-  function toast(t) { const el = $('#st-toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2200); }
+  function toast(t) { const el = $('#st-toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2600); }
+
+  /* ================================================= sharing with everyone */
+  /* StarTube's own server (startube-server/ in this repo) — the address its
+     Cloudflare Worker was deployed to, e.g. 'https://startube-server.NAME.workers.dev'.
+     While it is empty, StarTube works exactly as before: everything stays on
+     the device and the "Everyone" option doesn't appear.
+
+     How sharing is kept safe for 3–10 year olds: a grown-up says yes before
+     anything is sent; every video is checked by a grown-up at CuriousScout
+     before anyone can see it; channels are made-up names, never typed; there
+     are no comments, only emoji cheers; and one report hides a video until
+     it is checked again. */
+  const SERVER = '';
+  const api = async (path, opts) => {
+    const r = await fetch(SERVER + '/api/' + path, opts);
+    let j = {}; try { j = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error(j.error || 'StarTube couldn\'t reach its server');
+    return j;
+  };
+  const postJSON = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  // Made-up channel names: two friendly words and a number, picked, never typed.
+  const NAME_A = ['Happy', 'Brave', 'Sparkly', 'Cosmic', 'Sunny', 'Jolly', 'Mighty', 'Bouncy', 'Zippy', 'Fuzzy', 'Golden', 'Purple', 'Speedy', 'Clever', 'Giggly', 'Starry'];
+  const NAME_B = { Comet: '☄️', Panda: '🐼', Rocket: '🚀', Dragon: '🐉', Otter: '🦦', Star: '⭐', Penguin: '🐧', Robot: '🤖', Tiger: '🐯', Dolphin: '🐬', Planet: '🪐', Koala: '🐨', Unicorn: '🦄', Turtle: '🐢', Fox: '🦊', Owl: '🦉' };
+  const pickOf = (a) => a[Math.floor(Math.random() * a.length)];
+  const newKidName = () => pickOf(NAME_A) + ' ' + pickOf(Object.keys(NAME_B)) + ' ' + (1 + Math.floor(Math.random() * 99));
+  const CHEERS = [['star', '⭐'], ['clap', '👏'], ['laugh', '😂'], ['heart', '❤️'], ['rocket', '🚀']];
 
   /* ============================================================ the canvas */
   /* Built-in videos are drawn live from the time on the clock — every frame
@@ -629,14 +688,15 @@
     spark: { name: 'Science Sparks', av: '⚗️', col: '#c0502a', banner: 'linear-gradient(120deg,#5a1a10,#c0502a,#ffb020)', about: 'Big science questions with simple answers.' },
     doodle: { name: 'Doodle Dance', av: '🎨', col: '#b0306a', banner: 'linear-gradient(120deg,#5a1040,#b0306a,#ff7ac6)', about: 'Shapes, letters, numbers — and lots of dancing.' }
   };
-  const CATS = ['All', 'Space', 'Animals', 'Science', 'Learning', 'Uploads'];
+  const CATS = ['All'].concat(SERVER ? ['Made by kids'] : [], ['Space', 'Animals', 'Science', 'Learning', 'Uploads']);
 
   /* ======================================================= what we remember */
   /* Likes, comments, subscriptions, playlists and history: small, so
      localStorage. Uploaded videos are big, so they go in IndexedDB. */
   const KEY = 'startube.v1';
-  const state = Object.assign({ likes: {}, comments: {}, subs: [], history: [], later: [], lists: {}, views: {}, name: 'You', myChannel: 'My Channel', cc: true }, (() => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } })());
+  const state = Object.assign({ likes: {}, comments: {}, subs: [], history: [], later: [], lists: {}, views: {}, name: 'You', myChannel: 'My Channel', cc: true, shared: {}, kidName: '', cheered: {}, reported: [] }, (() => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } })());
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+  if (!state.kidName) { state.kidName = newKidName(); save(); }
 
   let db = null;
   function openDB() {
@@ -661,10 +721,43 @@
     uploads = all.map(v => ({ id: v.id, title: v.title, desc: v.desc, dur: v.dur, thumb: v.thumb, created: v.created, mine: true, cat: 'Uploads', channel: 'me' })).sort((a, b) => b.created - a.created);
   }
 
+  /* Videos other kids shared, once a grown-up has said yes. */
+  let pubs = [];
+  async function loadPublic() {
+    if (!SERVER) return;
+    const mineIds = Object.values(state.shared).map(x => x.sid);
+    const j = await api('videos');
+    pubs = j.videos.filter(v => !state.reported.includes(v.id) && !mineIds.includes(v.id)).map(v => ({
+      id: 'p-' + v.id, sid: v.id, pub: true, title: v.title, desc: v.descr, dur: v.dur, chan: v.channel,
+      views: v.views, created: v.created, cheers: v.cheers || {}, cat: 'Made by kids'
+    }));
+  }
+  /* Where each of my shared videos is up to: waiting, everyone can see it, or a grown-up said no. */
+  async function refreshShared() {
+    if (!SERVER) return;
+    for (const lid in state.shared) {
+      const sh = state.shared[lid];
+      if (sh.status === 'rejected') continue;
+      try {
+        const j = await api('videos/' + sh.sid + '/mine', { headers: { 'X-Token': sh.token } });
+        sh.status = j.status === 'gone' ? 'rejected' : j.status;
+        if (j.views != null) { sh.views = j.views; sh.cheers = j.cheers; }
+      } catch (e) {}
+    }
+    save();
+  }
+  function kidChan(name) {
+    const animal = String(name).split(' ')[1];
+    const h = hash(String(name).length, String(name).charCodeAt(0) + String(name).charCodeAt(name.length - 1));
+    const col = 'hsl(' + Math.round(h * 360) + ',65%,45%)';
+    return { name, av: NAME_B[animal] || '⭐', col, banner: 'linear-gradient(120deg,#1a0f4a,' + col + ',#ffc93c)', about: 'Videos made by a StarTube kid. A grown-up checked every one.' };
+  }
+
   /* ========================================================== video catalog */
   const thumbs = {};
   function thumbOf(v) {
     if (v.mine) return v.thumb;
+    if (v.pub) return SERVER + '/api/videos/' + v.sid + '/thumb';
     if (!thumbs[v.id]) {
       const cv = document.createElement('canvas'); cv.width = 480; cv.height = 270;
       const c = cv.getContext('2d'); c.scale(0.5, 0.5);
@@ -673,20 +766,25 @@
     }
     return thumbs[v.id];
   }
-  const all = () => uploads.concat(VIDEOS);
+  const all = () => uploads.concat(pubs, VIDEOS);
   const byId = (id) => all().find(v => v.id === id);
-  const chanOf = (v) => v.mine ? { name: state.myChannel, av: '⭐', col: '#ff3d6e', banner: 'linear-gradient(120deg,#3a0a2a,#ff3d6e,#ffc93c)', about: 'My own videos. Only I can see them, on this device.' } : CHANNELS[v.channel];
+  const chanOf = (v) => v.pub ? kidChan(v.chan) : v.mine ? { name: state.myChannel, av: '⭐', col: '#ff3d6e', banner: 'linear-gradient(120deg,#3a0a2a,#ff3d6e,#ffc93c)', about: 'My own videos, kept on this device.' } : CHANNELS[v.channel];
   const viewsOf = (v) => (v.views || 0) + (state.views[v.id] || 0);
-  const whenOf = (v) => v.mine ? ago(v.created) : ago(Date.now() - v.days * 86400000);
+  const whenOf = (v) => v.mine || v.pub ? ago(v.created) : ago(Date.now() - v.days * 86400000);
 
   /* ============================================================= the views */
   const main = $('#st-main');
   function tile(v) {
     const ch = chanOf(v);
     return `<a class="st-tile" href="#/watch/${encodeURIComponent(v.id)}">
-      <div class="st-thumb"><img src="${thumbOf(v)}" alt="" loading="lazy"><span class="st-dur">${fmt(v.dur)}</span>${v.mine ? '<span class="st-mine">MY VIDEO</span>' : ''}</div>
+      <div class="st-thumb"><img src="${thumbOf(v)}" alt="" loading="lazy"><span class="st-dur">${fmt(v.dur)}</span>${v.mine ? '<span class="st-mine">MY VIDEO</span>' + shareBadge(v.id) : ''}</div>
       <div class="st-meta"><div class="st-av" style="background:${ch.col}">${ch.av}</div><div><div class="st-title">${esc(v.title)}</div>
       <div class="st-sub">${esc(ch.name)}<br>${nice(viewsOf(v))} views · ${whenOf(v)}</div></div></div></a>`;
+  }
+  function shareBadge(id) {
+    const sh = state.shared[id];
+    if (!sh) return '';
+    return '<span class="st-badge">' + ({ public: '🌍 Everyone can see it', pending: '⏳ Being checked', rejected: '🔒 Just me' }[sh.status] || '⏳ Being checked') + '</span>';
   }
   function grid(list, empty) { return list.length ? '<div class="st-grid">' + list.map(tile).join('') + '</div>' : '<div class="st-empty">' + empty + '</div>'; }
 
@@ -695,7 +793,8 @@
     let list = all();
     if (cat === 'Uploads') list = uploads; else if (cat !== 'All') list = list.filter(v => v.cat === cat);
     main.innerHTML = '<div class="st-chips">' + CATS.map(c => `<button class="st-chip${c === cat ? ' on' : ''}" data-cat="${c}">${c}</button>`).join('') + '</div>' +
-      grid(list, cat === 'Uploads' ? '<b>📼</b>No uploads yet. <a href="#/upload" style="color:var(--accent2)">Upload a video</a>' : 'Nothing here yet.');
+      grid(list, cat === 'Uploads' ? '<b>📼</b>No uploads yet. <a href="#/upload" style="color:var(--accent2)">Upload a video</a>'
+        : cat === 'Made by kids' ? '<b>🎬</b>No kids\' videos yet. <a href="#/upload" style="color:var(--accent2)">Be the first to share one!</a>' : 'Nothing here yet.');
     main.querySelectorAll('.st-chip').forEach(b => b.onclick = () => { cat = b.dataset.cat; viewHome(); });
   }
 
@@ -703,6 +802,13 @@
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     const list = all().filter(v => { const hay = (v.title + ' ' + (v.desc || '') + ' ' + chanOf(v).name + ' ' + (v.cat || '')).toLowerCase(); return words.every(w => hay.includes(w)); });
     main.innerHTML = `<h2 class="st-sec">🔎 Results for “${esc(q)}”</h2>` + grid(list, '<b>🔭</b>No videos found. Try another word!');
+  }
+
+  function viewKid(name) {
+    const ch = kidChan(name), list = pubs.filter(v => v.chan === name);
+    main.innerHTML = `<div class="st-banner" style="background:${ch.banner}">${ch.av}</div>
+      <div class="st-chead"><div class="st-av" style="background:${ch.col}">${ch.av}</div><div><h1>${esc(ch.name)}</h1><div class="st-sub">${list.length} video${list.length === 1 ? '' : 's'} · ${esc(ch.about)}</div></div></div>` +
+      grid(list, 'No videos.');
   }
 
   function viewChannel(key) {
@@ -745,15 +851,42 @@
   function viewUpload() {
     main.innerHTML = `<h2 class="st-sec">⬆️ Upload a video</h2>
       <div class="st-form">
-        <div class="st-private">🔒 <b>Your videos stay on this device.</b> Nobody else can see them — StarTube keeps them right here in your browser. Cartoons you save from Toon Studio work too!</div>
+        ${SERVER ? `<div class="st-who" id="st-who">
+          <button data-who="me" class="on"><b>🔒 Just me</b><span class="st-note">It stays on this device. Nobody else can see it.</span></button>
+          <button data-who="all"><b>🌍 Everyone on StarTube</b><span class="st-note">A grown-up at StarTube checks it first.</span></button></div>` : ''}
+        <div class="st-private" id="st-whonote">🔒 <b>Your videos stay on this device.</b> Nobody else can see them — StarTube keeps them right here in your browser. Cartoons you save from Toon Studio work too!</div>
+        <div class="st-shareset st-hide" id="st-shareset">
+          <h3>🌍 Sharing with everyone</h3>
+          <div class="st-kidname">Your channel name: <b id="st-kn">${esc(state.kidName)}</b><button class="st-btn" id="st-reroll" type="button">🎲 New name</button></div>
+          <div class="st-note">StarTube picks a made-up name so nobody knows who you are.</div>
+          <label class="st-rule"><input type="checkbox" data-rule> No faces — show your drawings, toys, Lego, pets or cartoons instead.</label>
+          <label class="st-rule"><input type="checkbox" data-rule> No names, no school, and nothing that shows where I live — not in the video and not in the title.</label>
+          <label class="st-rule"><input type="checkbox" data-rule> I made it myself, and it's kind and friendly.</label>
+          <div class="st-gate">👩 <b>Grown-ups:</b> please check the video with your child, then answer <b id="st-gq"></b> <input id="st-ga" inputmode="numeric" maxlength="3" aria-label="Grown-up answer"></div>
+          <div class="st-note">Videos up to 5 minutes and 95 MB. Every video is watched by a grown-up at StarTube before anyone else can see it, and anything that breaks the rules is deleted.</div>
+        </div>
         <div class="st-drop" id="st-drop"><b>🎬</b>Click to choose a video file<br><span class="st-note">or drag one here</span><input type="file" id="st-file" accept="video/*" hidden></div>
         <div id="st-prev"></div>
         <label>Title<input type="text" id="st-ut" maxlength="90" placeholder="Give it a great title"></label>
         <label>Description<textarea id="st-ud" rows="3" maxlength="600" placeholder="What is it about?"></textarea></label>
-        <label>Your channel name<input type="text" id="st-uc" maxlength="40" value="${esc(state.myChannel)}"></label>
+        <label id="st-ucl">Your channel name<input type="text" id="st-uc" maxlength="40" value="${esc(state.myChannel)}"></label>
+        <div class="st-progress st-hide" id="st-prog"><i></i></div>
         <button class="st-btn red" id="st-go" disabled style="justify-self:start;height:44px;padding:0 24px">Upload</button>
       </div>`;
-    let file = null, info = null;
+    let file = null, info = null, who = 'me';
+    // A sum only a grown-up is likely to know.
+    const ga = 6 + Math.floor(Math.random() * 4), gb = 6 + Math.floor(Math.random() * 4);
+    $('#st-gq').textContent = ga + ' × ' + gb + ' =';
+    const setWho = (w) => {
+      who = w;
+      document.querySelectorAll('#st-who button').forEach(b => b.classList.toggle('on', b.dataset.who === w));
+      $('#st-shareset').classList.toggle('st-hide', w !== 'all');
+      $('#st-ucl').classList.toggle('st-hide', w === 'all');
+      $('#st-whonote').classList.toggle('st-hide', w === 'all');
+      $('#st-go').textContent = w === 'all' ? 'Upload and send to be checked' : 'Upload';
+    };
+    document.querySelectorAll('#st-who button').forEach(b => b.onclick = () => setWho(b.dataset.who));
+    $('#st-reroll').onclick = () => { state.kidName = newKidName(); save(); $('#st-kn').textContent = state.kidName; };
     const pick = async (f) => {
       if (!f) return;
       if (!/^video\//.test(f.type) && !/\.(mp4|webm|mov|m4v|ogv)$/i.test(f.name)) { toast('That isn\'t a video file'); return; }
@@ -773,6 +906,14 @@
     drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); pick(e.dataTransfer.files[0]); };
     $('#st-go').onclick = async () => {
       if (!file || !db) { if (!db) toast('Saving videos isn\'t available in this browser'); return; }
+      const ext = videoType(file);
+      if (who === 'all') {
+        if ([...document.querySelectorAll('[data-rule]')].some(c => !c.checked)) { toast('Tick all three rules first'); return; }
+        if (+$('#st-ga').value !== ga * gb) { toast('Ask a grown-up to answer the sum'); $('#st-ga').focus(); return; }
+        if (!ext) { toast('To share, use an MP4, WebM or MOV video'); return; }
+        if (info.dur > 300) { toast('Shared videos can be up to 5 minutes long'); return; }
+        if (file.size > 95 * 1048576) { toast('Shared videos can be up to 95 MB'); return; }
+      }
       $('#st-go').disabled = true; $('#st-go').textContent = 'Uploading…';
       const v = { id: 'my-' + Date.now().toString(36), title: $('#st-ut').value.trim() || 'My video', desc: $('#st-ud').value.trim(), dur: info.dur, thumb: info.thumb, created: Date.now(), blob: file };
       state.myChannel = $('#st-uc').value.trim() || 'My Channel'; save();
@@ -780,10 +921,38 @@
       catch (e) { toast('Not enough space to save it'); $('#st-go').disabled = false; $('#st-go').textContent = 'Upload'; return; }
       await loadUploads(); renderSide();
       track('video_uploaded', {});
-      toast('🎉 Uploaded!');
+      if (who === 'all') {
+        $('#st-go').textContent = 'Sending…';
+        $('#st-prog').classList.remove('st-hide');
+        try {
+          await shareVideo(v, file, ext, (p) => { $('#st-prog i').style.width = (p * 100).toFixed(1) + '%'; });
+          track('video_shared', {});
+          toast('🎉 Sent! A grown-up will check it soon.');
+        } catch (e) {
+          toast(e.message + ' — it\'s saved on this device.');
+        }
+      } else toast('🎉 Uploaded!');
       location.hash = '#/watch/' + v.id;
     };
   }
+  const videoType = (f) => /webm$/i.test(f.type) || /\.webm$/i.test(f.name) ? 'webm'
+    : /quicktime/i.test(f.type) || /\.mov$/i.test(f.name) ? 'mov' : /mp4|m4v/i.test(f.type) || /\.(mp4|m4v)$/i.test(f.name) ? 'mp4' : null;
+  /** Send a saved video to be checked: its details first, then the file, with progress. */
+  async function shareVideo(v, file, ext, onProgress) {
+    const j = await postJSON('videos', { title: v.title, descr: v.desc, channel: state.kidName, dur: v.dur, size: file.size, type: ext, thumb: v.thumb, grownup: true });
+    state.shared[v.id] = { sid: j.id, token: j.token, status: 'uploading' }; save();
+    await new Promise((res, rej) => {
+      const x = new XMLHttpRequest();
+      x.open('PUT', SERVER + '/api/videos/' + j.id + '/file');
+      x.setRequestHeader('X-Token', j.token);
+      x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+      x.onload = () => { if (x.status < 300) res(); else { let m = 'Sending failed'; try { m = JSON.parse(x.responseText).error || m; } catch (e) {} rej(new Error(m)); } };
+      x.onerror = () => rej(new Error('Couldn\'t reach StarTube'));
+      x.send(file);
+    }).catch((e) => { delete state.shared[v.id]; save(); throw e; });
+    state.shared[v.id].status = 'pending'; save();
+  }
+
   // Read a video's length and grab a frame for its thumbnail
   function probe(f) {
     return new Promise((res, rej) => {
@@ -823,20 +992,23 @@
     if (!v) { main.innerHTML = '<div class="st-empty"><b>🛸</b>That video has floated off into space.</div>'; return; }
     state.history = [id].concat(state.history.filter(x => x !== id)).slice(0, 60);
     state.views[id] = (state.views[id] || 0) + 1; save();
-    track('video_watched', { video: v.mine ? 'upload' : v.id });
+    track('video_watched', { video: v.mine ? 'upload' : v.pub ? 'shared' : v.id });
+    if (v.pub) postJSON('videos/' + v.sid + '/view').catch(() => {});
     const ch = chanOf(v), chKey = v.mine ? 'me' : v.channel;
+    const chHref = v.pub ? '#/kid/' + encodeURIComponent(v.chan) : '#/channel/' + chKey;
     const next = all().filter(x => x.id !== id).sort((a, b) => (b.channel === v.channel) - (a.channel === v.channel) || hash(a.id.length, b.title.length) - 0.5);
     main.innerHTML = `<div class="st-watch"><div>
       <div id="st-player"></div>
       <h1 class="st-h">${esc(v.title)}</h1>
-      <div class="st-chan"><a href="#/channel/${chKey}" class="st-av" style="background:${ch.col}">${ch.av}</a>
-        <div><a href="#/channel/${chKey}"><b>${esc(ch.name)}</b></a><div class="st-sub">${nice(viewsOf(v))} views · ${whenOf(v)}</div></div>
-        ${v.mine ? '' : `<button class="st-btn ${state.subs.includes(chKey) ? '' : 'white'}" id="st-sub">${state.subs.includes(chKey) ? '🔔 Subscribed' : 'Subscribe'}</button>`}
+      <div class="st-chan"><a href="${chHref}" class="st-av" style="background:${ch.col}">${ch.av}</a>
+        <div><a href="${chHref}"><b>${esc(ch.name)}</b></a><div class="st-sub">${nice(viewsOf(v))} views · ${whenOf(v)}</div></div>
+        ${v.mine || v.pub ? '' : `<button class="st-btn ${state.subs.includes(chKey) ? '' : 'white'}" id="st-sub">${state.subs.includes(chKey) ? '🔔 Subscribed' : 'Subscribe'}</button>`}
         <div class="st-actions">
           <button class="st-btn" id="st-like"></button><button class="st-btn" id="st-dis"></button>
           <button class="st-btn" id="st-save">＋ Save</button>
           ${v.mine ? '<button class="st-btn" id="st-delv">🗑️ Delete</button>' : ''}
         </div></div>
+      ${v.mine ? shareStatus(id) : ''}
       <div class="st-desc"><b>About this video</b>${esc(v.desc || 'No description.')}</div>
       <div class="st-comments" id="st-comments"></div>
     </div>
@@ -844,7 +1016,7 @@
 
     // ---- likes
     const paintLikes = () => {
-      const s = state.likes[id] || 0, base = v.mine ? 0 : Math.round(v.views / 23);
+      const s = state.likes[id] || 0, base = v.mine || v.pub ? 0 : Math.round(v.views / 23);
       $('#st-like').innerHTML = '👍 ' + nice(base + (s === 1 ? 1 : 0)); $('#st-like').classList.toggle('on', s === 1);
       $('#st-dis').innerHTML = '👎'; $('#st-dis').classList.toggle('on', s === -1);
     };
@@ -857,14 +1029,18 @@
     if (dv) dv.onclick = async () => {
       if (!confirm('Delete this video for good?')) return;
       stopPlayer(); await idb('readwrite', st => st.delete(id)); await loadUploads();
+      const sh = state.shared[id];
+      if (sh && SERVER) { try { await api('videos/' + sh.sid, { method: 'DELETE', headers: { 'X-Token': sh.token } }); } catch (e) {} }
+      delete state.shared[id];
       delete state.comments[id]; state.history = state.history.filter(x => x !== id); state.later = state.later.filter(x => x !== id); save();
       toast('Video deleted'); renderSide(); location.hash = '#/channel/me';
     };
-    renderComments(id);
+    if (v.pub) renderCheers(v); else renderComments(id);
 
     // ---- the player
     let src = null;
-    if (v.mine) {
+    if (v.pub) src = SERVER + '/api/videos/' + v.sid + '/file';
+    else if (v.mine) {
       try { const rec = await idb('readonly', st => st.get(id)); src = rec && rec.blob; } catch (e) {}
       if (!src) { $('#st-player').innerHTML = '<div class="st-empty">This video couldn\'t be loaded.</div>'; return; }
     }
@@ -889,6 +1065,44 @@
       save(); renderSide(); m.remove(); toast('Added to ' + n);
     };
     setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }), 0);
+  }
+
+  function shareStatus(id) {
+    const sh = state.shared[id];
+    if (!sh) return '';
+    if (sh.status === 'public') {
+      const c = sh.cheers || {};
+      return `<div class="st-status pub">🌍 <b>Everyone on StarTube can see this!</b> ${nice(sh.views || 0)} views · ` +
+        CHEERS.map(([k, e]) => e + ' ' + (c[k] || 0)).join('  ') + '</div>';
+    }
+    if (sh.status === 'rejected') return '<div class="st-status">🔒 A grown-up at StarTube said not this one, so it isn\'t shared. It\'s still safe here on your device.</div>';
+    return '<div class="st-status wait">⏳ <b>Waiting for a grown-up to check it.</b> Once they say yes, everyone on StarTube can see it.</div>';
+  }
+
+  /* Shared videos have no comments — just cheers, and a way to tell a grown-up. */
+  function renderCheers(v) {
+    const el = $('#st-comments');
+    const mine = state.cheered[v.sid] || [];
+    el.innerHTML = '<h3>Send a cheer!</h3><div class="st-cheers">' +
+      CHEERS.map(([k, e]) => `<button data-ch="${k}" class="${mine.includes(k) ? 'on' : ''}" title="${k}">${e}<span>${nice(v.cheers[k] || 0)}</span></button>`).join('') +
+      '</div><p class="st-note">⭐ Made by a StarTube kid and checked by a grown-up.</p>' +
+      '<button class="st-report" id="st-report">🚩 Something wrong with this video? Tell us</button>';
+    el.querySelectorAll('[data-ch]').forEach(b => b.onclick = () => {
+      const k = b.dataset.ch;
+      if (mine.includes(k)) return;
+      mine.push(k); state.cheered[v.sid] = mine; save();
+      v.cheers[k] = (v.cheers[k] || 0) + 1;
+      postJSON('videos/' + v.sid + '/cheer', { kind: k }).catch(() => {});
+      renderCheers(v);
+    });
+    $('#st-report').onclick = async () => {
+      if (!confirm('Is something wrong with this video?\n\nWe\'ll hide it straight away until a grown-up checks it. You can tell a grown-up near you too.')) return;
+      try { await postJSON('videos/' + v.sid + '/report', { reason: 'reported' }); } catch (e) {}
+      state.reported.push(v.sid); save();
+      pubs = pubs.filter(x => x.sid !== v.sid);
+      toast('Thank you! It\'s hidden now.');
+      location.hash = '#/';
+    };
   }
 
   function renderComments(id) {
@@ -919,7 +1133,7 @@
   function makePlayer(box, v, blob, nextV) {
     const isVid = !!blob;
     let url = null, el, cx = null;
-    if (isVid) { url = URL.createObjectURL(blob); el = document.createElement('video'); el.src = url; el.playsInline = true; }
+    if (isVid) { url = typeof blob === 'string' ? blob : URL.createObjectURL(blob); el = document.createElement('video'); el.src = url; el.playsInline = true; }
     else { el = document.createElement('canvas'); el.width = VW; el.height = VH; cx = el.getContext('2d'); }
     box.innerHTML = '';
     box.appendChild(el);
@@ -1019,9 +1233,62 @@
       destroy() {
         dead = true; cancelAnimationFrame(raf); clearInterval(endTimer); clearTimeout(idleT);
         document.removeEventListener('keydown', keys);
-        if (isVid) { el.pause(); el.removeAttribute('src'); el.load(); URL.revokeObjectURL(url); }
+        if (isVid) { el.pause(); el.removeAttribute('src'); el.load(); if (typeof blob !== 'string') URL.revokeObjectURL(url); }
       }
     };
+  }
+
+  /* ===================================================== the review room */
+  /* For the grown-up who runs StarTube: #/review (not linked from anywhere).
+     The admin key never leaves this tab's session storage. */
+  async function viewReview() {
+    if (!SERVER) { main.innerHTML = '<div class="st-empty"><b>🛠️</b>The StarTube server isn\'t switched on yet.</div>'; return; }
+    let key = ''; try { key = sessionStorage.getItem('startube.admin') || ''; } catch (e) {}
+    if (!key) {
+      main.innerHTML = `<h2 class="st-sec">🛡️ Review room</h2><form class="st-form" id="st-kf"><label>Admin key<input type="text" id="st-key" autocomplete="off"></label><button class="st-btn red" style="justify-self:start">Open</button></form>`;
+      $('#st-kf').onsubmit = (e) => { e.preventDefault(); try { sessionStorage.setItem('startube.admin', $('#st-key').value.trim()); } catch (er) {} viewReview(); };
+      return;
+    }
+    const auth = { Authorization: 'Bearer ' + key };
+    let list;
+    try { list = (await api('admin/queue', { headers: auth })).videos; }
+    catch (e) { try { sessionStorage.removeItem('startube.admin'); } catch (er) {} toast(e.message); main.innerHTML = '<div class="st-empty">' + esc(e.message) + ' — <a href="#/review" style="color:var(--accent2)">try again</a></div>'; return; }
+    const card = (v) => `<div class="st-rv" data-id="${v.id}"><div class="st-thumb" data-media><img src="" alt=""></div><div>
+      <b>${esc(v.title)}</b><p class="st-note">${esc(v.channel)} · ${fmt(v.dur)} · ${(v.size / 1048576).toFixed(1)} MB · ${v.type} · sent ${ago(v.created)}${v.status === 'public' ? ' · ' + nice(v.views) + ' views' : ''}</p>
+      <p>${esc(v.descr || '(no description)')}</p>
+      ${v.reports ? `<p style="color:#ff9db5">🚩 Reported ${v.reports}×</p>` : ''}
+      <div class="st-row"><button class="st-btn" data-play>▶ Watch</button>
+      ${v.status === 'public' ? '' : '<button class="st-btn white" data-act="approve">✅ Approve</button>'}
+      <button class="st-btn red" data-act="reject">${v.status === 'public' ? '🗑️ Take down' : '❌ Reject and delete'}</button></div></div></div>`;
+    const sec = (title, l, empty) => `<h2 class="st-sec">${title} (${l.length})</h2>` + (l.length ? l.map(card).join('') : `<p class="st-note" style="margin-bottom:12px">${empty}</p>`);
+    main.innerHTML = `<h2 class="st-sec">🛡️ Review room <button class="st-btn" id="st-lock" style="margin-left:auto;font-size:13px">Lock</button></h2>
+      <div class="st-guide"><b>Say yes only if ALL of these are true.</b> When in doubt, reject — the child keeps their copy.<ul>
+        <li>No child's face, and nobody's name, school, uniform, house, street, car plate or town in the video, title or description.</li>
+        <li>Nothing scary, rude, violent, or unkind — fine for a 3-year-old to watch.</li>
+        <li>No other people's films, shows, songs or games recorded off a screen.</li>
+        <li>No links, ads, or asking people to contact them.</li></ul></div>` +
+      sec('⏳ Waiting to be checked', list.filter(v => v.status === 'pending'), 'Nothing waiting. 🎉') +
+      sec('🚩 Reported (hidden)', list.filter(v => v.status === 'reported'), 'No reports.') +
+      sec('🌍 Live now', list.filter(v => v.status === 'public'), 'Nothing live yet.');
+    $('#st-lock').onclick = () => { try { sessionStorage.removeItem('startube.admin'); } catch (e) {} viewReview(); };
+    // thumbnails and videos need the key, so they are fetched rather than linked
+    const media = async (id, what) => URL.createObjectURL(await (await fetch(SERVER + '/api/videos/' + id + '/' + what, { headers: auth })).blob());
+    main.querySelectorAll('.st-rv').forEach(async (c) => {
+      const id = c.dataset.id;
+      try { $('img', c).src = await media(id, 'thumb'); } catch (e) {}
+      $('[data-play]', c).onclick = async (e) => {
+        e.target.textContent = 'Loading…';
+        const vid = document.createElement('video'); vid.controls = true; vid.src = await media(id, 'file');
+        $('[data-media]', c).innerHTML = ''; $('[data-media]', c).appendChild(vid); vid.play().catch(() => {});
+        e.target.remove();
+      };
+      c.querySelectorAll('[data-act]').forEach(b => b.onclick = async () => {
+        if (b.dataset.act === 'reject' && !confirm('Delete this video from the server for good?')) return;
+        try { await api('admin/videos/' + id + '/' + b.dataset.act, { method: 'POST', headers: auth }); toast(b.dataset.act === 'approve' ? '✅ It\'s live' : '🗑️ Deleted'); }
+        catch (e) { toast(e.message); }
+        viewReview();
+      });
+    });
   }
 
   /* ============================================================ side menu */
@@ -1034,7 +1301,9 @@
     for (const k in CHANNELS) if (!state.subs.includes(k)) s += nav('#/channel/' + k, CHANNELS[k].av, CHANNELS[k].name);
     const lists = Object.keys(state.lists);
     if (lists.length) { s += '<div class="st-sep"></div><div class="st-sidehead">Playlists</div>'; for (const n of lists) s += nav('#/library', '📃', n); }
-    s += '<div class="st-sep"></div><div class="st-note" style="padding:6px 12px;line-height:1.5">🔒 Uploads, likes and comments stay on this device.</div>';
+    s += '<div class="st-sep"></div><div class="st-note" style="padding:6px 12px;line-height:1.5">' + (SERVER
+      ? '🔒 Likes and comments stay on this device. Videos you share are checked by a grown-up before anyone sees them.'
+      : '🔒 Uploads, likes and comments stay on this device.') + '</div>';
     $('#st-side').innerHTML = s;
   }
   $('#st-menu').onclick = () => $('#st-side').classList.toggle('open');
@@ -1054,6 +1323,8 @@
     else if (page === 'subs') viewSubs();
     else if (page === 'library') viewLibrary();
     else if (page === 'upload') viewUpload();
+    else if (page === 'kid') viewKid(arg || '');
+    else if (page === 'review') viewReview();
     else viewHome();
   }
   window.addEventListener('hashchange', route);
@@ -1064,6 +1335,18 @@
     // wait for the font, so text drawn into the thumbnails isn't in a fallback face
     try { await Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 1500))]); } catch (e) {}
     route();
+    // Kids' videos arrive in the background; show them if we're still on a page that lists them.
+    if (SERVER) {
+      Promise.all([loadPublic(), refreshShared()]).then(() => {
+        const h = location.hash || '#/';
+        if (h === '#/' || h.startsWith('#/kid/') || h.startsWith('#/channel/me') || h.startsWith('#/search/')) route();
+        else if (h.startsWith('#/watch/p-') && !$('#st-player')) route();     // a shared link that arrived before the list
+        else if (h.startsWith('#/watch/my-')) {                              // just refresh where my video is up to
+          const el = $('.st-status'), id = decodeURIComponent(h.slice(8));
+          if (el) el.outerHTML = shareStatus(id);
+        }
+      }).catch(() => {});
+    }
   })();
 })();
 </script>

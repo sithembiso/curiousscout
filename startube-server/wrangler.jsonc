@@ -1,0 +1,20 @@
+// StarTube server — a separate Worker from the main site. See README.md.
+{
+  "name": "startube-server",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-09-01",
+  "r2_buckets": [
+    { "binding": "VIDEOS", "bucket_name": "startube-videos" }
+  ],
+  "d1_databases": [
+    // Paste the database_id that `wrangler d1 create startube` prints.
+    { "binding": "DB", "database_name": "startube", "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID" }
+  ],
+  "vars": {
+    // The site(s) allowed to call this server, comma-separated, e.g.
+    // "https://curiousscout.example". Leave "*" only while setting up.
+    "ALLOWED_ORIGINS": "*"
+  },
+  // Daily clean-up of rate-limit counters and abandoned uploads.
+  "triggers": { "crons": ["17 3 * * *"] }
+}

@@ -3,3 +3,7 @@ node_modules/
 
 # OS files
 .DS_Store
+
+# StarTube server local dev
+.wrangler/
+.dev.vars
