@@ -2041,6 +2041,12 @@ const TYPES = {
     kind: 'gas', temp: 1800, spin: 3.5,
     blurb: 'A knot of vapour thrown off a collision, still glowing from the heat of it. Left alone it either thins away to nothing or — if there is enough of it — pulls itself together into a solid world.'
   },
+  plasma: {
+    // a dense lump, not a cloud: about the density of molten rock
+    label: 'Plasma', group: 'MOONS & DEBRIS', mass: 0.004, rad: 0.2,
+    kind: 'gas', temp: 12000, spin: 6, plasma: true,
+    blurb: 'Rock heated so far past boiling that its atoms have been torn apart — the fourth state of matter, after solid, liquid and gas. It blazes white-blue, sparks off tiny glowing pebbles, and can never hold together: as it cools it bursts into a spray of embers.'
+  },
 
   /* ---- exotic ----------------------------------------------------------- */
   black_hole: {
@@ -2407,7 +2413,7 @@ const SWATCH = {
   ice_world: '#dbeaf7', lava_world: '#ff6a2a', gas_giant: '#d9b183', ice_giant: '#5aa8de',
   ringed_giant: '#e8d3a0',
   moon: '#b0aca6', dwarf_planet: '#cfe0ea', asteroid: '#7d746c', comet: '#9fd8ff',
-  gas_clump: '#ff9a4a',
+  gas_clump: '#ff9a4a', plasma: '#cfe8ff',
   black_hole: '#b388ff', smbh: '#ff6fd8', white_hole: '#fff3b0', rogue_planet: '#54627e',
   chthonian: '#a35434', carbon_world: '#8fa8c8', iron_world: '#b08a6e',
   super_puff: '#f2c8d8', eyeball_world: '#7fb8d8', hycean_world: '#3f9fd8',
@@ -7334,7 +7340,38 @@ function clumpGeometry(variant) {
   return g;
 }
 
+/* Plasma is a solid lump of white-hot rock, not a cloud: one to three molten
+   chunks fused together, each lumpy, in a shape of its own — round, long,
+   flat, a peanut or a little cluster. Unlit, because it makes its own light. */
+function buildPlasmaLump(b, grp) {
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const core = new THREE.Group();
+  const shape = b.seed % 5;
+  const lump = (seed, s, x, y, z, sx, sy, sz) => {
+    const m = new THREE.Mesh(lumpyGeometry(seed, 0.28 + hash01(seed, 7) * 0.22, SPHERE_LO), mat);
+    m.position.set(x, y, z); m.scale.set(s * sx, s * sy, s * sz);
+    core.add(m);
+  };
+  if (shape === 0) lump(b.seed, 1, 0, 0, 0, 1, 0.9, 1.05);
+  else if (shape === 1) lump(b.seed, 1, 0, 0, 0, 1.8, 0.7, 0.75);
+  else if (shape === 2) lump(b.seed, 1, 0, 0, 0, 1.3, 0.5, 1.15);
+  else if (shape === 3) { lump(b.seed, 0.8, -0.55, 0, 0, 1, 1, 1); lump(b.seed + 1, 0.65, 0.6, 0.1, 0, 1, 0.95, 1); }
+  else { lump(b.seed, 0.7, 0, 0, 0, 1, 1, 1); lump(b.seed + 1, 0.45, 0.75, 0.25, 0.2, 1, 1, 1); lump(b.seed + 2, 0.4, -0.55, -0.3, 0.45, 1, 1, 1); }
+  grp.add(core);
+  b.parts.core = core;
+  b.parts.coreMat = mat;
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: TEX_GLOW, color: new THREE.Color(0xbfdcff), opacity: 0.6,
+    blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+  }));
+  grp.add(glow);
+  b.parts.clumpGlow = glow;
+  b.lightColor = new THREE.Color(0xd8e8ff);
+}
+
 function buildClump(b, grp) {
+  const isPlasma = !!TYPES[b.type].plasma;
+  if (isPlasma) return buildPlasmaLump(b, grp);
   const puff = new THREE.Points(clumpGeometry(b.seed % CLUMP_VARIANTS), new THREE.ShaderMaterial({
     uniforms: { uMap: { value: TEX_PUFF }, uOp: { value: 0.3 }, uScale: { value: 1 }, uFocal: { value: 1 } },
     vertexShader: NEB_VERT, fragmentShader: NEB_FRAG,
@@ -7365,6 +7402,19 @@ function updateClumps(simDt) {
     if (!b.alive || b.kind !== 'gas') continue;
 
     b.clumpAge = (b.clumpAge || 0) + simDt;
+    if (TYPES[b.type].plasma) {
+      // Plasma burns hot and fast, flinging off sparks, then bursts apart
+      b.temp = Math.max(3000, b.temp * Math.exp(-0.003 * simDt));
+      b.sparkT = (b.sparkT || 0) + simDt;
+      if (b.sparkT > 3 && parts.free.length > 200) {
+        const n = Math.min(40, Math.floor(b.sparkT / 3) * 4);
+        b.sparkT = 0;
+        const vE = Math.sqrt(2 * G * Math.max(b.m, 1e-12) / Math.max(visRadius(b), 1e-9));
+        b.m -= plasmaEjecta(b.p, b.v, n, b.m * 0.002, Math.max(vE * 3, 0.01), visRadius(b), { speed: 0.6 });
+      }
+      if (b.clumpAge >= (b.clumpLife || 240)) burstPlasma(b);
+      continue;
+    }
     // Radiating away the heat of the impact that made it.
     b.temp = Math.max(30, b.temp * Math.exp(-0.0016 * simDt));
     if (b.clumpAge < (b.clumpLife || 420)) continue;
@@ -7402,7 +7452,21 @@ function collapseClump(b) {
 }
 
 /** Let a knot go: it becomes the fine gas it was always going to become. */
+/** Plasma can't hold together: it bursts into a shower of glowing pebbles. */
+function burstPlasma(b, quiet) {
+  const vE = Math.sqrt(2 * G * Math.max(b.m, 1e-12) / Math.max(visRadius(b), 1e-9));
+  const put = plasmaEjecta(b.p, b.v, 900, b.m, Math.max(vE * 2, 0.02), visRadius(b) * 0.5, { speed: 0.7 });
+  b.m -= put;
+  if (b.m > 1e-9 && put <= 0) { b.clumpAge = 0; return; }
+  fx.flash(b.p, visRadius(b) * 5, [200, 225, 255], 0.6);
+  if (!quiet) toast(b.name + ' burst into a shower of sparks ✨');
+  if (sim.selected === b) select(null);
+  removeBody(b);
+  compact();
+}
+
 function disperseClump(b, quiet) {
+  if (TYPES[b.type].plasma) return burstPlasma(b, quiet);
   const vEsc = Math.sqrt(2 * G * Math.max(b.m, 1e-12) / Math.max(visRadius(b), 1e-9));
   const put = gasEjecta(b.p, b.v, 220, b.m, Math.max(vEsc, 0.02), visRadius(b) * 0.4,
     { speed: 0.6, sizeMin: 8, sizeMax: 30 });
@@ -7528,6 +7592,13 @@ function spawnClumps(center, baseVel, totalMass, count, spread, minDist, solidCh
     if (solid) {
       made.push(makeBody(each > 0.004 ? 'moon' : 'asteroid', pos, vel,
         { mass: each, name: 'Fragment ' + sim.nextId, rubble: true, coreT: 3200 }));
+    } else if (Math.random() < 0.45) {
+      // the hottest knots aren't gas any more — they're plasma
+      const b = makeBody('plasma', pos, vel, { mass: each, name: 'Plasma ' + sim.nextId });
+      b.temp = rnd(9000, 15000);
+      b.clumpLife = rnd(120, 320);
+      b.clumpAge = 0;
+      made.push(b);
     } else {
       const b = makeBody('gas_clump', pos, vel, { mass: each, name: 'Clump ' + sim.nextId });
       b.temp = rnd(1400, 3200);
@@ -9740,6 +9811,8 @@ function disposeVisual(b, keepTrail) {
     b.parts.tail.geometry.dispose();
     b.parts.tail.material.dispose();
   }
+  // A plasma lump's shapes are its own, so they go too
+  if (b.parts && b.parts.core) b.parts.core.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   // Each crater cap is cut for this body's own surface, so it goes too.
   if (b.parts && b.parts.scars) {
     for (const sk of b.parts.scars) { sk.pit.geometry.dispose(); sk.fire.geometry.dispose(); }
@@ -11392,6 +11465,25 @@ function updateVisuals(realDt, simDt) {
     // that nothing in this loop applies to.
     if (b.kind === 'gal') { b.obj.position.copy(b.p); continue; }
 
+    if (b.kind === 'gas' && p.core) {
+      // ---- plasma: a solid white-hot lump, cooling to yellow and orange
+      const rc = visRadius(b);
+      const wppC = worldPerPixel(Math.max(camera.position.distanceTo(b.p), 1e-9));
+      b.obj.position.copy(b.p);
+      b.obj.rotation.set(hash01(b.seed, 1) * TAU + b.rot * 0.2, b.rot * 0.5, hash01(b.seed, 2) * TAU);
+      // never smaller than a few pixels, so you can always find and click it
+      p.core.scale.setScalar(Math.max(rc, 3 * wppC));
+      const heat = clamp((b.temp - 3000) / 9000, 0, 1);
+      const hot = mix([255, 150, 50], [255, 255, 255], Math.pow(heat, 0.6));
+      p.coreMat.color.setRGB(hot[0] / 255, hot[1] / 255, hot[2] / 255);
+      const fl = 0.85 + 0.15 * Math.sin(performance.now() / 70 + b.seed) * Math.sin(performance.now() / 113 + b.seed * 2);
+      const halo = mix([255, 170, 80], [170, 210, 255], heat);
+      p.clumpGlow.material.color.setRGB(halo[0] / 255, halo[1] / 255, halo[2] / 255);
+      p.clumpGlow.scale.setScalar(Math.max(rc * 2.4, 22 * wppC));
+      p.clumpGlow.material.opacity = (0.45 + heat * 0.35) * fl;
+      if (p.dot) p.dot.visible = false;
+      continue;
+    }
     if (b.kind === 'gas') {
       const rc = visRadius(b);
       const wppC = worldPerPixel(Math.max(camera.position.distanceTo(b.p), 1e-9));
@@ -12996,7 +13088,7 @@ function renderClumpInspector(b) {
 
   host.innerHTML =
     '<input class="an-name-in" id="is-name" maxlength="24" spellcheck="false" value="' + escAttr(b.name) + '">' +
-    '<div class="an-type">GAS CLUMP</div>' +
+    '<div class="an-type">' + (TYPES[b.type].plasma ? 'PLASMA ✨' : 'GAS CLUMP') + '</div>' +
     '<dl class="an-stats">' +
     '<dt>Mass</dt><dd id="is-mass"></dd>' +
     '<dt>Radius</dt><dd id="is-rad"></dd>' +
@@ -13009,10 +13101,10 @@ function renderClumpInspector(b) {
     '<div class="an-field"><label>Mass <b id="is-mval"></b></label>' +
     '<input type="range" id="is-mslider" min="-5" max="2.2" step="0.001" value="' + lm.toFixed(3) + '"></div>' +
     '<p class="an-note" id="is-fate2"></p>' +
-    '<div class="an-row"><button id="is-collapse2">COLLAPSE IT NOW</button></div>' +
+    (TYPES[b.type].plasma ? '' : '<div class="an-row"><button id="is-collapse2">COLLAPSE IT NOW</button></div>') +
     '<div class="an-row"><button id="is-follow">' + (sim.follow === b ? 'UNFOLLOW' : 'FOLLOW') + '</button><button id="is-zoom">ZOOM TO</button></div>' +
-    '<div class="an-row"><button id="is-disperse2" class="an-danger">LET IT GO</button></div>' +
-    '<p style="font-size:11px;line-height:1.55;color:var(--ink-dim);margin-top:13px">' + TYPES.gas_clump.blurb + '</p>';
+    '<div class="an-row"><button id="is-disperse2" class="an-danger">' + (TYPES[b.type].plasma ? 'BURST IT ✨' : 'LET IT GO') + '</button></div>' +
+    '<p style="font-size:11px;line-height:1.55;color:var(--ink-dim);margin-top:13px">' + TYPES[b.type].blurb + '</p>';
 
   inspRefs = {
     mass: $('is-mass'), rad: $('is-rad'), den: $('is-den'), spd: $('is-spd'),
@@ -13027,19 +13119,19 @@ function renderClumpInspector(b) {
   const ms = $('is-mslider');
   ms.addEventListener('input', () => {
     b.m = Math.pow(10, parseFloat(ms.value));
-    b.r = trueRadius('gas_clump', b.m);
+    b.r = trueRadius(b.type, b.m);
     scaleVisual(b);
     updateInspectorStats();
   });
 
-  $('is-collapse2').addEventListener('click', () => {
+  if ($('is-collapse2')) $('is-collapse2').addEventListener('click', () => {
     if (!b.alive) return;
     if (b.m < CLUMP_COLLAPSE) { toast('Too thin to hold together — feed it more mass first'); return; }
     collapseClump(b);
   });
   $('is-follow').addEventListener('click', () => { sim.follow = sim.follow === b ? null : b; renderInspector(); });
   $('is-zoom').addEventListener('click', () => { frameOn(b, 4); sim.follow = b; renderInspector(); });
-  $('is-disperse2').addEventListener('click', () => { disperseClump(b, true); toast(b.name + ' was let go'); });
+  $('is-disperse2').addEventListener('click', () => { disperseClump(b, true); toast(TYPES[b.type].plasma ? b.name + ' burst into sparks ✨' : b.name + ' was let go'); });
 
   updateInspectorStats();
 }
@@ -13267,9 +13359,11 @@ function updateInspectorStats() {
              : 'Dying back: down to ' + pct + '%, and falling twice as fast as it grew.';
   }
   if (inspRefs.cage2) {
-    const left = Math.max(0, (b.clumpLife || 420) - (b.clumpAge || 0));
+    const left = Math.max(0, (b.clumpLife || (TYPES[b.type].plasma ? 240 : 420)) - (b.clumpAge || 0));
     inspRefs.cage2.textContent = Math.round(b.clumpAge || 0).toLocaleString() + ' days';
-    inspRefs.fate2.innerHTML = b.m >= CLUMP_COLLAPSE
+    inspRefs.fate2.innerHTML = TYPES[b.type].plasma
+      ? 'Far too hot to ever hold together. It is shedding sparks as it goes, and in about <b>' + Math.round(left).toLocaleString() + ' days</b> it will burst into a shower of glowing pebbles.'
+      : b.m >= CLUMP_COLLAPSE
       ? 'Heavy enough that its own gravity wins. In about <b>' + Math.round(left).toLocaleString() +
         ' days</b> it will pull itself together into a solid world — or press the button and do it now.'
       : 'Too thin to hold itself together. In about <b>' + Math.round(left).toLocaleString() +
@@ -14619,7 +14713,7 @@ function saveUniverse() {
           : null,
         st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount, sy: b.shy ? 1 : 0, ai: b.air,
         tf: b.terra, tfo: b.terraOn, wa: b.water,
-        cl: b.kind === 'gas' ? { age: b.clumpAge, life: b.clumpLife } : null,
+        cl: b.kind === 'gas' ? { age: b.clumpAge, life: b.clumpLife, t: b.temp } : null,
         // A protoplanetary disc is saved with its star, not on its own.
         dc: b.disc && b.disc.alive
           ? { rIn: b.disc.rIn, rOut: b.disc.rOut, mass: b.disc.mass, m0: b.disc.m0,
@@ -14659,7 +14753,7 @@ function loadUniverse() {
       noDisc: true
     });
     if (s.sc && s.sc.length) { b.scars = s.sc; b.scarCount = s.sn || s.sc.length; buildScars(b); }
-    if (s.cl) { b.clumpAge = s.cl.age || 0; b.clumpLife = s.cl.life || 420; }
+    if (s.cl) { b.clumpAge = s.cl.age || 0; b.clumpLife = s.cl.life || 420; if (s.cl.t) b.temp = s.cl.t; }
     if (s.tp != null) { b.temp = s.tp; updateLuminosity(b); }
     // How far aging has already swollen it, so it doesn't swell all over again
     if (s.gw) { b.ageGrow = s.gw; b.ageGrowType = s.gwt; b.ageCool = s.gc || 1; b.bornHot = !!s.gh; }
