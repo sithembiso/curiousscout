@@ -9021,7 +9021,7 @@ const NEB_KINDS = {
     note: 'cold dust with no light of its own, lit blue by the stars inside it' },
   planetary:  { name: 'planetary nebula',  R: [0.6, 2.5], n: 54,
     note: 'the glowing shell a dying Sun-like star has puffed off — the Sun will make one in five billion years' },
-  remnant:    { name: 'supernova remnant', R: [15, 70], n: 96,
+  remnant:    { name: 'supernova remnant', R: [15, 70], n: 260,
     note: 'the still-expanding blast shell of a star that exploded' },
   // Star clusters ride in the same list so they can be clicked the same way.
   globular:   { name: 'globular cluster', R: [0, 0], n: 0,
@@ -9032,12 +9032,12 @@ const NEB_KINDS = {
 // How many of each a galaxy of each shape gets: young galaxies are full of
 // nurseries; an elliptical has almost no gas left and only dying stars' shells.
 const NEB_MIX = {
-  spiral:     { emission: 26, reflection: 8, planetary: 6, remnant: 4 },
-  barred:     { emission: 24, reflection: 8, planetary: 6, remnant: 4 },
-  ring:       { emission: 22, reflection: 5, planetary: 4, remnant: 3 },
-  irregular:  { emission: 20, reflection: 5, planetary: 3, remnant: 3 },
-  dwarf:      { emission: 5,  reflection: 1, planetary: 1, remnant: 1 },
-  elliptical: { emission: 0,  reflection: 0, planetary: 5, remnant: 1 }
+  spiral:     { emission: 26, reflection: 8, planetary: 6, remnant: 12 },
+  barred:     { emission: 24, reflection: 8, planetary: 6, remnant: 12 },
+  ring:       { emission: 22, reflection: 5, planetary: 4, remnant: 9 },
+  irregular:  { emission: 20, reflection: 5, planetary: 3, remnant: 9 },
+  dwarf:      { emission: 5,  reflection: 1, planetary: 1, remnant: 3 },
+  elliptical: { emission: 0,  reflection: 0, planetary: 5, remnant: 3 }
 };
 const nebulae = [];
 const nebx = { pos: null, col: null, siz: null, rot: null, geo: null, pts: null, n: 0 };
@@ -9187,14 +9187,21 @@ function makeNebula(gal, k, kind, R, rng) {
         .addScaledVector(ax, g() * R * 0.12);
       size = R * (rim ? 0.3 : 0.4);
       col = rim ? [1.0, 0.3, 0.35] : [0.3, 1.0, 0.85];
-    } else {
-      // a ragged shell: points on a sphere, thin filaments of red and green
-      const d = new THREE.Vector3(g(), g(), g()).normalize();
-      o = d.multiplyScalar(R * (0.85 + rng() * 0.15));
-      size = R * (0.18 + rng() * 0.16);
-      col = rng() < 0.55 ? [1.0, 0.28, 0.3] : [0.4, 1.0, 0.6];
-    }
+    } else break;
     puffs.push({ o, size, col, rot: ((rng() * 4) | 0) + rng() * 0.999 });
+  }
+  if (kind === 'remnant') {
+    /* The same remnants a supernova leaves behind: one of five shapes and
+       six palettes — shells, butterflies, crabs, broken shells, hourglasses
+       — taken from the very same cloud, tilted its own way and scaled up. */
+    const variant = (rng() * 120) | 0;
+    const geo = nebulaCloud(variant, n, false);
+    const P = geo.attributes.position.array, C = geo.attributes.aCol.array, Z = geo.attributes.aSize.array, Q = geo.attributes.aRot.array;
+    const tilt = new THREE.Euler(rng() * TAU, rng() * TAU, rng() * TAU);
+    for (let i = 0; i < Z.length; i++) {
+      const o = new THREE.Vector3(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]).applyEuler(tilt).multiplyScalar(R);
+      puffs.push({ o, size: Z[i] * R * 1.15, col: [C[i * 3], C[i * 3 + 1], C[i * 3 + 2]], rot: Q[i] });
+    }
   }
   return { gal, k, kind, R, name, puffs };
 }
