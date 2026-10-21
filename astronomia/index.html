@@ -3455,12 +3455,12 @@ function impactHeatOf(a, b, vImp, vEsc) {
   return clamp(Math.sqrt(b.m / Math.max(a.m + b.m, 1e-12)) * 2.4 * sev, 0, 1);
 }
 
-const SPLASH_RATE = 420;           // blobs per second of wall clock, for a big hit
+const SPLASH_RATE = 1600;          // blobs per second of wall clock, for a big hit
 /** Glowing blobs from the contact ring of an impactor sinking into `a`. */
 function splashRing(a, b, s, x, dt) {
   const heft = clamp(Math.sqrt(b.m / Math.max(a.m, 1e-12)) * 3, 0, 1);
   s.spray += SPLASH_RATE * heft * dt;
-  let n = Math.min(Math.floor(s.spray), parts.free.length, 60);
+  let n = Math.min(Math.floor(s.spray), parts.free.length, 220);
   if (n <= 0) return;
   s.spray -= n;
   // the ring where the surfaces cross, and a frame across it
@@ -3482,17 +3482,20 @@ function splashRing(a, b, s, x, dt) {
     parts.pos[k3] = centre.x + ox * rr + ax.x * back;
     parts.pos[k3 + 1] = centre.y + oy * rr + ax.y * back;
     parts.pos[k3 + 2] = centre.z + oz * rr + ax.z * back;
-    const out = vEsc * rnd(0.35, 0.95), up = vEsc * rnd(0.15, 0.7);
+    // Three in four are plasma pebbles: small, white-hot and quick. The rest
+    // are the big glowing blobs of molten rock.
+    const pebble = Math.random() < 0.75;
+    const out = vEsc * (pebble ? rnd(0.4, 1.4) : rnd(0.35, 0.95)), up = vEsc * rnd(0.15, pebble ? 1.0 : 0.7);
     parts.vel[k3] = a.v.x + ox * out + ax.x * up;
     parts.vel[k3 + 1] = a.v.y + oy * out + ax.y * up;
     parts.vel[k3 + 2] = a.v.z + oz * out + ax.z * up;
-    const bs = rnd(12, 34);
+    const bs = pebble ? plasmaSize() : rnd(12, 34);
     parts.bsize[k] = bs; parts.size[k] = bs;
     parts.m[k] = each;
     parts.hot[k] = 1;
-    parts.crate[k] = COOL_IMPACT * 0.3;
+    parts.crate[k] = COOL_IMPACT * (pebble ? PLASMA_COOL : 0.3);
     parts.src[k] = -1;
-    const w = mix([255, 214, 120], [255, 252, 236], Math.random());
+    const w = pebble ? PLASMA_HOT() : mix([255, 214, 120], [255, 252, 236], Math.random());
     parts.warm[k3] = w[0] / 255; parts.warm[k3 + 1] = w[1] / 255; parts.warm[k3 + 2] = w[2] / 255;
     parts.cool[k3] = 0.45; parts.cool[k3 + 1] = 0.22; parts.cool[k3 + 2] = 0.12;
     parts.col[k3] = parts.warm[k3]; parts.col[k3 + 1] = parts.warm[k3 + 1]; parts.col[k3 + 2] = parts.warm[k3 + 2];
@@ -3622,6 +3625,8 @@ function bounce(a, b) {
     // Even a graze boils off more than it chips away.
     b.m -= gasEjecta(b.p, b.v, Math.round(n * 1.5), b.m * 0.009 * bump, vEsc,
       visRadius(b), { speed: 0.9 });
+    // a scatter of sparks where they scraped
+    b.m -= plasmaEjecta(b.p, b.v, Math.round(n * 4), b.m * 0.0005 * bump, vEsc, visRadius(b), { speed: 0.8, aim: nrm.clone().negate() });
     // Both of them come away scuffed where they touched.
     addScar(b, nrm.clone().negate(), clamp(bump * 0.35, 0.12, 0.5), rel.clone().negate());
     addScar(a, nrm, clamp(bump * 0.35, 0.12, 0.5), rel);
@@ -3681,7 +3686,11 @@ function merge(a, b, vImp, vEsc, mark) {
     ? gasEjecta(com, vel, Math.round(count * 2.2), ejectMass * 2.4, vEsc, visRadius(a),
       { speed: 0.8, sizeMin: 18, sizeMax: 52, warm: true, aim: aim })
     : 0;
-  a.m = mTot - thrown - gas;
+  // The plasma spray: sized by how hard the hit was, not by how much splashed,
+  // so even a gentle big impact throws a glittering curtain
+  const plasmaN = gasMix ? 0 : Math.round(clamp(6000 * heft * clamp(0.5 + sev, 0.5, 1.5) * clamp(b.m / 0.01, 0.05, 1), 0, 8000));
+  const plasma = plasmaN > 0 ? plasmaEjecta(com, vel, plasmaN, Math.min(b.m * 0.01, mTot * 0.002), vEsc, visRadius(a), { speed: 0.9, aim: aim }) : 0;
+  a.m = mTot - thrown - gas - plasma;
   if (gasMix) a.r = natRadius(a);
 
   // A real hit throws off knots you can go and look at — mostly vapour, some of
@@ -3747,7 +3756,8 @@ function shatter(a, b, vImp) {
   // far more energy in than it takes to vaporise rock, so the plume outweighs
   // the gravel by better than two to one. This is where a debris disc — and
   // eventually a moon — comes from.
-  const gas = gasEjecta(com, vel, 700, mTot * 0.16, vEsc, ra0, { speed: 1.25, aim: aim });
+  const gas = gasEjecta(com, vel, 700, mTot * 0.16, vEsc, ra0, { speed: 1.25, aim: aim })
+    + plasmaEjecta(com, vel, 7000, mTot * 0.004, vEsc, ra0, { speed: 1.3, aim: aim });
 
   const keep = clamp(0.35 + 0.3 * (1 - b.m / a.m), 0.2, 0.72);
   const bigFrags = Math.min(clamp(Math.round(6 + (1 - keep) * 16), 4, 18), freeSlots());
@@ -4147,7 +4157,8 @@ function shatterBody(b) {
   // Vapour and fine ejecta first, then split what's left between the fragments.
   const thrown = ejecta(b.p, b.v, 420, b.m * 0.12, vEsc,
     [255, 235, 195], [104, 90, 80], rb, { speed: 1.25, sizeMin: 1.2, sizeMax: 7.5 });
-  const gas = gasEjecta(b.p, b.v, 640, b.m * 0.26, vEsc, rb, { speed: 1.2 });
+  const gas = gasEjecta(b.p, b.v, 640, b.m * 0.26, vEsc, rb, { speed: 1.2 })
+    + plasmaEjecta(b.p, b.v, 5000, b.m * 0.004, vEsc, rb, { speed: 1.2 });
   let rubble = b.m - thrown - gas;
   // A few selectable knots as well — mostly vapour, some of it solid.
   if (rubble > 0) {
@@ -7056,6 +7067,9 @@ function baseGeometryFor(b) {
     return lumpyGeometry(b.seed, amt, amt < def.lumpy * 0.45 ? SPHERE : SPHERE_LO);
   }
   if (def.surf === 'star') return starGeometry(b.type, b.seed);
+  /* A chunk knocked off in a collision is a broken lump, not a ball — each
+     one its own shape — until it grows big enough to pull itself round. */
+  if (b.rubble && b.m < 0.05 && !def.star) return lumpyGeometry(b.seed, 0.22 + hash01(b.seed, 9) * 0.3, SPHERE_LO);
   return reliefGeometry(b.type, b.seed);
 }
 
@@ -7252,14 +7266,45 @@ function coolScars(simDt) {
    solid body. Below it, it thins out and is gone. */
 const CLUMP_COLLAPSE = 0.045;      // M⊕ — about four Moons
 
+const hash01 = (a, b) => { const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return x - Math.floor(x); };
+
+/* No two knots should look alike. Each variant is one of six shapes —
+   a ragged ball, a long streamer with a tail, a flattened pancake, a
+   two-lobed peanut, a curved crescent and a cluster of little blobs — with
+   its own proportions; the clump is also tumbled to its own angle. */
+const CLUMP_VARIANTS = 30;
+function clumpShapePoint(shape, rng, p) {
+  const [x, y, z] = p;
+  switch (shape) {
+    case 1: { // streamer: stretched, thick at the head, tapering into a tail
+      const t = (x + 1) / 2;
+      const w = 0.25 + 0.75 * Math.pow(t, 0.7);
+      return [x * 1.9 - 0.4, y * w * 0.6, z * w * 0.6];
+    }
+    case 2: return [x * 1.25, y * 0.32, z * 1.25];                       // pancake
+    case 3: { const side = rng() < 0.5 ? -1 : 1, s = rng() < 0.5 ? 0.85 : 0.6; return [x * s * 0.8 + side * 0.65, y * s * 0.8, z * s * 0.8]; }   // peanut
+    case 4: { // crescent: a bent sausage round a centre that isn't there
+      const a = x * 1.6, r = 0.85 + z * 0.22;
+      return [Math.sin(a) * r, y * 0.35, Math.cos(a) * r - 0.4];
+    }
+    case 5: { // a little cluster: several blobs of different sizes
+      const n = Math.floor(rng() * 5);
+      const c = [[0, 0, 0], [0.8, 0.2, 0.3], [-0.6, -0.3, 0.5], [0.2, 0.5, -0.7], [-0.4, 0.4, -0.5]][n];
+      const s = [0.6, 0.38, 0.32, 0.28, 0.22][n];
+      return [c[0] + x * s, c[1] + y * s, c[2] + z * s];
+    }
+    default: return [x, y * 0.86, z];
+  }
+}
 function clumpGeometry(variant) {
   const key = 'clump:' + variant;
   if (geoCache.has(key)) return geoCache.get(key);
   const rng = mulberry32(hashStr(key));
   const lump = fbm(hashStr('cl' + variant), 4, 2, 4);
+  const shape = variant % 6;
   const pos = [], col = [], siz = [];
 
-  for (let i = 0; i < 900; i++) {
+  for (let i = 0; i < 1100; i++) {
     const z = rng() * 2 - 1, ph = rng() * TAU, s = Math.sqrt(Math.max(0, 1 - z * z));
     const dx = s * Math.cos(ph), dy = s * Math.sin(ph), dz = z;
     const u = ((Math.atan2(dy, dx) / TAU) + 1) % 1;
@@ -7270,7 +7315,8 @@ function clumpGeometry(variant) {
     // Filled rather than hollow — a knot is dense in the middle, which is the
     // whole reason it might survive.
     const r = Math.pow(rng(), 0.55) * (0.55 + lb * 0.5);
-    pos.push(dx * r, dy * r * 0.86, dz * r);
+    const q = clumpShapePoint(shape, rng, [dx * r, dy * r, dz * r]);
+    pos.push(q[0], q[1], q[2]);
     // Hot and bright at the core, cooling outward through the disc colours —
     // but only as far as the rose end of them. A knot this fresh has not had
     // time to get to the cold blue an old disc rim sits at.
@@ -7289,7 +7335,7 @@ function clumpGeometry(variant) {
 }
 
 function buildClump(b, grp) {
-  const puff = new THREE.Points(clumpGeometry(b.seed % 6), new THREE.ShaderMaterial({
+  const puff = new THREE.Points(clumpGeometry(b.seed % CLUMP_VARIANTS), new THREE.ShaderMaterial({
     uniforms: { uMap: { value: TEX_PUFF }, uOp: { value: 0.3 }, uScale: { value: 1 }, uFocal: { value: 1 } },
     vertexShader: NEB_VERT, fragmentShader: NEB_FRAG,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
@@ -9820,7 +9866,7 @@ function updateLights() {
  * from O(P²) into O(P × M), which is what makes thousands of them affordable.
  */
 
-const P_MAX = 5000;
+const P_MAX = 20000;
 const P_SOURCES = 6;          // only the heaviest bodies pull on debris
 const P_MAX_STEPS = 20;       // substep ceiling per frame, for the cost bound
 const P_CULL = 1.4e5;         // Gm — debris past this has left the system
@@ -10076,6 +10122,51 @@ function ejecta(center, baseVel, count, totalMass, vEsc, hotCol, coolCol, radius
     parts.cool[k3] = coolCol[0] / 255; parts.cool[k3 + 1] = coolCol[1] / 255; parts.cool[k3 + 2] = coolCol[2] / 255;
     parts.col[k3] = parts.warm[k3]; parts.col[k3 + 1] = parts.warm[k3 + 1]; parts.col[k3 + 2] = parts.warm[k3 + 2];
 
+    parts.on[k] = 1;
+    parts.live++;
+  }
+  parts.dirty = true;
+  return each * n;
+}
+
+/* ================================================================ plasma */
+/*
+ * Plasma: thousands of tiny white-hot pebbles of rock so hot it glows like a
+ * star, blasted out of an impact in a dense spray. Each is a test particle like
+ * the rest of the debris — it flies, falls back or escapes, and fades from
+ * white through gold to a dull ember as it cools.
+ */
+const PLASMA_COOL = 0.18;          // glows about five times longer than ordinary grit
+const plasmaSize = () => 4 + Math.pow(Math.random(), 2.2) * 13;
+const PLASMA_HOT = () => mix([255, 238, 190], [255, 255, 250], Math.random());
+function plasmaEjecta(center, baseVel, count, totalMass, vEsc, radius, opts) {
+  const o = opts || {};
+  const n = Math.min(count, parts.free.length);
+  if (n <= 0 || totalMass <= 0) return 0;
+  const each = totalMass / n;
+  const push = o.speed != null ? o.speed : 1;
+  for (let i = 0; i < n; i++) {
+    const k = parts.free.pop(), k3 = k * 3;
+    plumeDir(o.aim, _ed);
+    // Most fly fairly slowly and fall back; a few really go
+    const frac = Math.pow(Math.random(), 1.6);
+    const sp = vEsc * push * (0.3 + frac * 2.2);
+    plumeStart(center, o.aim, _ed, radius * 1.04, o.aim ? radius * rnd(0.02, 0.5) : radius * rnd(1.05, 1.8), _ep);
+    parts.pos[k3] = _ep.x; parts.pos[k3 + 1] = _ep.y; parts.pos[k3 + 2] = _ep.z;
+    parts.vel[k3] = baseVel.x + _ed.x * sp;
+    parts.vel[k3 + 1] = baseVel.y + _ed.y * sp;
+    parts.vel[k3 + 2] = baseVel.z + _ed.z * sp;
+    const bs = plasmaSize();
+    parts.bsize[k] = bs; parts.size[k] = bs;
+    parts.m[k] = each;
+    parts.hot[k] = 1;
+    parts.crate[k] = COOL_IMPACT * PLASMA_COOL * rnd(0.7, 1.4);
+    parts.src[k] = -1;
+    const w = PLASMA_HOT();
+    parts.warm[k3] = w[0] / 255; parts.warm[k3 + 1] = w[1] / 255; parts.warm[k3 + 2] = w[2] / 255;
+    // cools to a deep ember red rather than grey rock
+    parts.cool[k3] = 0.42; parts.cool[k3 + 1] = 0.12; parts.cool[k3 + 2] = 0.05;
+    parts.col[k3] = parts.warm[k3]; parts.col[k3 + 1] = parts.warm[k3 + 1]; parts.col[k3 + 2] = parts.warm[k3 + 2];
     parts.on[k] = 1;
     parts.live++;
   }
@@ -11305,8 +11396,9 @@ function updateVisuals(realDt, simDt) {
       const rc = visRadius(b);
       const wppC = worldPerPixel(Math.max(camera.position.distanceTo(b.p), 1e-9));
       b.obj.position.copy(b.p);
-      b.obj.rotation.y = b.rot * 0.3;
-      p.puff.scale.setScalar(rc);
+      // tumbled to its own fixed angle, turning slowly
+      b.obj.rotation.set(hash01(b.seed, 1) * TAU, b.rot * 0.3, hash01(b.seed, 2) * TAU);
+      p.puff.scale.set(rc * (0.8 + hash01(b.seed, 3) * 0.5), rc * (0.8 + hash01(b.seed, 4) * 0.5), rc * (0.8 + hash01(b.seed, 5) * 0.5));
       const uc = p.puff.material.uniforms;
       uc.uScale.value = rc;
       uc.uFocal.value = VIEW.h * VIEW.dpr / (2 * Math.tan(FOV * Math.PI / 360));
