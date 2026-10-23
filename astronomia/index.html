@@ -1925,17 +1925,56 @@ const STAR_BANDS = [
 const HOT_STAR_T = 10000;
 const HOT_BAND = { min: 0, name: 'blue', rgb: [80, 135, 255] };
 
+/*
+ * Stars are coloured by how hot they are, the way they really look (and the
+ * way Universe Sandbox shows them): a heavy star burns hot and blue, a Sun
+ * yellow-white, a light one orange and red. A star of a given kind dialled
+ * heavier or lighter burns hotter or cooler, T ∝ √M along the main sequence;
+ * whatever has already changed its temperature — growing old and swelling
+ * into a giant, or a Solar System Sun living out its life — is respected,
+ * so a bloated giant still glows red.
+ */
+const STAR_TEMP_RAMP = [
+  [2000, [255, 52, 20]], [2800, [255, 84, 32]], [3500, [255, 120, 48]], [4400, [255, 168, 80]],
+  [5300, [255, 214, 130]], [6000, [255, 240, 200]], [7000, [214, 226, 255]], [9000, [160, 188, 255]],
+  [14000, [112, 152, 255]], [30000, [80, 124, 255]]
+];
+const STAR_TEMP_NAMES = [[2000, 'red'], [3500, 'orange-red'], [4400, 'orange'], [5300, 'yellow'], [6000, 'yellow-white'],
+  [7000, 'white'], [9000, 'blue-white'], [14000, 'blue']];
+const _starBands = new Map();
+function starColourTemp(b) {
+  const def = TYPES[b.type];
+  let T = b.temp || def.temp || 5778;
+  if (!b.life && def.mass > 0) T *= Math.sqrt(clamp(b.m / def.mass, 1e-3, 1e3));
+  return clamp(T, 2000, 50000);
+}
 function starBand(b) {
   const def = TYPES[b.type];
   if (!def.star || def.surf !== 'star' || def.dead || def.brown || b.kind !== 'body') return null;
-  if (b.temp >= HOT_STAR_T) return HOT_BAND;
-  const rSun0 = b.r / (R_SUN * R_EARTH);
-  // A painted ember (red dwarf) keeps its own colour until aging swells it
-  // out of the dwarf range; then the ordinary size bands take over.
-  if (def.opts && def.opts.hot && rSun0 < 1) return null;
-  const rSun = b.r / (R_SUN * R_EARTH);
-  for (const s of STAR_BANDS) if (rSun >= s.min) return s;
-  return STAR_BANDS[STAR_BANDS.length - 1];
+  const T = starColourTemp(b);
+  // A painted ember (red dwarf) keeps its own colour while it is small and cool.
+  if (def.opts && def.opts.hot && T < 3600 && b.r / (R_SUN * R_EARTH) < 1) return null;
+  // Shared band objects, one per small step of temperature, so the per-frame
+  // "has the band changed?" check only repaints when the colour really moves.
+  const key = Math.round(Math.log(T) * 40);
+  let band = _starBands.get(key);
+  if (!band) {
+    const t = Math.exp(key / 40);
+    let rgb = STAR_TEMP_RAMP[STAR_TEMP_RAMP.length - 1][1];
+    for (let i = 1; i < STAR_TEMP_RAMP.length; i++) {
+      const [t1, c1] = STAR_TEMP_RAMP[i];
+      if (t > t1) continue;
+      const [t0, c0] = STAR_TEMP_RAMP[i - 1];
+      rgb = mix(c0, c1, clamp((t - t0) / (t1 - t0), 0, 1)).map(Math.round);
+      break;
+    }
+    if (t <= STAR_TEMP_RAMP[0][0]) rgb = STAR_TEMP_RAMP[0][1];
+    let name = STAR_TEMP_NAMES[0][1];
+    for (const [tn, n] of STAR_TEMP_NAMES) if (t >= tn) name = n;
+    band = { name, rgb };
+    _starBands.set(key, band);
+  }
+  return band;
 }
 
 const TYPES = {
