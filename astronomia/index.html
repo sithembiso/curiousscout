@@ -1361,19 +1361,25 @@ const SURFACE = {
   },
 
   /* Smooth methane haze with a lonely dark vortex. */
+  /* Smooth turquoise haze swept into long white wind streaks (the Universe
+     Sandbox look). The streaks are noise stretched east–west and fade out
+     toward the poles, so they never pinch into a star where the map meets. */
   icegiant(ctx, W, H, rng, o) {
     const seed = (rng() * 1e6) | 0;
     const warp = fbm(seed, 4, 3, 4);
-    const wisp = fbm(seed + 66, 22, 8, 3);
-    const pal = o.pal || [[0, [42, 74, 138]], [0.3, [64, 118, 190]], [0.5, [98, 164, 218]], [0.7, [72, 130, 196]], [1, [38, 68, 130]]];
-    pixelPass(ctx, W, H, (u, v) => {
+    const streak = fbm(seed + 66, 3, 40, 4);
+    const fine = fbm(seed + 9, 2, 90, 2);
+    const pal = o.pal || [[0, [52, 138, 172]], [0.3, [84, 176, 206]], [0.5, [120, 204, 226]], [0.7, [90, 182, 212]], [1, [50, 130, 166]]];
+    pixelPass(ctx, W, H, (u, v, lat) => {
       const w = (warp(u, v) - 0.5) * 0.05;
-      const band = Math.sin((v + w) * Math.PI * 5) * 0.5 + 0.5;
-      let c = ramp(pal, clamp(v + w + (band - 0.5) * 0.06, 0, 1));
-      c = mix(c, [246, 252, 255], Math.pow(clamp(wisp(u, v) * 1.4 - 0.55, 0, 1), 1.4) * 0.5);
+      const band = Math.sin((v + w) * Math.PI * 7) * 0.5 + 0.5;
+      let c = ramp(pal, clamp(v + w + (band - 0.5) * 0.05, 0, 1));
+      const polar = Math.pow(Math.cos(lat), 1.5);                     // 1 at the equator, 0 at a pole
+      const st = clamp((streak(u, v) * 0.8 + fine(u, v) * 0.2) * 2.0 - 1.0, 0, 1);
+      c = mix(c, [240, 250, 253], Math.pow(st, 1.2) * 0.9 * polar);
       return c;
     });
-    storms(ctx, W, H, rng, 2, [[22, 38, 78], [30, 52, 96]]);
+    storms(ctx, W, H, rng, 1, [[24, 48, 96], [30, 60, 110]], 0.8);
   },
 
   /**
@@ -2252,8 +2258,8 @@ const TYPES = {
   },
   sol_neptune: {
     label: 'Neptune', group: 'SOLAR SYSTEM', pname: 'Neptune', mass: 17.147, rad: 3.883,
-    surf: 'icegiant', spin: 0.6713, tilt: 0.4943, atmo: [110, 160, 255],
-    opts: { pal: [[0, [22, 44, 116]], [0.3, [40, 72, 168]], [0.5, [62, 104, 202]], [0.72, [44, 78, 174]], [1, [20, 40, 108]]] },
+    surf: 'icegiant', spin: 0.6713, tilt: 0.4943, atmo: [110, 170, 255],
+    opts: { pal: [[0, [36, 92, 168]], [0.3, [58, 128, 204]], [0.5, [88, 160, 226]], [0.72, [62, 132, 208]], [1, [34, 86, 160]]] },
     blurb: 'The farthest planet, and the windiest place in the Solar System — its storms blow at 2,000 km/h. It was found with mathematics before anyone ever looked for it.'
   },
   sol_pluto: {
