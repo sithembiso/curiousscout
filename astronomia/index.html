@@ -2977,7 +2977,7 @@ function carryOrbits(dt) {
       const ang = hm / r2 * dt;                       // mean motion × time
       _ax.divideScalar(hm);
       // Fill the arc into the trail, so a fast orbit is still a smooth curve.
-      if (b.trail && b.trailSeg > 0) {
+      if (b.trail && b.trailSeg > 0 && !b.trailRing) {
         const r = Math.sqrt(r2), k = Math.min(Math.ceil(ang * r / b.trailSeg), 48);
         for (let j = 1; j < k; j++) {
           _q.setFromAxisAngle(_ax, ang * j / k);
@@ -3116,6 +3116,7 @@ function advance(frameSeconds) {
   const budget = clamp(Math.floor(260000 / (n * n + 1)), 1, 64);
   const steps = clamp(Math.ceil(target / safe), 1, budget);
   const dt = target / steps;
+  sim.frameSpan = target;              // how much orbit time this frame covers (trails use it)
   assignOrbitHosts(dt);
   for (let s = 0; s < steps; s++) step(dt);
 
@@ -11005,17 +11006,61 @@ function updateTrails() {
     const t = b.trail;
     if (!t) continue;
     const host = b.rotHost || b.domHost;
+    if (host && sim.running && trailRing(b, host)) continue;
+    if (b.trailRing) {                   // back to ordinary speed: start the trail afresh
+      b.trailRing = false;
+      t.n = 0; t.q = null; t.lx = undefined; t.o.copy(b.p); t.line.position.copy(b.p);
+    }
     b.trailSeg = host ? TAU * b.p.distanceTo(host.p) / TRAIL_PER_ORBIT : visRadius(b) * 6;
     if (t.n === 0) trailPush(b, b.p.x, b.p.y, b.p.z, true);
     trailCommit(b);
   }
 }
 
+/*
+ * When a body goes more than a quarter of the way round its orbit in a single
+ * frame — Mercury once the clock passes a couple of months a second, a moon
+ * far sooner — a trail laid down point by point can only join up places many
+ * laps apart, and turns into a tangled star. So instead it is drawn as what it
+ * really is at that speed: the orbit itself, a clean ellipse round its host,
+ * redrawn every frame from where the body is and how it is moving.
+ */
+const RING_PTS = 128;
+const _re = new THREE.Vector3(), _rh = new THREE.Vector3(), _rP = new THREE.Vector3(), _rQ = new THREE.Vector3(), _rr = new THREE.Vector3(), _rv = new THREE.Vector3();
+function trailRing(b, host) {
+  const mu = G * settings.gravity * (host.m + b.m);
+  _rr.subVectors(b.p, host.p); _rv.subVectors(b.v, host.v);
+  const r = _rr.length(), E = _rv.lengthSq() / 2 - mu / r;
+  if (!(E < 0) || !(r > 0)) return false;               // not bound: an ordinary trail
+  const a = -mu / (2 * E);
+  const period = TAU * Math.sqrt(a * a * a / mu);
+  if (!(sim.frameSpan > period / 4)) return false;      // slow enough to trace properly
+  _rh.crossVectors(_rr, _rv);
+  _re.crossVectors(_rv, _rh).divideScalar(mu).addScaledVector(_rr, -1 / r);   // eccentricity vector
+  const e = Math.min(_re.length(), 0.99);
+  if (e > 1e-6) _rP.copy(_re).normalize(); else _rP.copy(_rr).normalize();
+  _rQ.crossVectors(_rh.normalize(), _rP);
+  const t = b.trail, slr = a * (1 - e * e);
+  for (let i = 0; i < RING_PTS; i++) {
+    const th = TAU * i / (RING_PTS - 1), d = slr / (1 + e * Math.cos(th));
+    const c = Math.cos(th) * d, sn = Math.sin(th) * d;
+    t.arr[i * 3] = _rP.x * c + _rQ.x * sn;
+    t.arr[i * 3 + 1] = _rP.y * c + _rQ.y * sn;
+    t.arr[i * 3 + 2] = _rP.z * c + _rQ.z * sn;
+  }
+  t.o.copy(host.p); t.line.position.copy(host.p);
+  t.n = RING_PTS; t.q = null; t.lx = undefined;
+  t.geo.setDrawRange(0, RING_PTS);
+  t.geo.attributes.position.needsUpdate = true;
+  b.trailRing = true;
+  return true;
+}
+
 const TRAIL_PER_ORBIT = 160;
 /** Lay a point down if the body has moved far enough since the last one. */
 function trailSample(b) {
   const t = b.trail;
-  if (!b.trailSeg) return;
+  if (!b.trailSeg || b.trailRing) return;
   const lx = t.lx, ly = t.ly, lz = t.lz;
   if (lx === undefined) { trailPush(b, b.p.x, b.p.y, b.p.z); return; }
   const dx = b.p.x - lx, dy = b.p.y - ly, dz = b.p.z - lz;
