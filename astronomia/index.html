@@ -1240,13 +1240,13 @@ const SURFACE = {
       const cold = Math.pow(Math.abs(lat) / (Math.PI / 2), 1.6);
       if (e < sea) return ramp(bed, e / sea);
       const h = (e - sea) / (1 - sea);
-      const dryness = clamp(arid(u, v) * 1.3 - 0.25 + cold * 0.25, 0, 1);
-      const green = ramp([[0, [196, 182, 132]], [0.08, [96, 132, 66]], [0.4, [48, 96, 48]], [0.7, [86, 96, 66]], [1, [128, 124, 112]]], h);
-      const dry = ramp([[0, [204, 176, 124]], [0.3, [172, 138, 88]], [0.7, [136, 112, 80]], [1, [148, 140, 130]]], h);
+      const dryness = clamp(arid(u, v) * 1.2 - 0.32 + cold * 0.2, 0, 1);
+      const green = ramp([[0, [150, 140, 96]], [0.03, [70, 112, 50]], [0.35, [40, 86, 40]], [0.65, [92, 92, 58]], [1, [126, 116, 96]]], h);
+      const dry = ramp([[0, [150, 122, 80]], [0.3, [126, 98, 60]], [0.7, [104, 84, 58]], [1, [128, 116, 100]]], h);
       let c = mix(green, dry, dryness);
       const m = mount(u, v);
       if (h > 0.32 && m > 0.62) c = mix(c, [176, 172, 168], (m - 0.62) * 2.2);
-      if (h > 0.62) c = mix(c, [244, 246, 252], clamp((h - 0.62) * 2.6, 0, 1));
+      if (h > 0.8) c = mix(c, [244, 246, 252], clamp((h - 0.8) * 3.5, 0, 1));
       if (cold > 0.72) c = mix(c, [232, 238, 246], (cold - 0.72) * 2.4);
       return c;
     },
@@ -1769,11 +1769,14 @@ function puffTexture(size) {
 }
 
 /** Broken cloud deck with transparency, painted onto its own shell. */
-function cloudTexture(seed, W, H, opacity, tintCol) {
+function cloudTexture(seed, W, H, opacity, tintCol, swirl) {
   const cv = newCanvas(W, H);
   const ctx = cv.getContext('2d');
   const f = fbm(seed, 6, 3, 5);
   const band = fbm(seed + 2, 3, 9, 3);
+  // Weather on an Earth-like world: the cloud field is pushed round by two
+  // slow noise fields, which curls it into storms and long sweeping fronts.
+  const wx = swirl ? fbm(seed + 11, 3, 2, 3) : null, wy = swirl ? fbm(seed + 23, 3, 2, 3) : null;
   const tint = tintCol || [255, 255, 255];
   const img = ctx.createImageData(W, H);
   const d = img.data;
@@ -1782,8 +1785,15 @@ function cloudTexture(seed, W, H, opacity, tintCol) {
     const v = (y + 0.5) / H;
     for (let x = 0; x < W; x++) {
       const u = (x + 0.5) / W;
-      let n = f(u, v) * 0.75 + band(u, v) * 0.25;
-      let a = clamp((n - 0.48) * 3.4, 0, 1);
+      let uu = u, vv = v;
+      if (swirl) {
+        const a1 = (wx(u, v) - 0.5) * TAU * 1.6, r1 = 0.07 * swirl;
+        uu = u + Math.cos(a1) * r1; vv = clamp(v + Math.sin(a1) * r1 * 0.5 + (wy(u, v) - 0.5) * 0.04 * swirl, 0, 0.999);
+        uu -= Math.floor(uu);
+      }
+      let n = f(uu, vv) * 0.75 + band(uu, vv) * 0.25;
+      // swirled weather is also thicker: more sky covered, brighter white
+      let a = swirl ? clamp((n - 0.5) * 4.0, 0, 1) : clamp((n - 0.48) * 3.4, 0, 1);
       a = Math.pow(a, 1.25) * opacity;
       d[i++] = tint[0]; d[i++] = tint[1]; d[i++] = tint[2];
       d[i++] = (a * 255) | 0;
@@ -1971,12 +1981,12 @@ const TYPES = {
   /* ---- planets ---------------------------------------------------------- */
   terrestrial: {
     label: 'Terrestrial', group: 'PLANETS', mass: 1, rad: 1,
-    surf: 'terran', spin: 1, atmo: SKY, clouds: 0.55, water: 0.46,
+    surf: 'terran', spin: 1, atmo: SKY, clouds: 0.85, water: 0.62,
     blurb: 'A rocky world with oceans, weather and ice caps. Home, more or less.'
   },
   super_earth: {
     label: 'Super-Earth', group: 'PLANETS', mass: 5.5, rad: 1.7,
-    surf: 'terran', spin: 1.6, atmo: SKY, clouds: 0.6, opts: { sea: 0.46 }, water: 0.53,
+    surf: 'terran', spin: 1.6, atmo: SKY, clouds: 0.85, opts: { sea: 0.46 }, water: 0.63,
     blurb: 'A heavier cousin of Earth. Surface gravity would make you feel twice as heavy.'
   },
   ocean_world: {
@@ -2194,7 +2204,7 @@ const TYPES = {
   },
   sol_earth: {
     label: 'Earth', group: 'SOLAR SYSTEM', pname: 'Earth', mass: 1, rad: 1,
-    surf: 'earth', spin: 0.99727, tilt: 0.4091, atmo: SKY, clouds: 0.55, water: 0.295,
+    surf: 'earth', spin: 0.99727, tilt: 0.4091, atmo: SKY, clouds: 0.8, water: 0.295,
     blurb: 'The only place anyone has ever lived. Seven-tenths water, tipped 23.4° on its axis — which is the entire reason we have seasons.'
   },
   sol_luna: {
@@ -3291,7 +3301,7 @@ function waterDelivered(a, b) {
   return clamp(Math.max(byMass, share * 0.05), 0, 1);
 }
 
-const WATER_LIQUID = new THREE.Color(0.07, 0.30, 0.60);
+const WATER_LIQUID = new THREE.Color(0.025, 0.15, 0.46);   // deep ocean blue
 const WATER_ICE = new THREE.Color(0.84, 0.91, 0.97);
 
 /**
@@ -3328,7 +3338,7 @@ function setWater(b, w) {
       color: WATER_LIQUID.clone(), roughness: 0.22, metalness: 0.04,
       // Shallow water lets a little of the seabed through, and it must not write
       // depth or it would hide the land standing out of it.
-      transparent: true, opacity: 0.86, depthWrite: false
+      transparent: true, opacity: 0.92, depthWrite: false
     }));
     sea.renderOrder = 1;
     b.obj.add(sea);
@@ -6629,10 +6639,14 @@ function buildWorld(b, def, grp) {
   }
 
   if (def.clouds) {
-    const ct = cachedTexture('cloud:' + b.type + ':' + (b.seed % 3), () => cloudTexture(hashStr(b.type + b.seed % 3), 512, 256, def.clouds, [255, 255, 255]));
+    const ct = cachedTexture('cloud:' + b.type + ':' + (b.seed % 3), () => cloudTexture(hashStr(b.type + b.seed % 3), 512, 256, def.clouds, [255, 255, 255],
+      def.surf === 'terran' || def.surf === 'earth' || def.surf === 'ocean' ? 1 : 0));
     const cm = new THREE.MeshStandardMaterial({ map: ct, transparent: true, depthWrite: false, roughness: 1 });
     const cloud = new THREE.Mesh(SPHERE, cm);
     cloud.scale.setScalar(1.018);
+    // After the sea (renderOrder 1): neither writes depth, so whichever is
+    // drawn last wins, and the clouds sit above the water.
+    cloud.renderOrder = 2;
     grp.add(cloud);
     b.parts.cloud = cloud;
   }
@@ -6718,11 +6732,12 @@ function buildTerraLayer(b, grp) {
   b.parts.terraSkin = skin;
 
   const ct = cachedTexture('cloud:terra:' + (b.seed % 3),
-    () => cloudTexture(hashStr('terra' + (b.seed % 3)), 512, 256, 0.55, [255, 255, 255]));
+    () => cloudTexture(hashStr('terra' + (b.seed % 3)), 512, 256, 0.7, [255, 255, 255], 1));
   const cloud = new THREE.Mesh(SPHERE, new THREE.MeshStandardMaterial({
     map: ct, transparent: true, opacity: 0, depthWrite: false, roughness: 1
   }));
   cloud.scale.setScalar(1.024);
+  cloud.renderOrder = 2;                 // above the sea, as on a living world
   grp.add(cloud);
   b.parts.terraCloud = cloud;
 
