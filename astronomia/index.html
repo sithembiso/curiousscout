@@ -5447,53 +5447,42 @@ const SNNEB_FRAG = `
   }`;
 
 /*
- * The fibres of a remnant (the Universe Sandbox / Crab Nebula look): hundreds
- * of fine glowing threads streaming out from a blue-white heart. Each one runs
- * out toward one of the nebula's own puffs, so the threads trace whatever shape
- * this remnant has, and fade from blue-white at the core into its colours.
- * Built in the cloud's unit space, so it rides the cloud's scale and tilt.
+ * A supernova's cloud (the Universe Sandbox look): a puffy ball, glowing mint
+ * and white inside, where the hot ejecta is densest, and wrapped in a dim,
+ * brownish, lumpy outer layer — the cooler gas at the edge. Big soft puffs that
+ * overlap, so it reads as billowing cloud rather than dots or threads. Each
+ * explosion's surface has its own lumps.
  */
-function snFilaments(geo, variant) {
-  const P = geo.attributes.position.array, C = geo.attributes.aCol.array, n = P.length / 3;
-  const rng = mulberry32(variant * 104729 + 7);
-  const NF = 900, STEPS = 9;
-  const pos = [], col = [];
-  const t = new THREE.Vector3(), d = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), q = new THREE.Vector3(), prev = new THREE.Vector3();
-  for (let f = 0; f < NF; f++) {
-    const i = (rng() * n) | 0;
-    t.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]);
-    const len = t.length();
-    if (len < 0.12) continue;
-    d.copy(t).divideScalar(len);
-    a.set(d.y, -d.x, 0.3).cross(d).normalize(); b.crossVectors(d, a);
-    const r0 = len * (0.3 + rng() * 0.45), r1 = len * (1.0 + rng() * 0.15);
-    let ox = 0, oy = 0;
-    const tint = [C[i * 3], C[i * 3 + 1], C[i * 3 + 2]];
-    const m = Math.max(tint[0], tint[1], tint[2], 1e-3);
-    for (let k = 0; k <= STEPS; k++) {
-      const s = k / STEPS, r = r0 + (r1 - r0) * s;
-      ox += (rng() - 0.5) * 0.11 * len; oy += (rng() - 0.5) * 0.11 * len;
-      q.copy(d).multiplyScalar(r).addScaledVector(a, ox * s).addScaledVector(b, oy * s);
-      // blue-white at the heart, the nebula's colour (brightened) further out,
-      // and dimming to nothing at the tip — additive, so dark is see-through
-      const lit = (1 - s * 0.55) * (k === STEPS ? 0 : 1) * (0.55 + rng() * 0.45);
-      const w = 0.45 + s * 0.55, cr = lerp(0.8, tint[0] / m, w), cg = lerp(0.9, tint[1] / m, w), cb = lerp(1.0, tint[2] / m, w);
-      if (k > 0) {
-        pos.push(prev.x, prev.y, prev.z, q.x, q.y, q.z);
-        col.push(col.length ? col[col.length - 3] : cr * lit, col.length ? col[col.length - 2] : cg * lit, col.length ? col[col.length - 1] : cb * lit, cr * lit, cg * lit, cb * lit);
-      }
-      prev.copy(q);
-    }
+const SN_MINT = [[0, [0.86, 1.0, 0.94]], [0.45, [0.62, 1.0, 0.84]], [0.7, [0.40, 0.86, 0.72]], [0.84, [0.62, 0.48, 0.30]], [1, [0.50, 0.33, 0.20]]];
+function snPuffBall(variant, n) {
+  const key = 'snball:' + variant + ':' + n;
+  if (geoCache.has(key)) return geoCache.get(key);
+  const rng = mulberry32(hashStr(key));
+  const lump = fbm(hashStr('snlump' + variant), 4, 2, 4);
+  const pos = [], col = [], siz = [], rot = [];
+  for (let i = 0; i < n; i++) {
+    const z = rng() * 2 - 1, ph = rng() * TAU, sq = Math.sqrt(Math.max(0, 1 - z * z));
+    const dx = sq * Math.cos(ph), dy = sq * Math.sin(ph);
+    const u = ((Math.atan2(dy, dx) / TAU) + 1) % 1, v = Math.acos(clamp(z, -1, 1)) / Math.PI;
+    const edge = 0.82 + lump(u, v) * 0.36;                 // a lumpy outer surface
+    // a third of the puffs make the outer layer, the rest fill the ball
+    const outer = rng() < 0.42;
+    const r = (outer ? 0.86 + rng() * 0.16 : Math.pow(rng(), 0.55) * 0.82) * edge;
+    const off = () => (rng() - 0.5) * 0.08;
+    pos.push(dx * r + off(), dy * r + off(), z * r + off());
+    const c = ramp(SN_MINT, clamp(r / edge, 0, 1));
+    const j = 0.8 + rng() * 0.35;
+    col.push(c[0] * j, c[1] * j, c[2] * j);
+    siz.push(outer ? 0.16 + rng() * 0.16 : 0.24 + Math.pow(rng(), 2) * 0.3);
+    rot.push(((rng() * 4) | 0) + rng() * 0.999);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
-    vertexColors: true, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending
-  }));
-  lines.frustumCulled = false;
-  lines.renderOrder = 3;
-  return lines;
+  g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('aSize', new THREE.Float32BufferAttribute(siz, 1));
+  g.setAttribute('aRot', new THREE.Float32BufferAttribute(rot, 1));
+  geoCache.set(key, g);
+  return g;
 }
 
 function buildSNVisual(e) {
@@ -5512,9 +5501,10 @@ function buildSNVisual(e) {
   shell.renderOrder = 4;
   g.add(shell);
 
-  // each explosion gets its own shape and colours (5 shapes × 6 palettes × 4 seeds)
+  // each explosion gets its own lumps (a kilonova, its own shape: 5 shapes × 4 seeds)
   if (e.nebVariant == null) e.nebVariant = Math.floor(Math.random() * 120);
-  const nebGeo = nebulaCloud(e.nebVariant, 900, e.flavour === 'kilo');
+  // a kilonova keeps its electric-blue shell; a supernova is the minty puff-ball
+  const nebGeo = e.flavour === 'kilo' ? nebulaCloud(e.nebVariant, 900, true) : snPuffBall(e.nebVariant, 700);
   const neb = new THREE.Points(nebGeo, new THREE.ShaderMaterial({
     uniforms: {
       uMap: { value: sharedNebAtlas() }, uOp: { value: 0 },
@@ -5529,16 +5519,14 @@ function buildSNVisual(e) {
   const tr = mulberry32(e.nebVariant * 7919 + 13);
   neb.rotation.set(tr() * TAU, tr() * TAU, tr() * TAU);
   g.add(neb);
-  // the fibres and the blue-white heart ride the cloud's scale and tilt
-  const fil = snFilaments(nebGeo, e.nebVariant);
-  neb.add(fil);
+  // a soft mint glow at the heart, riding the cloud's scale
   const heart = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: TEX_GLOW, color: new THREE.Color(0.72, 0.84, 1), blending: THREE.AdditiveBlending,
+    map: TEX_GLOW, color: new THREE.Color(0.78, 1, 0.9), blending: THREE.AdditiveBlending,
     transparent: true, opacity: 0, depthWrite: false
   }));
-  heart.scale.setScalar(0.4);
+  heart.scale.setScalar(0.9);
   neb.add(heart);
-  e.fil = fil; e.heart = heart;
+  e.heart = heart;
 
   const core = new THREE.Sprite(new THREE.SpriteMaterial({
     map: TEX_HALO, blending: THREE.AdditiveBlending, transparent: true,
@@ -5600,7 +5588,6 @@ function updateSNVisual(e) {
     // wisps have more gap than glow, so they are drawn stronger than plain puffs were
     u.uOp.value = puff * Math.max(fade, 0.25) * 0.3 * SN_GLOW;
     e.neb.visible = puff > 0.01 && big;
-    if (e.fil) e.fil.material.opacity = Math.min(1, puff * Math.max(fade, 0.3) * 0.22 * SN_GLOW);
     if (e.heart) e.heart.material.opacity = Math.min(1, puff * Math.max(fade, 0.3) * 0.35 * SN_GLOW);
   }
 
@@ -5630,8 +5617,7 @@ function disposeSN(e) {
   if (!e.obj) return;
   scene.remove(e.obj);
   e.obj.traverse(o => { if (o.material) o.material.dispose(); });
-  if (e.fil) e.fil.geometry.dispose();
-  e.obj = null; e.shell = null; e.neb = null; e.core = null; e.boom = null; e.fil = null; e.heart = null;
+  e.obj = null; e.shell = null; e.neb = null; e.core = null; e.boom = null; e.heart = null;
 }
 
 
