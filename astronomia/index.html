@@ -2981,7 +2981,8 @@ function assignOrbitHosts(dt) {
     let best = null, pull = 0;
     for (const o of bs) {
       if (o === b || o.m <= b.m || o.kind === 'wh') continue;
-      const g = o.m / Math.max(o.p.distanceToSquared(b.p), 1e-30);
+      const d2 = Math.max(o.p.distanceToSquared(b.p), 1e-30);
+      const g = pullMass(o, Math.sqrt(d2)) / d2;
       if (g > pull) { pull = g; best = o; }
     }
     if (!best) continue;
@@ -2995,14 +2996,15 @@ function assignOrbitHosts(dt) {
       if (o === b || o === best || o.m <= b.m || o.kind === 'wh' || o.kind === 'gal') continue;
       const dHost = o.p.distanceTo(best.p);
       if (!(dHost > 0) || o.m >= best.m) continue;
-      const hill = dHost * Math.cbrt(o.m / (3 * best.m));
+      // (inside a galaxy, its tide comes from the mass within o's orbit, not all of it)
+      const hill = dHost * Math.cbrt(o.m / (3 * pullMass(best, dHost)));
       const d = b.p.distanceTo(o.p);
       if (d < hill * 0.5 && d < innerD) { inner = o; innerD = d; }
     }
     if (inner) best = inner;
     b.domHost = best;
     const r = b.p.distanceTo(best.p);
-    const mu = gm * (best.m + b.m);
+    const mu = gm * (pullMass(best, r) + b.m);
     const v2 = b.v.distanceToSquared(best.v);
     const E = v2 / 2 - mu / r;
     if (E >= 0) continue;                             // not bound to it: fly free
@@ -8404,6 +8406,15 @@ function initGalaxyStars() {
  * same law the integrator uses is what makes a freshly built disc actually sit
  * still instead of immediately falling in or flying apart.
  */
+/** The mass a body r away effectively feels pulling it inward. For a galaxy
+    that is its softened (Plummer) pull — far less than all of it at the
+    centre, inside the disc; for anything else, simply its mass. */
+function pullMass(host, r) {
+  if (host.kind !== 'gal') return host.m;
+  const a = Math.max(host.galR, 1) * GAL_SOFT, dd = r * r + a * a;
+  return host.m * r * r * r / (dd * Math.sqrt(dd));
+}
+
 function galVCirc(m, r, soft) {
   const dd = r * r + soft * soft;
   return Math.sqrt(G * settings.gravity * m * r * r / (dd * Math.sqrt(dd)));
@@ -12248,7 +12259,7 @@ function dominantAt(pos, exclude) {
   for (const b of sim.bodies) {
     if (b === exclude || b.kind === 'wh') continue;
     const d2 = Math.max(b.p.distanceToSquared(pos), 1e-9);
-    const pull = b.m / d2;
+    const pull = pullMass(b, Math.sqrt(d2)) / d2;
     if (pull > bestPull) { bestPull = pull; best = b; }
   }
   return best;
@@ -12482,6 +12493,19 @@ function circularVelocity(primary, pos) {
   const rel = pos.clone().sub(primary.p);
   const d = rel.length();
   if (d < 1e-9) return new THREE.Vector3();
+  if (primary.kind === 'gal' && primary.galAxis) {
+    /* A galaxy's mass is spread out, not in a point: inside the disc the pull
+       is far weaker than all of it sitting at the centre would give, so the
+       point-mass speed flings anything placed there straight out. Use the
+       same softened pull its own stars feel, and go round its own axis the
+       same way they do — so a star or a solar system dropped into a galaxy
+       joins the disc's rotation instead of cutting across it. */
+    const speed = galVCirc(primary.m, d, Math.max(primary.galR, 1) * GAL_SOFT);
+    let tang = primary.galAxis.clone().cross(rel);
+    if (tang.lengthSq() < 1e-12 * d * d) tang = new THREE.Vector3(1, 0, 0).cross(rel);
+    tang.normalize().multiplyScalar(speed * (primary.galSpin || 1));
+    return tang.add(primary.v);
+  }
   const speed = Math.sqrt(G * settings.gravity * primary.m / d);
   let tang = new THREE.Vector3(0, 1, 0).cross(rel);
   if (tang.lengthSq() < 1e-12) tang = new THREE.Vector3(1, 0, 0).cross(rel);
@@ -12613,7 +12637,7 @@ function velocityFromDrag() {
   let vRef;
   if (primary) {
     const d = Math.max(primary.p.distanceTo(pos), 1e-9);
-    vRef = Math.sqrt(G * settings.gravity * primary.m / d);
+    vRef = Math.sqrt(G * settings.gravity * pullMass(primary, d) / d);
   } else {
     vRef = 2.592;                                     // ~30 km/s, a homely orbital speed
   }
