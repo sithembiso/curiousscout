@@ -1284,12 +1284,14 @@ const SURFACE = {
     const dunes = ridged(fbm(seed + 77, 26, 6, 3));
     const hgtD = pixelPass(ctx, W, H, (u, v) => {
       const e = base(u, v);
-      let c = ramp(o.pal || [[0, [96, 52, 34]], [0.35, [152, 88, 52]], [0.6, [188, 124, 76]], [0.85, [208, 158, 108]], [1, [226, 196, 156]]], e);
-      c = mix(c, [232, 204, 164], dunes(u, v) * 0.22);
+      // Rust-orange plains mottled with darker ground (the Universe Sandbox look)
+      let c = ramp(o.pal || [[0, [70, 30, 18]], [0.36, [96, 42, 22]], [0.47, [150, 70, 34]], [0.56, [194, 102, 50]], [0.72, [212, 126, 68]], [1, [230, 162, 110]]], e);
+      c = mix(c, [226, 150, 96], dunes(u, v) * 0.12);
       return c;
     }, (u, v) => base(u, v) + dunes(u, v) * 0.10);
-    craters(ctx, W, H, rng, o.craters != null ? o.craters : 46, 0.006, 0.05, [226, 196, 158]);
-    iceCaps(ctx, W, H, rng, o.caps != null ? o.caps : 0.09, [246, 240, 234]);
+    // hardly a crater to be seen, and no polar caps
+    craters(ctx, W, H, rng, o.craters != null ? o.craters : 10, 0.006, 0.05, [226, 196, 158]);
+    if (o.caps) iceCaps(ctx, W, H, rng, o.caps, [246, 240, 234]);
     return hgtD;
   },
 
@@ -2267,9 +2269,7 @@ const TYPES = {
   },
   sol_gonggong: {
     label: 'Gonggong', group: 'SOLAR SYSTEM', pname: 'Gonggong', mass: 2.9e-4, rad: 0.0965,
-    // Rust-orange plains mottled with darker ground, and hardly a crater to be seen.
-    surf: 'desert', spin: 0.93, relief: 0.15,
-    opts: { craters: 10, caps: 0, pal: [[0, [70, 30, 18]], [0.36, [96, 42, 22]], [0.47, [150, 70, 34]], [0.56, [194, 102, 50]], [0.72, [212, 126, 68]], [1, [230, 162, 110]]] },
+    surf: 'desert', spin: 0.93,
     blurb: 'One of the reddest worlds in the Solar System, on a long, tilted orbit out in the scattered disc.'
   },
   sol_eris: {
@@ -6417,7 +6417,7 @@ const RELIEF = {
   rock: 0.20,         // the Moon, Mercury: nothing has ever worn them down
   chthonian: 0.19,    // a gas giant's flayed core
   carbon: 0.18,
-  desert: 0.17,       // Mars: Olympus Mons stands 22 km over Amazonis
+  desert: 0.025,      // smooth round worlds: the mottling is colour, not mountains
   iron: 0.16,
   rogue: 0.16,
   lava: 0.14,         // crust plates riding on an open magma ocean
