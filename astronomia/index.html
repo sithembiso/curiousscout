@@ -2267,7 +2267,9 @@ const TYPES = {
   },
   sol_gonggong: {
     label: 'Gonggong', group: 'SOLAR SYSTEM', pname: 'Gonggong', mass: 2.9e-4, rad: 0.0965,
-    surf: 'ice', spin: 0.93, opts: { pal: [[0, [120, 46, 34]], [1, [210, 120, 96]]] },
+    // Rust-orange plains mottled with darker ground, and hardly a crater to be seen.
+    surf: 'desert', spin: 0.93, relief: 0.15,
+    opts: { craters: 10, caps: 0, pal: [[0, [70, 30, 18]], [0.36, [96, 42, 22]], [0.47, [150, 70, 34]], [0.56, [194, 102, 50]], [0.72, [212, 126, 68]], [1, [230, 162, 110]]] },
     blurb: 'One of the reddest worlds in the Solar System, on a long, tilted orbit out in the scattered disc.'
   },
   sol_eris: {
