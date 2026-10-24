@@ -798,7 +798,17 @@
      its light [sky light, sun, sky colour, ground colour], and its scenery. */
   const PLACES = {
     paper: { sky: ['#fffdf6', '#f3e6cc'], fog: [30, 110], light: [0.62, 0.55, 0xffffff, 0xc8b9a0], make(g) {
-      ground(g, 0xfbf1dc);
+      // graph paper: a line every step, a darker one every five
+      const c = newCanvas(320, 320), x = c.getContext('2d');
+      x.fillStyle = '#fbf1dc'; x.fillRect(0, 0, 320, 320);
+      for (let i = 0; i < 5; i++) { x.fillStyle = '#e2d4b8'; x.fillRect(i * 64, 0, 3, 320); x.fillRect(0, i * 64, 320, 3); }
+      x.fillStyle = '#c4b292'; x.fillRect(0, 0, 5, 320); x.fillRect(0, 0, 320, 5);
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(60, 60);
+      tex.anisotropy = gl.capabilities.getMaxAnisotropy();
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshToonMaterial({ color: 0xc8c8c8, map: tex, gradientMap: GRAD }));
+      m.rotation.x = -PI / 2;
+      g.add(m);
     } },
     meadow: { sky: ['#7cc8ff', '#d4efff'], fog: [30, 120], light: [0.6, 0.6, 0xffffff, 0x8fd47a], make(g, r) {
       ground(g, 0x8fd47a);
