@@ -5336,15 +5336,71 @@ const REMNANT_PALETTES = [
   [[1.00, 0.30, 0.25], [1.00, 0.75, 0.30], [1.00, 0.50, 0.30], [1.00, 0.95, 0.80]]    // fire red & amber
 ];
 const KILO_PALETTE = [[0.30, 0.45, 1.00], [0.35, 0.90, 1.00], [0.70, 0.45, 1.00], [0.75, 0.95, 1.00]];
+/*
+ * The triple ring of SN 1987A: a beaded inner ring round the star where the
+ * blast wave is lighting up gas the star shed long before, two wider rings
+ * above and below it, faint blue haze in the hourglass between them, and a
+ * blue-white glow at the heart. The rings are red-pink like the real one,
+ * each remnant with its own slight tint, tilt and string of bright knots.
+ */
+function tripleRing(variant, n, rng) {
+  const knots = fbm(hashStr('knots' + variant), 9, 2, 3);
+  const tint = rng() * 0.25;                       // a little more orange or more pink
+  const RING = [1.0, 0.32 + tint * 0.4, 0.42 - tint * 0.3], BEAD = [1.0, 0.78, 0.82];
+  const HAZE = [0.30, 0.50, 1.0], CORE = [0.72, 0.86, 1.0];
+  const rIn = 0.3, rOut = 0.58 + rng() * 0.08, h = 0.6 + rng() * 0.1;
+  const tilt1 = (rng() - 0.5) * 0.3, tilt2 = (rng() - 0.5) * 0.3;
+  const pos = [], col = [], siz = [], rot = [];
+  const g = () => (rng() + rng() + rng() - 1.5) / 1.5;
+  const push = (x, y, z, c, size) => { pos.push(x, y, z); col.push(c[0], c[1], c[2]); siz.push(size); rot.push(((rng() * 4) | 0) + rng() * 0.999); };
+  for (let i = 0; i < n; i++) {
+    const pick = rng(), th = rng() * TAU;
+    if (pick < 0.62) {
+      // a ring: inner (brightest), upper or lower
+      const which = pick < 0.3 ? 0 : pick < 0.46 ? 1 : 2;
+      const R = (which ? rOut : rIn) * (1 + g() * 0.035);
+      let x = Math.cos(th) * R, z = Math.sin(th) * R, y = g() * 0.012;
+      if (which) {
+        // tip the outer rings a little, each its own way
+        const t = which === 1 ? tilt1 : tilt2, cy = which === 1 ? h : -h;
+        const yy = y * Math.cos(t) - z * Math.sin(t), zz = y * Math.sin(t) + z * Math.cos(t);
+        y = yy + cy; z = zz;
+      }
+      const k = clamp(knots(th / TAU, which / 3 + 0.1) * 2.2 - 0.7, 0, 1);  // bright beads along it
+      const c = mix(RING, BEAD, k * (which ? 0.5 : 0.9));
+      const j = (which ? 0.8 : 0.95) * (0.75 + k * 0.6);
+      push(x, y, z, [c[0] * j, c[1] * j, c[2] * j], (which ? 0.05 : 0.06) + rng() * 0.05);
+    } else if (pick < 0.9) {
+      // the hourglass of faint blue haze joining the rings
+      const yy = (rng() * 2 - 1) * h, f = Math.abs(yy) / h;
+      const R = lerp(rIn * 0.9, rOut, f * f) * (0.85 + rng() * 0.3);
+      const j = 0.22 + rng() * 0.12;
+      push(Math.cos(th) * R, yy, Math.sin(th) * R, [HAZE[0] * j, HAZE[1] * j, HAZE[2] * j], 0.14 + rng() * 0.14);
+    } else {
+      // the glow at the heart
+      const R = Math.pow(rng(), 2) * 0.1;
+      const j = 0.7 + rng() * 0.3;
+      push(Math.cos(th) * R, g() * 0.05, Math.sin(th) * R, [CORE[0] * j, CORE[1] * j, CORE[2] * j], 0.1 + rng() * 0.1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3));
+  geo.setAttribute('aSize', new THREE.Float32BufferAttribute(siz, 1));
+  geo.setAttribute('aRot', new THREE.Float32BufferAttribute(rot, 1));
+  return geo;
+}
+
 function nebulaCloud(variant, n, blue) {
   const key = 'neb:' + variant + ':' + n + (blue ? ':b' : '');
   if (geoCache.has(key)) return geoCache.get(key);
   const rng = mulberry32(hashStr(key));
   const lump = fbm(hashStr('lump' + variant), 4, 2, 4);
   const hue = fbm(hashStr('hue' + variant), 3, 2, 3);
-  const shape = variant % 5;
+  const shape = blue ? variant % 5 : variant % 6;            // (a kilonova stays a blue shell)
+  if (shape === 5) { const g = tripleRing(variant, n, rng); geoCache.set(key, g); return g; }
   // A kilonova is hotter and full of new heavy elements: always electric blue
-  const [A, Bc, MEET, IN] = blue ? KILO_PALETTE : REMNANT_PALETTES[Math.floor(variant / 5) % REMNANT_PALETTES.length];
+  const [A, Bc, MEET, IN] = blue ? KILO_PALETTE : REMNANT_PALETTES[Math.floor(variant / 6) % REMNANT_PALETTES.length];
   // each one also has its own proportions
   const sx = 0.8 + rng() * 0.45, sy = 0.75 + rng() * 0.5, sz = 0.8 + rng() * 0.4;
   const fill = shape === 2 ? 0.25 : 0.03;
@@ -5503,8 +5559,8 @@ function buildSNVisual(e) {
   shell.renderOrder = 4;
   g.add(shell);
 
-  // each explosion gets its own lumps (a kilonova, its own shape: 5 shapes × 4 seeds)
-  if (e.nebVariant == null) e.nebVariant = Math.floor(Math.random() * 120);
+  // each explosion gets its own lumps (a kilonova, its own shape)
+  if (e.nebVariant == null) e.nebVariant = Math.floor(Math.random() * 144);
   // a kilonova keeps its electric-blue shell; a supernova is the minty puff-ball
   const nebGeo = e.flavour === 'kilo' ? nebulaCloud(e.nebVariant, 900, true) : snPuffBall(e.nebVariant, 700);
   const neb = new THREE.Points(nebGeo, new THREE.ShaderMaterial({
@@ -9463,6 +9519,7 @@ function makeNebula(gal, k, kind, R, rng) {
   const name = NEB_PREFIX[(rng() * NEB_PREFIX.length) | 0] + ' ' + (10 + ((rng() * 7800) | 0));
   const puffs = [];
   const n = NEB_KINDS[kind].n;
+  let ring3 = false;
   // a random tilt for rings and shells
   const ax = new THREE.Vector3(g(), g(), g()).normalize();
   const e1 = new THREE.Vector3(0, 0, 1).cross(ax);
@@ -9496,8 +9553,11 @@ function makeNebula(gal, k, kind, R, rng) {
     /* The same remnants a supernova leaves behind: one of five shapes and
        six palettes — shells, butterflies, crabs, broken shells, hourglasses
        — taken from the very same cloud, tilted its own way and scaled up. */
-    const variant = (rng() * 120) | 0;
-    const geo = nebulaCloud(variant, n, false);
+    // 6 shapes × 6 palettes × 4; about a third are SN 1987A's triple ring
+    const variant = rng() < 0.3 ? ((rng() * 24) | 0) * 6 + 5 : (rng() * 144) | 0;
+    ring3 = variant % 6 === 5;
+    // the triple ring needs more puffs than a cloud to keep its thin rings unbroken
+    const geo = nebulaCloud(variant, ring3 ? Math.round(n * 1.7) : n, false);
     const P = geo.attributes.position.array, C = geo.attributes.aCol.array, Z = geo.attributes.aSize.array, Q = geo.attributes.aRot.array;
     const tilt = new THREE.Euler(rng() * TAU, rng() * TAU, rng() * TAU);
     for (let i = 0; i < Z.length; i++) {
@@ -9505,7 +9565,7 @@ function makeNebula(gal, k, kind, R, rng) {
       puffs.push({ o, size: Z[i] * R * 1.15, col: [C[i * 3], C[i * 3 + 1], C[i * 3 + 2]], rot: Q[i] });
     }
   }
-  return { gal, k, kind, R, name, puffs };
+  return { gal, k, kind, R, name, puffs, ring3 };
 }
 
 function removeNebulae(galId) {
