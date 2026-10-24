@@ -581,7 +581,10 @@
       sh.rotation.x = -PI / 2; sh.position.y = 0.015;
       root.add(body, sh);
       actors.add(root);
-      a = { k: it.k, root: root, body: body, sh: sh };
+      // the paintable pieces, in build order, so a saved colour finds its piece again
+      const parts = [];
+      body.traverse(o => { if (o.isMesh && o.material !== OUTLINE) parts.push({ m: o, mat: o.material }); });
+      a = { k: it.k, root: root, body: body, sh: sh, parts: parts };
       pool.set(it.id, a);
     }
     return a;
@@ -596,6 +599,7 @@
     const up = Math.min(it.h / 5, 0.7);
     a.sh.scale.setScalar(it.s * CHARS[it.k].w * (1 - up * 0.5));
     a.sh.material.opacity = 0.22 * (1 - up);
+    a.parts.forEach((q, i) => { q.m.material = it.p && it.p[i] != null ? toon(it.p[i]) : q.mat; });
     return a;
   }
 
@@ -788,12 +792,13 @@
     const fr = { cv: cv, ctx: cv.getContext('2d'), ink: false, items: [], cam: defaultCam() };
     if (src) {
       if (src.ink) { fr.ctx.drawImage(src.cv, 0, 0); fr.ink = true; }
-      fr.items = src.items.map(it => Object.assign({}, it));
+      fr.items = src.items.map(copyItem);
       fr.cam = Object.assign({}, src.cam);
     }
     return fr;
   }
   const frame = () => movie.frames[cur];
+  const copyItem = (it) => Object.assign({}, it, it.p ? { p: Object.assign({}, it.p) } : null);
 
   /** One frame of the movie, on its own: the 3D picture, then the drawing on top. */
   function paintFrame(ctx, fr, withBg) {
@@ -963,7 +968,7 @@
     const fr = frame();
     let img = null;
     if (fr.ink) { img = newCanvas(W, H); img.getContext('2d').drawImage(fr.cv, 0, 0); }
-    return { type: 'edit', at: cur, img: img, items: fr.items.map(i => Object.assign({}, i)), cam: Object.assign({}, fr.cam) };
+    return { type: 'edit', at: cur, img: img, items: fr.items.map(copyItem), cam: Object.assign({}, fr.cam) };
   }
   function pushUndo(u) {
     undoStack.push(u || snap());
@@ -975,7 +980,13 @@
     const u = undoStack.pop();
     $('ts-undo').disabled = !undoStack.length;
     if (!u) return;
-    if (u.type === 'add') {
+    if (u.type === 'paint') {
+      for (const w of u.was) {
+        const it = movie.frames[w.at] && movie.frames[w.at].items.find(i => i.id === w.id);
+        if (it) { it.p = w.p; thumbDirty.add(w.at); }
+      }
+      cur = u.at;
+    } else if (u.type === 'add') {
       movie.frames.splice(u.at, 1); cur = Math.min(u.at - 1 < 0 ? 0 : u.at - 1, movie.frames.length - 1); buildStrip();
     } else if (u.type === 'del') {
       movie.frames.splice(u.at, 0, u.fr); cur = u.at; buildStrip();
@@ -991,7 +1002,7 @@
 
   /* ================================================================== tools */
   let tool = 'move', size = 12, color = '#2b2140';
-  let seenCamHint = false;
+  let seenCamHint = false, seenPaintHint = false;
 
   function setTool(t) {
     tool = t;
@@ -1032,6 +1043,36 @@
     const it = selItem();
     if (it) { const b = handles(it); if (p.x > b.x0 && p.x < b.x1 && p.y > b.y0 && p.y < b.y1) return it; }
     return null;
+  }
+
+  /** The friend, and which piece of it, under the finger. */
+  function hitPart(p) {
+    const fr = frame();
+    pose(fr, movie.bg, true);
+    castFrom(p);
+    const hit = ray.intersectObjects(fr.items.map(it => pool.get(it.id).body), true)[0];
+    if (!hit) return null;
+    const m = hit.object.material === OUTLINE ? hit.object.parent : hit.object;
+    for (const it of fr.items) {
+      const i = pool.get(it.id).parts.findIndex(q => q.m === m);
+      if (i >= 0) return { it: it, i: i };
+    }
+    return null;
+  }
+
+  /* Painting a friend: this piece takes the colour from this frame on, so
+     painting on frame 1 paints it for the whole movie. */
+  function paintFriend(hit) {
+    const was = [], col = parseInt(color.slice(1), 16);
+    for (let f = cur; f < movie.frames.length; f++) {
+      const it = movie.frames[f].items.find(i => i.id === hit.it.id);
+      if (!it) continue;
+      was.push({ at: f, id: it.id, p: it.p ? Object.assign({}, it.p) : undefined });
+      it.p = Object.assign({}, it.p, { [hit.i]: col });
+      thumbDirty.add(f);
+    }
+    pushUndo({ type: 'paint', at: cur, was: was });
+    touched();
   }
 
   let drag = null;
@@ -1078,7 +1119,14 @@
       } else { sel = null; dirty = true; }
       return;
     }
-    if (tool === 'fill') { pushUndo(); floodFill(frame(), p.x | 0, p.y | 0, color); touched(); return; }
+    if (tool === 'fill') {
+      // a drawing on top gets filled; otherwise a friend underneath gets painted
+      const fr = frame(), x = p.x | 0, y = p.y | 0;
+      const inked = fr.ink && x >= 0 && y >= 0 && x < W && y < H && fr.ctx.getImageData(x, y, 1, 1).data[3] >= 60;
+      const hit = inked ? null : hitPart(p);
+      if (hit) { paintFriend(hit); return; }
+      pushUndo(); floodFill(fr, x, y, color); touched(); return;
+    }
     // pencil / eraser
     pushUndo();
     const fr = frame();
@@ -1261,6 +1309,7 @@
     document.querySelectorAll('.ts-tool').forEach(b => b.addEventListener('click', () => {
       setTool(b.dataset.tool);
       if (b.dataset.tool === 'camera' && !seenCamHint) { seenCamHint = true; hint('Drag to move the camera!'); }
+      if (b.dataset.tool === 'fill' && !seenPaintHint) { seenPaintHint = true; hint('Tap a friend to paint it!'); }
     }));
     document.querySelectorAll('.ts-size').forEach(b => b.addEventListener('click', () => {
       size = +b.dataset.size;
@@ -1362,6 +1411,12 @@
   function from2D(it) {
     return { id: it.id, k: it.k, x: (num(it.x, W / 2) / W - 0.5) * 12, z: num(it.y, H / 2) / H * 8 - 5, h: CHARS[it.k].h, s: num(it.s, 1), r: 0, f: !!it.f };
   }
+  function paints(p) {
+    if (!p || typeof p !== 'object') return undefined;
+    const out = {};
+    for (const k in p) if (/^\d+$/.test(k) && typeof p[k] === 'number') out[k] = p[k];
+    return out;
+  }
   function load() {
     let data = read(SAVE_KEY), old = false;
     if (!data) { data = read(OLD_KEY); old = !!data; }
@@ -1372,7 +1427,7 @@
     movie.frames = data.frames.slice(0, MAX_FRAMES).map((f, i) => {
       const fr = makeFrame();
       fr.items = (f.items || []).filter(it => it && CHARS[it.k]).map(it => old ? from2D(it) : {
-        id: it.id, k: it.k, x: num(it.x, 0), z: num(it.z, 0), h: num(it.h, 0), s: num(it.s, 1), r: num(it.r, 0), f: !!it.f
+        id: it.id, k: it.k, x: num(it.x, 0), z: num(it.z, 0), h: num(it.h, 0), s: num(it.s, 1), r: num(it.r, 0), f: !!it.f, p: paints(it.p)
       });
       const c = f.cam || {};
       fr.cam = { a: num(c.a, 0), t: clamp(num(c.t, 0.3), 0.02, 1.35), d: clamp(num(c.d, 11), 5, 24) };
