@@ -590,7 +590,7 @@
       actors.add(root);
       // the paintable pieces, in build order, so a saved colour finds its piece again
       const parts = [];
-      body.traverse(o => { if (o.isMesh && !o.userData.outline) parts.push({ m: o, mat: o.material }); });
+      body.traverse(o => { if (o.isMesh && !o.userData.outline) parts.push({ m: o, base: o.material.color.getHex() }); });
       a = { k: it.k, root: root, body: body, sh: sh, parts: parts };
       if (it.cut && it.cut.length) {
         /* A piece of a cut friend: the whole model, with everything on the
@@ -610,6 +610,7 @@
         };
         body.traverse(o => { if (o.isMesh && o.userData.outline) o.material = a.clip(OUTLINE); });
       }
+      for (const q of parts) q.m.material = partMaterial(q.m.material, a);
       pool.set(it.id, a);
     }
     return a;
@@ -650,7 +651,26 @@
   function cutMaterial(m, a) {
     const c = m.clone();
     c.side = m === OUTLINE ? THREE.BackSide : THREE.DoubleSide;
+    c.onBeforeCompile = (sh) => addCuts(sh, a);
+    c.customProgramCacheKey = () => 'cut' + a.cuts.length;
+    return c;
+  }
+  /* One piece of one friend. Its colour is set each time it's posed (the
+     paint bucket), a skin of pencil drawing goes on top where drawn, and
+     a cut piece hides what's been cut away. */
+  function partMaterial(src, a) {
+    const c = src.clone();
+    if (a.cuts) c.side = THREE.DoubleSide;
     c.onBeforeCompile = (sh) => {
+      if (c.map) sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>',
+        'vec4 skinC = texture2D(map, vUv);\n  diffuseColor.rgb = mix(diffuseColor.rgb, skinC.rgb, skinC.a);');
+      if (a.cuts) addCuts(sh, a);
+    };
+    c.customProgramCacheKey = () => (c.map ? 'skin' : '') + (a.cuts ? 'cut' + a.cuts.length : '');
+    return c;
+  }
+  function addCuts(sh, a) {
+    {
       let decl = 'varying vec3 vCutW;\n', test = '';
       a.cuts.forEach((_, i) => {
         sh.uniforms['uCutU' + i] = a.cutU[i]; sh.uniforms['uCutV' + i] = a.cutV[i];
@@ -663,10 +683,34 @@
       sh.vertexShader = 'varying vec3 vCutW;\n' + sh.vertexShader.replace('#include <project_vertex>',
         '#include <project_vertex>\n  vCutW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
       sh.fragmentShader = decl + sh.fragmentShader.replace('#include <clipping_planes_fragment>', test + '#include <clipping_planes_fragment>');
-    };
-    c.customProgramCacheKey = () => 'cut' + a.cuts.length;
-    return c;
+    }
   }
+
+  /* ---- skins ----
+     Pencil drawing on a friend goes onto its skin: a picture wrapped round
+     each piece, kept per friend (and per piece), so it moves, turns and
+     gets filmed with the friend in every frame. Unpainted skin is clear. */
+  const SKIN = 256;
+  const skins = new Map();          // 'id:piece' -> { cv, ctx, tex }
+  function skin(key) {
+    let k = skins.get(key);
+    if (!k) {
+      const cv = newCanvas(SKIN, SKIN), tex = new THREE.CanvasTexture(cv);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      k = { cv: cv, ctx: cv.getContext('2d'), tex: tex };
+      skins.set(key, k);
+    }
+    return k;
+  }
+  const fract = (n) => n - Math.floor(n);
+  const skinAt = (uv) => ({ x: fract(uv.x) * SKIN, y: (1 - fract(uv.y)) * SKIN });
+  function copySkins(from, to) {
+    for (const [key, k] of Array.from(skins)) {
+      const [id, piece] = key.split(':');
+      if (+id === from) skin(to + ':' + piece).ctx.drawImage(k.cv, 0, 0);
+    }
+  }
+  const allThumbs = () => movie.frames.forEach((_, i) => thumbDirty.add(i));
 
   function placeActor(it) {
     const a = actor(it);
@@ -679,8 +723,9 @@
     a.sh.scale.setScalar(it.s * CHARS[it.k].w * (1 - up * 0.5));
     a.sh.material.opacity = 0.22 * (1 - up);
     a.parts.forEach((q, i) => {
-      const m = it.p && it.p[i] != null ? toon(it.p[i]) : q.mat;
-      q.m.material = a.clip ? a.clip(m) : m;
+      const m = q.m.material, sk = skins.get(it.id + ':' + i), tex = sk ? sk.tex : null;
+      m.color.setHex(it.p && it.p[i] != null ? it.p[i] : q.base);
+      if (m.map !== tex) { m.map = tex; m.needsUpdate = true; }
     });
     return a;
   }
@@ -1083,7 +1128,11 @@
     const u = undoStack.pop();
     $('ts-undo').disabled = !undoStack.length;
     if (!u) return;
-    if (u.type === 'split') {
+    if (u.type === 'skin') {
+      const k = skins.get(u.key);
+      if (k) { k.ctx.clearRect(0, 0, SKIN, SKIN); k.ctx.drawImage(u.img, 0, 0); k.tex.needsUpdate = true; }
+      allThumbs(); cur = u.at;
+    } else if (u.type === 'split') {
       for (const w of u.was) if (movie.frames[w.at]) { movie.frames[w.at].items = w.items; thumbDirty.add(w.at); }
       cur = u.at;
     } else if (u.type === 'paint') {
@@ -1108,7 +1157,7 @@
 
   /* ================================================================== tools */
   let tool = 'move', size = 12, color = '#2b2140';
-  let seenCamHint = false, seenPaintHint = false, seenCutHint = false;
+  let seenCamHint = false, seenPaintHint = false, seenCutHint = false, seenPenHint = false;
 
   function setTool(t) {
     tool = t;
@@ -1146,7 +1195,7 @@
       if (!o) continue;
       const it = fr.items.find(i => i.id === o.userData.id), a = pool.get(it.id);
       if (a.cuts && cutAway(a, h.point)) continue;
-      return { it: it, a: a, m: h.object.userData.outline ? h.object.parent : h.object };
+      return { it: it, a: a, m: h.object.userData.outline ? h.object.parent : h.object, uv: h.uv ? h.uv.clone() : null };
     }
     return null;
   }
@@ -1236,6 +1285,7 @@
       const push = closed ? camera.position.clone().sub(c0).normalize().multiplyScalar(0.3)
         : R.clone().multiplyScalar(side.x).addScaledVector(Up, -side.y).normalize().multiplyScalar(0.18);
       const idIn = nextId++, idOut = nextId++;
+      copySkins(id, idIn); copySkins(id, idOut);
       for (let f = cur; f < movie.frames.length; f++) {
         const items = movie.frames[f].items, n = items.findIndex(i => i.id === id);
         if (n < 0) continue;
@@ -1252,6 +1302,25 @@
     sel = null;
     touched();
     hint('Snip! Use the hand to move the pieces.');
+  }
+
+  function skinPen(x) {
+    x.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+    x.fillStyle = x.strokeStyle = color; x.lineCap = 'round'; x.lineJoin = 'round';
+  }
+  function skinDot(d, q) {
+    const x = d.k.ctx;
+    x.save(); skinPen(x);
+    x.beginPath(); x.arc(q.x, q.y, d.r, 0, PI * 2); x.fill();
+    x.restore();
+    d.k.tex.needsUpdate = true; dirty = true; thumbDirty.add(cur);
+  }
+  function skinLine(d, q) {
+    const x = d.k.ctx;
+    x.save(); skinPen(x); x.lineWidth = d.r * 2;
+    x.beginPath(); x.moveTo(d.last.x, d.last.y); x.lineTo(q.x, q.y); x.stroke();
+    x.restore();
+    d.k.tex.needsUpdate = true; dirty = true; thumbDirty.add(cur);
   }
 
   let drag = null;
@@ -1300,14 +1369,28 @@
       return;
     }
     if (tool === 'fill') {
-      // a drawing on top gets filled; otherwise a friend underneath gets painted
+      // a friend under the tap gets painted; otherwise the drawing gets filled
       const fr = frame(), x = p.x | 0, y = p.y | 0;
-      const inked = fr.ink && x >= 0 && y >= 0 && x < W && y < H && fr.ctx.getImageData(x, y, 1, 1).data[3] >= 60;
-      const hit = inked ? null : hitPart(p);
+      const hit = hitPart(p);
       if (hit) { paintFriend(hit); return; }
       pushUndo(); floodFill(fr, x, y, color); touched(); return;
     }
-    // pencil / eraser
+    // pencil / eraser: starting on a friend draws on the friend itself
+    const h = firstHit(p);
+    const piece = h && h.uv ? h.a.parts.findIndex(q => q.m === h.m) : -1;
+    if (piece >= 0) {
+      const key = h.it.id + ':' + piece, k = skin(key);
+      const was = newCanvas(SKIN, SKIN); was.getContext('2d').drawImage(k.cv, 0, 0);
+      pushUndo({ type: 'skin', at: cur, key: key, img: was });
+      // how big the brush is on the skin: look a brush-width away
+      const r = (tool === 'eraser' ? size * 1.8 : size) / 2;
+      const h2 = firstHit({ x: p.x + r, y: p.y });
+      const a0 = skinAt(h.uv), a1 = h2 && h2.m === h.m && h2.uv ? skinAt(h2.uv) : null;
+      const d = a1 ? Math.hypot(a1.x - a0.x, a1.y - a0.y) : 0;
+      drag = { kind: 'skin', id: h.it.id, m: h.m, k: k, last: a0, r: d > 0.5 && d < SKIN / 4 ? d : 6 };
+      skinDot(drag, a0);
+      return;
+    }
     pushUndo();
     const fr = frame();
     drag = { kind: 'draw', last: p, mid: p };
@@ -1344,6 +1427,14 @@
       c.a = drag.c0.a - (p.x - drag.x0) * 0.008;
       c.t = clamp(drag.c0.t + (p.y - drag.y0) * 0.005, 0.02, 1.35);
       touched();
+    } else if (drag.kind === 'skin') {
+      const h = firstHit(p);
+      if (h && h.m === drag.m && h.it.id === drag.id && h.uv) {
+        const q = skinAt(h.uv);
+        // a long jump means the stroke wrapped round the back of the skin
+        if (drag.last && Math.hypot(q.x - drag.last.x, q.y - drag.last.y) < SKIN / 4) skinLine(drag, q); else skinDot(drag, q);
+        drag.last = q;
+      } else drag.last = null;
     } else if (drag.kind === 'draw') {
       const fr = frame(), x = fr.ctx;
       // Smooth: curve through the midpoints, so fast strokes stay round.
@@ -1360,6 +1451,7 @@
   });
   const endDrag = () => {
     if (!drag) return;
+    if (drag.kind === 'skin') { drag = null; allThumbs(); scheduleSave(); return; }
     if (drag.kind === 'cut') {
       const d = drag;
       drag = null; dirty = true;
@@ -1501,6 +1593,7 @@
       setTool(b.dataset.tool);
       if (b.dataset.tool === 'camera' && !seenCamHint) { seenCamHint = true; hint('Drag to move the camera!'); }
       if (b.dataset.tool === 'fill' && !seenPaintHint) { seenPaintHint = true; hint('Tap a friend to paint it!'); }
+      if (b.dataset.tool === 'pencil' && !seenPenHint) { seenPenHint = true; hint('Draw on a friend to paint on it!'); }
       if (b.dataset.tool === 'split' && !seenCutHint) { seenCutHint = true; hint('Drag across a friend to cut it — any shape!'); }
     }));
     document.querySelectorAll('.ts-size').forEach(b => b.addEventListener('click', () => {
@@ -1588,11 +1681,16 @@
   function saveNow() {
     try {
       const data = {
-        v: 2, bg: movie.bg, speed: movie.speed, nextId: nextId,
+        v: 2, bg: movie.bg, speed: movie.speed, nextId: nextId, skins: skinData(),
         frames: movie.frames.map(fr => ({ d: fr.ink ? fr.cv.toDataURL('image/png') : null, items: fr.items, cam: fr.cam }))
       };
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch (e) { /* full or blocked: the movie still works, it just won't be kept */ }
+  }
+  function skinData() {
+    const out = {};
+    for (const [key, k] of skins) out[key] = k.cv.toDataURL('image/png');
+    return out;
   }
   function read(key) {
     try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; }
@@ -1638,6 +1736,15 @@
       }
       return fr;
     });
+    if (data.skins && typeof data.skins === 'object') {
+      for (const key in data.skins) {
+        const src = data.skins[key];
+        if (!/^\d+:\d+$/.test(key) || typeof src !== 'string' || !src.startsWith('data:image/')) continue;
+        const img = new Image();
+        img.onload = () => { const k = skin(key); k.ctx.drawImage(img, 0, 0); k.tex.needsUpdate = true; allThumbs(); dirty = true; };
+        img.src = src;
+      }
+    }
     return true;
   }
 
@@ -1665,6 +1772,7 @@
       { label: 'New movie', big: true, go: () => {
         if (playing) stopPlay();
         movie.frames = [makeFrame()]; cur = 0; sel = null; undoStack.length = 0; $('ts-undo').disabled = true;
+        skins.clear();
         buildStrip(); goTo(0); saveNow();
         hint('Pick a friend to start!');
       } }
