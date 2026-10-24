@@ -1297,6 +1297,61 @@ const SURFACE = {
     return hgtD;
   },
 
+  /* Venus: dark basalt plains under a crushing sky, crowded with shield
+     volcanoes (Maat Mons, Sif Mons, Gula Mons...), each with a summit
+     caldera and long lobed lava flows streaming down its flanks, cut by rift
+     valleys, with a few raised highland "continents". A handful are still
+     erupting: fresh lava glows orange-red near their tops. The volcanoes are
+     real relief, so standing on the plains you see them on the horizon. */
+  venus(ctx, W, H, rng, o) {
+    const seed = (rng() * 1e6) | 0;
+    const plains = fbm(seed, 6, 3, 5), grain = fbm(seed + 9, 40, 20, 3);
+    const highland = fbm(seed + 21, 3, 2, 4);
+    const rifts = ridged(fbm(seed + 33, 8, 4, 4));
+    const flowN = fbm(seed + 51, 2, 40, 3);
+    const vols = [];
+    for (let i = 0; i < 46; i++) {
+      const v = 0.1 + rng() * 0.8;
+      vols.push({ u: rng(), v, r: 0.012 + Math.pow(rng(), 2) * 0.045, h: 0.35 + rng() * 0.65,
+                  live: rng() < 0.18, k: rng() * 100 });
+    }
+    const shape = (u, v) => {
+      let hgt = 0, flow = 0, lava = 0, cald = 0;
+      const cl = Math.max(Math.cos((v - 0.5) * Math.PI), 0.15);
+      for (const q of vols) {
+        let du = u - q.u; du -= Math.round(du); du *= cl * 2;   // wrap, and squeeze toward the poles
+        const dv = v - q.v, d = Math.sqrt(du * du + dv * dv) / q.r;
+        if (d > 3.2) continue;
+        hgt += q.h * Math.exp(-d * d * 0.9);                    // the shield
+        if (d < 0.35) cald = Math.max(cald, (0.35 - d) / 0.35 * q.h); // the summit caldera
+        // lobed flows radiating out across the plains around it
+        const ang = Math.atan2(dv, du) / TAU + 0.5;
+        const lobe = flowN((ang * 7 + q.k) % 1, Math.min(d / 3.2, 0.999));
+        const f = clamp(lobe * 1.8 - 0.6, 0, 1) * clamp(1 - d / 3.2, 0, 1);
+        flow = Math.max(flow, f);
+        if (q.live) lava = Math.max(lava, f * clamp(1.6 - d, 0, 1));
+      }
+      return { hgt, flow, lava, cald };
+    };
+    const hgtV = pixelPass(ctx, W, H, (u, v) => {
+      const s = shape(u, v), hl = clamp((highland(u, v) - 0.55) * 4, 0, 1);
+      // basalt plains: dark grey-brown, faintly mottled
+      let c = ramp([[0, [40, 28, 20]], [0.5, [70, 50, 34]], [1, [100, 74, 50]]], plains(u, v));
+      c = mix(c, [122, 94, 66], hl * 0.6);                      // the highland plateaus are paler
+      c = mix(c, [22, 17, 14], s.flow * 0.8);                   // fresh dark flows
+      c = mix(c, [150, 120, 92], clamp(s.hgt - 0.6, 0, 1) * 0.5);  // weathered summits
+      c = mix(c, [24, 20, 18], clamp(s.cald * 2, 0, 1) * 0.7);  // calderas
+      const r = rifts(u, v);
+      if (r > 0.72) c = mix(c, [30, 26, 24], (r - 0.72) * 2.5); // rift valleys
+      c = mix(c, [255, 120, 40], clamp(s.lava * 1.3, 0, 1) * 0.9);   // still erupting
+      return mix(c, [255, 255, 255], (grain(u, v) - 0.5) * 0.08);
+    }, (u, v) => {
+      const s = shape(u, v), hl = clamp((highland(u, v) - 0.55) * 4, 0, 1);
+      return 0.3 + plains(u, v) * 0.12 + hl * 0.12 + s.hgt * 0.32 - s.cald * 0.12 - Math.max(0, rifts(u, v) - 0.72) * 0.3;
+    });
+    return hgtV;
+  },
+
   /* Fractured ice shell — Europa, Enceladus. */
   ice(ctx, W, H, rng, o) {
     const seed = (rng() * 1e6) | 0;
@@ -1868,6 +1923,32 @@ function cloudTexture(seed, W, H, opacity, tintCol, swirl, cover) {
   return cv;
 }
 
+/*
+ * Venus's cloud deck: unbroken, creamy yellow-white, with faint darker bands
+ * swept into the sideways "Y" that its 360 km/h winds draw — the streaks bend
+ * back from the equator toward each pole. Opaque everywhere: from orbit no
+ * one has ever seen Venus's ground by eye.
+ */
+function venusCloudTexture(seed, W, H) {
+  const cv = newCanvas(W, H), ctx = cv.getContext('2d');
+  const streak = fbm(seed, 3, 30, 4), mott = fbm(seed + 5, 8, 4, 4);
+  const img = ctx.createImageData(W, H), d = img.data;
+  for (let y = 0, i = 0; y < H; y++) {
+    const v = (y + 0.5) / H, lat = Math.abs(v - 0.5) * 2;
+    for (let x = 0; x < W; x++) {
+      const u = (x + 0.5) / W;
+      let uu = u + lat * 0.35; uu -= Math.floor(uu);                 // the chevron
+      const dark = clamp((streak(uu, v) - 0.45) * 2.4, 0, 1) * (1 - lat * 0.5);
+      let c = mix([238, 224, 180], [196, 172, 118], dark * 0.55);
+      c = mix(c, [246, 238, 210], clamp(lat - 0.7, 0, 1) * 1.5);   // brighter polar collars
+      c = mix(c, [255, 255, 255], (mott(u, v) - 0.5) * 0.1);
+      d[i++] = c[0]; d[i++] = c[1]; d[i++] = c[2]; d[i++] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+
 /**
  * Ring system. RingGeometry uses a planar UV projection, so this is painted as
  * a square disc of concentric bands rather than a strip.
@@ -2299,11 +2380,9 @@ const TYPES = {
     label: 'Venus', group: 'SOLAR SYSTEM', pname: 'Venus', mass: 0.815, rad: 0.9499,
     // 737 K, and none of it from sunlight: without the greenhouse effect of all
     // that carbon dioxide Venus would sit at about 230 K, colder than Earth.
-    surf: 'desert', spin: -243.02, tilt: 3.0955, atmo: [255, 226, 160], clouds: 0.95, floorT: 737,
-    opts: {
-      pal: [[0, [120, 82, 40]], [0.4, [186, 148, 84]], [0.7, [224, 196, 132]], [1, [246, 232, 188]]],
-      craters: 8, caps: 0
-    },
+    surf: 'venus', spin: -243.02, tilt: 3.0955, atmo: [255, 226, 160], clouds: 1, floorT: 737,
+    // a solid sulphuric-acid cloud deck you never see through; from below, a dim orange murk
+    cloudStyle: 'venus', cloudUnder: [150, 88, 42], sky: [176, 104, 50],
     blurb: 'Earth\'s evil twin: almost the same size, but wrapped in acid cloud and hot enough to melt lead. It also spins backwards, and slower than it orbits — a day here is longer than its year.'
   },
   sol_earth: {
@@ -6782,6 +6861,7 @@ const RELIEF = {
   rogue: 0.16,
   lava: 0.14,         // crust plates riding on an open magma ocean
   ice: 0.13,          // Europa's ridges and chaos terrain
+  venus: 0.09,        // shield volcanoes standing over the lava plains
   earth: 0.105,       // the real one, and it is very nearly a smooth ball
   terran: 0.115,      // rain and rivers file mountains down
   eyeball: 0.10,
@@ -6992,12 +7072,13 @@ function buildWorld(b, def, grp) {
     const swirled = def.surf === 'terran' || def.surf === 'earth' || def.surf === 'ocean';
     // weather you can fly down to needs real resolution, or it turns to blocks
     const CW = swirled ? 2048 : 512, CH = swirled ? 1024 : 256;
-    const ct = cachedTexture('cloud:' + b.type + ':' + (b.seed % 3), () => cloudTexture(hashStr(b.type + b.seed % 3), CW, CH, def.clouds, [255, 255, 255],
-      swirled ? 1 : 0, def.cloudCover || 0));
+    const ct = cachedTexture('cloud:' + b.type + ':' + (b.seed % 3), () => def.cloudStyle === 'venus'
+      ? venusCloudTexture(hashStr(b.type + b.seed % 3), 1024, 512)
+      : cloudTexture(hashStr(b.type + b.seed % 3), CW, CH, def.clouds, [255, 255, 255], swirled ? 1 : 0, def.cloudCover || 0));
     if (swirled) ct.anisotropy = 4;
     const cm = new THREE.MeshStandardMaterial({ map: ct, transparent: true, depthWrite: false, roughness: 1 });
     // a touch of their own brightness, so cloud tops stay white, not grey, where the light is low
-    if (swirled) { cm.emissive = new THREE.Color(1, 1, 1); cm.emissiveMap = ct; cm.emissiveIntensity = 0.14; }
+    if (swirled || def.cloudStyle) { cm.emissive = new THREE.Color(1, 1, 1); cm.emissiveMap = ct; cm.emissiveIntensity = 0.14; }
     const cloud = new THREE.Mesh(SPHERE, cm);
     cloud.scale.setScalar(1.018);
     // After the sea (renderOrder 1): neither writes depth, so whichever is
@@ -11715,6 +11796,7 @@ function leaveSurface(quiet) {
   land.b = null;
   land.keys.clear();
   if (land.dome) land.dome.visible = false;
+  if (skyGroup) skyGroup.visible = true;
   dropDetail();
   $('an-vignette').classList.remove('landed');
   camera.up.set(0, 1, 0);
@@ -11920,7 +12002,11 @@ function applyLanded(realDt) {
   camera.near = Math.max(1e-9, h * 0.05);
   camera.far = Math.max(SKY_R * 2.2, galx.live > 0 ? 2e17 : 0);
   camera.updateProjectionMatrix();
-  if (skyGroup) skyGroup.position.copy(_lEye);
+  if (skyGroup) {
+    skyGroup.position.copy(_lEye);
+    // under a deck like Venus's you never see a single star, day or night
+    skyGroup.visible = !(TYPES[b.type].cloudStyle && land.alt < 0.03);
+  }
   // Keep the orbit camera parked on this world, so taking off and every
   // level-of-detail test that reads `view` both find it.
   view.target.copy(b.p);
@@ -11937,7 +12023,8 @@ function applyLanded(realDt) {
       const el = sun ? sun.dot(up) : -1;
       u.uUp.value.copy(up);
       if (sun) u.uSun.value.copy(sun);
-      u.uCol.value.setRGB(air[0] / 255, air[1] / 255, air[2] / 255);
+      const skyC = TYPES[b.type].sky || air;            // (a world can look different from inside its air)
+      u.uCol.value.setRGB(skyC[0] / 255, skyC[1] / 255, skyC[2] / 255);
       // Climb out of the air and the sky goes back to black.
       const thin = 1 - smoothstep(clamp((land.alt - 0.03) / 0.35, 0, 1));
       u.uDay.value = smoothstep(clamp((el + 0.08) / 0.30, 0, 1)) * thin;
@@ -12260,7 +12347,20 @@ function updateVisuals(realDt, simDt) {
         // grey — by day; at night it is dark like the sky around it
         if (c && want === THREE.BackSide && c.material.emissiveMap) {
           const day = land.dome ? land.dome.material.uniforms.uDay.value : 1;
-          c.material.emissiveIntensity = 0.06 + 0.64 * day;
+          c.material.emissiveIntensity = def.cloudUnder ? 0.08 + 0.4 * day : 0.06 + 0.64 * day;
+        }
+        // and under them the light itself is orange: everything on the ground is bathed in it
+        if (def.cloudUnder && p.surf && p.surf.material.color && c === p.cloud) {
+          if (want === THREE.BackSide) p.surf.material.color.setRGB(1.0, 0.68, 0.42);
+          else p.surf.material.color.setRGB(1, 1, 1);
+          if (land.detail && land.detail.material && land.detail.material.color) land.detail.material.color.copy(p.surf.material.color);
+        }
+        // a world whose clouds look different from underneath (Venus: a murky orange ceiling)
+        if (c && def.cloudUnder) {
+          const u = def.cloudUnder;
+          if (want === THREE.BackSide) c.material.color.setRGB(u[0] / 255, u[1] / 255, u[2] / 255);
+          else c.material.color.setRGB(1, 1, 1);
+          if (c.material.emissive) c.material.emissive.copy(c.material.color);
         }
       }
     }
