@@ -5684,20 +5684,20 @@ function ageSwell(b) {
  * The Sun of a Solar System map is born when the map is, and lives out its
  * whole life on the sim clock, with its mass and its width (as multiples of
  * today's Sun) passing through these marks. Its mass never drops below
- * 0.99, so it always keeps hold of its planets. Between two marks both change
+ * today's, so it always keeps hold of its planets. Between two marks both change
  * smoothly in log time. Gravity follows the mass, so the planets feel every
  * change: they are drawn in as it fattens to 5 times, and drift back out.
  * Speed the clock up to watch it — try typing "1 billion years".
  *   [age in years, mass ×, width ×, what is announced]
  */
 const SUN_LIFE = [
-  [1e6, 0.99, 0.5, '1 million years old'],
-  [1e7, 0.99, 0.6, '10 million years old'],
-  [1e9, 0.99, 0.7, '1 billion years old'],
+  [1e6, 1.0, 0.5, '1 million years old'],
+  [1e7, 1.0, 0.6, '10 million years old'],
+  [1e9, 1.0, 0.7, '1 billion years old'],
   [5e9, 1.01, 1.01, '5 billion years old — about the Sun\'s age today'],
   [1e10, 5.0, 5.0, '10 billion years old, and swollen to 5 times its width'],
-  [1.1e10, 0.99, 0.5, '11 billion years old, and shrinking'],
-  [1e11, 0.99, 1 / R_SUN, '100 billion years old: a white dwarf the size of Earth']
+  [1.1e10, 1.0, 0.5, '11 billion years old, and shrinking'],
+  [1e11, 1.0, 1 / R_SUN, '100 billion years old: a white dwarf the size of Earth']
 ];
 
 /** Mass and width multipliers for a Sun of this age, in years. */
