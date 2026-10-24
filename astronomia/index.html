@@ -5719,7 +5719,7 @@ function buildSNVisual(e) {
     map: TEX_GLOW, color: new THREE.Color(HEART[0], HEART[1], HEART[2]), blending: THREE.AdditiveBlending,
     transparent: true, opacity: 0, depthWrite: false
   }));
-  heart.scale.setScalar(0.9);
+  heart.scale.setScalar(1.2);
   neb.add(heart);
   e.heart = heart;
 
@@ -5781,9 +5781,10 @@ function updateSNVisual(e) {
     // fast, so the cloud has to be built from many faint layers rather than a
     // few strong ones — otherwise the colour is lost exactly where it matters.
     // wisps have more gap than glow, so they are drawn stronger than plain puffs were
-      u.uOp.value = puff * Math.max(fade, 0.25) * 0.42 * SN_GLOW;
+      // blazing: as bright as a sun, and it stays bright as it spreads
+    u.uOp.value = puff * Math.max(fade, 0.65) * 1.15 * SN_GLOW;
     e.neb.visible = puff > 0.01 && big;
-    if (e.heart) e.heart.material.opacity = Math.min(1, puff * Math.max(fade, 0.3) * 0.5 * SN_GLOW);
+    if (e.heart) e.heart.material.opacity = Math.min(1, puff * Math.max(fade, 0.65) * 1.2 * SN_GLOW);
   }
 
   // The glowing photosphere, as bright as the light curve says — with a pixel
