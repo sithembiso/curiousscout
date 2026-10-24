@@ -1949,6 +1949,33 @@ function venusCloudTexture(seed, W, H) {
   return cv;
 }
 
+/*
+ * Titan's haze, in the colours Cassini's cameras saw it: a soft orange-tan
+ * hood over the north, fading through olive into teal-green and cyan toward
+ * the south, with only faint darker blotches where the dune seas and lakes
+ * show through. Smooth everywhere, and built from latitude plus very gentle
+ * noise that dies away at the poles, so nothing pinches there.
+ */
+function titanHazeTexture(seed, W, H) {
+  const cv = newCanvas(W, H), ctx = cv.getContext('2d');
+  const drift = fbm(seed, 3, 2, 3), ground = fbm(seed + 7, 7, 4, 4);
+  const RAMP = [[0, [206, 154, 92]], [0.26, [200, 162, 100]], [0.4, [170, 172, 114]],
+                [0.52, [112, 188, 160]], [0.74, [140, 212, 214]], [1, [112, 172, 196]]];
+  const img = ctx.createImageData(W, H), d = img.data;
+  for (let y = 0, i = 0; y < H; y++) {
+    const v = (y + 0.5) / H, eq = Math.cos((v - 0.5) * Math.PI);    // 1 at the equator, 0 at a pole
+    for (let x = 0; x < W; x++) {
+      const u = (x + 0.5) / W;
+      const t = clamp(v + (drift(u, v) - 0.5) * 0.18 * eq, 0, 1);
+      let c = ramp(RAMP, t);
+      c = mix(c, [86, 92, 78], clamp((ground(u, v) - 0.55) * 2.2, 0, 1) * 0.35 * eq);   // the ground, barely
+      d[i++] = c[0]; d[i++] = c[1]; d[i++] = c[2]; d[i++] = 250;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+
 /**
  * Ring system. RingGeometry uses a planar UV projection, so this is painted as
  * a square disc of concentric bands rather than a strip.
@@ -2531,8 +2558,11 @@ const TYPES = {
   },
   sol_titan: {
     label: 'Titan', group: 'MOONS OF THE PLANETS', pname: 'Titan', mass: 0.0225, rad: 0.404,
-    surf: 'desert', spin: 15.945, atmo: [255, 168, 70], clouds: 0.85,
-    opts: { pal: [[0, [70, 46, 22]], [0.5, [150, 104, 52]], [1, [210, 166, 96]]], craters: 4, caps: 0 },
+    // smog so thick the ground is only a hint: orange-tan in the north, teal and
+    // cyan to the south, a blue haze at the limb (as Cassini saw it)
+    surf: 'desert', spin: 15.945, atmo: [96, 140, 235], clouds: 1,
+    cloudStyle: 'titan', cloudUnder: [170, 112, 58], sky: [186, 128, 66],
+    opts: { pal: [[0, [48, 36, 26]], [0.5, [92, 70, 46]], [1, [140, 110, 76]]], craters: 4, caps: 0 },
     blurb: 'A moon with a thick orange sky, methane rain and real lakes and rivers — of liquid natural gas. Its air is thicker than Earth\'s.'
   },
   sol_rhea: {
@@ -7074,6 +7104,7 @@ function buildWorld(b, def, grp) {
     const CW = swirled ? 2048 : 512, CH = swirled ? 1024 : 256;
     const ct = cachedTexture('cloud:' + b.type + ':' + (b.seed % 3), () => def.cloudStyle === 'venus'
       ? venusCloudTexture(hashStr(b.type + b.seed % 3), 1024, 512)
+      : def.cloudStyle === 'titan' ? titanHazeTexture(hashStr(b.type + b.seed % 3), 1024, 512)
       : cloudTexture(hashStr(b.type + b.seed % 3), CW, CH, def.clouds, [255, 255, 255], swirled ? 1 : 0, def.cloudCover || 0));
     if (swirled) ct.anisotropy = 4;
     const cm = new THREE.MeshStandardMaterial({ map: ct, transparent: true, depthWrite: false, roughness: 1 });
