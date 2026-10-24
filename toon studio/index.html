@@ -412,6 +412,29 @@
     redball: { h: 0, w: 1, make(g) {
       part(g, 's', 0xff5a5f, [0, 0.5, 0], 0.5);
     } },
+    earth: { h: 0, w: 1, make(g) {
+      // tilted on its axis, like the real one
+      const e = new THREE.Group(); e.position.y = 0.5; e.rotation.z = 0.41; g.add(e);
+      part(e, 's', 0x3a86ff, [0, 0, 0], 0.5);
+      // land and ice: flat blobs pressed onto the sea, at [latitude, longitude, width, height]
+      const land = [
+        [45, -100, 0.22, 0.16], [30, -95, 0.14, 0.12], [62, -110, 0.16, 0.1], [70, -42, 0.1, 0.08],     // North America, Greenland
+        [-10, -60, 0.13, 0.16], [-30, -65, 0.09, 0.13],                                             // South America
+        [5, 20, 0.17, 0.2], [-20, 25, 0.12, 0.13], [25, 10, 0.17, 0.1],                              // Africa
+        [50, 15, 0.13, 0.08], [50, 90, 0.28, 0.15], [30, 80, 0.15, 0.1], [20, 105, 0.1, 0.1],        // Europe, Asia
+        [-25, 135, 0.12, 0.09]                                                                        // Australia
+      ];
+      const blob = (lat, lon, w, hgt, col) => {
+        lat *= PI / 180; lon *= PI / 180;
+        const d = new THREE.Vector3(Math.cos(lat) * Math.sin(lon), Math.sin(lat), Math.cos(lat) * Math.cos(lon));
+        const east = new THREE.Vector3(Math.cos(lon), 0, -Math.sin(lon));
+        const north = new THREE.Vector3().crossVectors(d, east);
+        const m = part(e, 's', col, [d.x * 0.48, d.y * 0.48, d.z * 0.48], [w, hgt, 0.05], null, false);
+        m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(east, north, d));
+      };
+      for (const l of land) blob(l[0], l[1], l[2], l[3], 0x51cf66);
+      blob(90, 0, 0.2, 0.2, 0xffffff); blob(-90, 0, 0.24, 0.24, 0xffffff);
+    } },
     cat: { h: 0, w: 0.9, make(g) {
       const c = 0xf6a04d;
       part(g, 's', c, [0, 0.36, 0], [0.36, 0.34, 0.32]);
