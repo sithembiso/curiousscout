@@ -1785,29 +1785,15 @@ function puffTexture(size) {
 }
 
 /** Broken cloud deck with transparency, painted onto its own shell. */
-/** A cloud texture's thickness as a grey height map (softened), for bump lighting. */
-function cloudHeight(src) {
-  const W = src.width, H = src.height, cv = newCanvas(W, H), ctx = cv.getContext('2d');
-  const d = src.getContext('2d').getImageData(0, 0, W, H).data, img = ctx.createImageData(W, H), o = img.data;
-  for (let i = 0; i < d.length; i += 4) { const a = d[i + 3]; o[i] = o[i + 1] = o[i + 2] = a; o[i + 3] = 255; }
-  ctx.putImageData(img, 0, 0);
-  // a light blur, so the shading is billowy rather than pixel-sharp
-  const out = newCanvas(W, H), c2 = out.getContext('2d');
-  c2.filter = 'blur(3px)'; c2.drawImage(cv, 0, 0);
-  return out;
-}
-
 function cloudTexture(seed, W, H, opacity, tintCol, swirl, cover) {
   const cv = newCanvas(W, H);
   const ctx = cv.getContext('2d');
-  // swirled weather gets finer detail, for crisp wisps rather than a smear
-  const f = swirl ? fbm(seed, 12, 6, 5) : fbm(seed, 6, 3, 5);
+  // Earth-like weather: big soft swirling systems with crisper detail laid in
+  const f = fbm(seed, 6, 3, 5), crisp = swirl ? fbm(seed + 3, 12, 6, 5) : null;
   const band = fbm(seed + 2, 3, 9, 3);
   // Weather on an Earth-like world: the cloud field is pushed round by two
   // slow noise fields, which curls it into storms and long sweeping fronts.
   const wx = swirl ? fbm(seed + 11, 3, 2, 3) : null, wy = swirl ? fbm(seed + 23, 3, 2, 3) : null;
-  // fine billowing inside each cloud, so a thick one is lumpy and never a flat white sheet
-  const det = swirl ? fbm(seed + 5, 48, 24, 3) : null;
   const tint = tintCol || [255, 255, 255];
   const img = ctx.createImageData(W, H);
   const d = img.data;
@@ -1822,13 +1808,13 @@ function cloudTexture(seed, W, H, opacity, tintCol, swirl, cover) {
         uu = u + Math.cos(a1) * r1; vv = clamp(v + Math.sin(a1) * r1 * 0.5 + (wy(u, v) - 0.5) * 0.04 * swirl, 0, 0.999);
         uu -= Math.floor(uu);
       }
-      let n = f(uu, vv) * 0.75 + band(uu, vv) * 0.25;
+      let n = (swirl ? f(uu, vv) * 0.55 + crisp(uu, vv) * 0.45 : f(uu, vv)) * 0.75 + band(uu, vv) * 0.25;
       // swirled weather is also thicker: more sky covered, brighter white
       let a;
       if (swirl) {
-        a = clamp((n - 0.43 + (cover || 0)) * 3.4, 0, 1);
-        a = a * a * (3 - 2 * a) * (0.72 + det(uu, vv) * 0.5);   // soft wispy edges, lumpy tops
-        a = clamp(a, 0, 1);
+        // bright clean clouds that fade off softly at the edges, not too many of them
+        a = clamp((n - 0.53 + (cover || 0)) * 5.0, 0, 1);
+        a = a * a * (3 - 2 * a);
       } else a = clamp((n - 0.48) * 3.4, 0, 1);
       a = Math.pow(a, 1.25) * opacity;
       d[i++] = tint[0]; d[i++] = tint[1]; d[i++] = tint[2];
@@ -6967,13 +6953,6 @@ function buildWorld(b, def, grp) {
       swirled ? 1 : 0, def.cloudCover || 0));
     if (swirled) ct.anisotropy = 4;
     const cm = new THREE.MeshStandardMaterial({ map: ct, transparent: true, depthWrite: false, roughness: 1 });
-    if (swirled) {
-      // Puffy, not painted: the cloud's own thickness is used as a bump map,
-      // so every cloud is lit on the side facing the star and shaded on the far
-      // side, the way real cloud tops look from orbit.
-      cm.bumpMap = cachedTexture('cloudh:' + b.type + ':' + (b.seed % 3), () => cloudHeight(ct.image));
-      cm.bumpScale = 0.9;
-    }
     const cloud = new THREE.Mesh(SPHERE, cm);
     cloud.scale.setScalar(1.018);
     // After the sea (renderOrder 1): neither writes depth, so whichever is
@@ -6981,16 +6960,7 @@ function buildWorld(b, def, grp) {
     cloud.renderOrder = 2;
     grp.add(cloud);
     b.parts.cloud = cloud;
-    if (swirled) {
-      // ...and they float: each one throws a soft shadow onto the ground and
-      // sea just below it, a little to one side.
-      const sh = new THREE.Mesh(SPHERE, new THREE.MeshBasicMaterial({
-        map: ct, color: 0x000000, transparent: true, opacity: 0.38, depthWrite: false
-      }));
-      sh.renderOrder = 1.5;
-      grp.add(sh);
-      b.parts.cloudShadow = sh;
-    }
+
   }
 
   if (def.atmo) {
@@ -10403,8 +10373,6 @@ function scaleVisual(b) {
   if (p.surf) p.surf.scale.setScalar(b.kind === 'bh' && p.disk ? r * HOLE_SHADOW : r);
   if (p.sea) p.sea.scale.setScalar(r * seaRadius(b));
   if (p.cloud) p.cloud.scale.setScalar(r * (1.018 + lift));
-  // the shadows lie on whatever is highest underneath: the ground, or the sea
-  if (p.cloudShadow) p.cloudShadow.scale.setScalar(r * Math.max(1.004 + lift * 0.5, p.sea ? seaRadius(b) * 1.002 : 0));
   if (p.atmo) p.atmo.scale.setScalar(r * (1.09 + lift));
   if (p.puff) p.puff.scale.setScalar(r);
   // The star's two shells ride just off its photosphere at any size.
@@ -12208,7 +12176,6 @@ function updateVisuals(realDt, simDt) {
     const tiny = px < 1.7;
     if (p.surf) p.surf.visible = !tiny;
     if (p.cloud) p.cloud.visible = !tiny && px > 5;
-    if (p.cloudShadow) p.cloudShadow.visible = !tiny && px > 5;
     if (p.atmo) p.atmo.visible = !tiny && px > 4;
     if (p.ring) p.ring.visible = !tiny;
     if (p.disk) p.disk.visible = !tiny;
@@ -12234,7 +12201,6 @@ function updateVisuals(realDt, simDt) {
 
     if (p.surf && !tiny) p.surf.rotation.y = b.rot;
     if (p.cloud) p.cloud.rotation.y = b.rot * 1.12;
-    if (p.cloudShadow) p.cloudShadow.rotation.y = b.rot * 1.12 - 0.012;   // offset, so it reads as a shadow
 
     /* The air: how much is left after impacts blew some of it away, and how
        hot the hit left it. A heated sky turns orange-white and glows round the
@@ -12252,7 +12218,6 @@ function updateVisuals(realDt, simDt) {
       if (p.cloud) {
         p.cloud.material.opacity = clamp(air * (1 - h * 1.6), 0, 1);
         if (p.cloud.material.opacity < 0.01) p.cloud.visible = false;
-        if (p.cloudShadow) { p.cloudShadow.material.opacity = 0.38 * p.cloud.material.opacity; p.cloudShadow.visible = p.cloud.visible; }
       }
     }
     // The outer layers of a star lag the surface, so let them. The shear is
