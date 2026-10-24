@@ -1168,6 +1168,21 @@
     return i >= 0 ? { it: h.it, i: i } : null;
   }
 
+  /* Painting a friend: this piece takes the colour from this frame on, so
+     painting on frame 1 paints it for the whole movie. */
+  function paintFriend(hit) {
+    const was = [], col = parseInt(color.slice(1), 16);
+    for (let f = cur; f < movie.frames.length; f++) {
+      const it = movie.frames[f].items.find(i => i.id === hit.it.id);
+      if (!it) continue;
+      was.push({ at: f, id: it.id, p: it.p ? Object.assign({}, it.p) : undefined });
+      it.p = Object.assign({}, it.p, { [hit.i]: col });
+      thumbDirty.add(f);
+    }
+    pushUndo({ type: 'paint', at: cur, was: was });
+    touched();
+  }
+
   /* Cutting: drag a path across a friend, any shape you like. A path that
      goes across splits it in two along the path; a loop drawn on it cuts
      the loop out, like a cookie cutter. Every friend the path touches is
