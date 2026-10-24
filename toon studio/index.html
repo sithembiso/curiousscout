@@ -320,7 +320,6 @@
   const gl = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   gl.setPixelRatio(1);
   gl.setSize(W, H, false);
-  gl.localClippingEnabled = true;     // cut friends hide the far side of their cut
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(38, W / H, 0.1, 400);
@@ -580,7 +579,7 @@
 
   function actor(it) {
     let a = pool.get(it.id);
-    if (a && (a.k !== it.k || (a.local ? a.local.length : 0) !== (it.cut ? it.cut.length : 0))) { actors.remove(a.root); pool.delete(it.id); a = null; }
+    if (a && (a.k !== it.k || (a.cuts ? a.cuts.length : 0) !== (it.cut ? it.cut.length : 0))) { actors.remove(a.root); pool.delete(it.id); a = null; }
     if (!a) {
       const root = new THREE.Group(), body = new THREE.Group();
       CHARS[it.k].make(body);
@@ -595,15 +594,18 @@
       a = { k: it.k, root: root, body: body, sh: sh, parts: parts };
       if (it.cut && it.cut.length) {
         /* A piece of a cut friend: the whole model, with everything on the
-           wrong side of each cut clipped away. The cuts are kept in the
-           model's own space, so they travel with it. Seen through the cut,
-           the inside shows in the piece's own colour, so it looks solid. */
-        a.local = it.cut.map(q => new THREE.Plane(new THREE.Vector3(q.n[0], q.n[1], q.n[2]), q.c));
-        a.planes = it.cut.map(() => new THREE.Plane());
+           wrong side of each cut hidden. The cuts are kept in the model's
+           own space, so they travel with it. Seen through the cut, the
+           inside shows in the piece's own colour, so it looks solid. */
+        a.cuts = it.cut;
+        a.cutU = it.cut.map(() => ({ value: new THREE.Vector4() }));
+        a.cutV = it.cut.map(() => ({ value: new THREE.Vector4() }));
+        a.cutM = it.cut.map(c => ({ value: maskTex(c.poly) }));
+        a.cutK = it.cut.map(c => ({ value: c.k }));
         const made = new Map();
         a.clip = (m) => {
           let c = made.get(m);
-          if (!c) { c = m.clone(); c.clippingPlanes = a.planes; c.side = m === OUTLINE ? THREE.BackSide : THREE.DoubleSide; made.set(m, c); }
+          if (!c) { c = cutMaterial(m, a); made.set(m, c); }
           return c;
         };
         body.traverse(o => { if (o.isMesh && o.userData.outline) o.material = a.clip(OUTLINE); });
@@ -612,6 +614,60 @@
     }
     return a;
   }
+  /* ---- cut pieces ----
+     A cut is the shape drawn across the friend, flattened onto a sheet
+     facing the camera it was drawn from: `u` and `v` turn a point of the
+     friend into a spot on that sheet (0..1 across the friend), `poly` is
+     the shape in those units, and the piece keeps what's inside it (k = 1)
+     or outside (k = 0). */
+  const MAX_CUTS = 4;
+  function maskTex(poly) {
+    const c = newCanvas(256, 256), x = c.getContext('2d');
+    x.fillStyle = '#fff'; x.beginPath();
+    poly.forEach((q, i) => i ? x.lineTo(q[0] * 256, q[1] * 256) : x.moveTo(q[0] * 256, q[1] * 256));
+    x.closePath(); x.fill('evenodd');
+    const t = new THREE.CanvasTexture(c);
+    t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
+    return t;
+  }
+  function inPoly(poly, u, v) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i], b = poly[j];
+      if ((a[1] > v) !== (b[1] > v) && u < (b[0] - a[0]) * (v - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
+    }
+    return inside;
+  }
+  /** Is this point of a piece (in the world) cut away? Matches the shader. */
+  function cutAway(a, P) {
+    return a.cuts.some((c, i) => {
+      const U = a.cutU[i].value, V = a.cutV[i].value;
+      const u = U.x * P.x + U.y * P.y + U.z * P.z + U.w, v = V.x * P.x + V.y * P.y + V.z * P.z + V.w;
+      const inside = u >= 0 && v >= 0 && u <= 1 && v <= 1 && inPoly(c.poly, u, v);
+      return inside !== (c.k === 1);
+    });
+  }
+  function cutMaterial(m, a) {
+    const c = m.clone();
+    c.side = m === OUTLINE ? THREE.BackSide : THREE.DoubleSide;
+    c.onBeforeCompile = (sh) => {
+      let decl = 'varying vec3 vCutW;\n', test = '';
+      a.cuts.forEach((_, i) => {
+        sh.uniforms['uCutU' + i] = a.cutU[i]; sh.uniforms['uCutV' + i] = a.cutV[i];
+        sh.uniforms['uCutM' + i] = a.cutM[i]; sh.uniforms['uCutK' + i] = a.cutK[i];
+        decl += 'uniform vec4 uCutU' + i + '; uniform vec4 uCutV' + i + '; uniform sampler2D uCutM' + i + '; uniform float uCutK' + i + ';\n';
+        test += '{ vec2 q = vec2(dot(uCutU' + i + '.xyz, vCutW) + uCutU' + i + '.w, dot(uCutV' + i + '.xyz, vCutW) + uCutV' + i + '.w);\n' +
+          '  float inside = (q.x < 0.0 || q.y < 0.0 || q.x > 1.0 || q.y > 1.0) ? 0.0 : step(0.5, texture2D(uCutM' + i + ', vec2(q.x, 1.0 - q.y)).r);\n' +
+          '  if (inside != uCutK' + i + ') discard; }\n';
+      });
+      sh.vertexShader = 'varying vec3 vCutW;\n' + sh.vertexShader.replace('#include <project_vertex>',
+        '#include <project_vertex>\n  vCutW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      sh.fragmentShader = decl + sh.fragmentShader.replace('#include <clipping_planes_fragment>', test + '#include <clipping_planes_fragment>');
+    };
+    c.customProgramCacheKey = () => 'cut' + a.cuts.length;
+    return c;
+  }
+
   function placeActor(it) {
     const a = actor(it);
     a.root.visible = true;
@@ -765,6 +821,7 @@
     camera.updateMatrixWorld();
   }
 
+  const cutMat = new THREE.Matrix4();
   /** Set the whole world up as one frame shows it. */
   function pose(fr, bg, withBg) {
     for (const a of pool.values()) a.root.visible = false;
@@ -779,7 +836,13 @@
     actors.updateMatrixWorld(true);
     for (const it of fr.items) {
       const a = pool.get(it.id);
-      if (a.local) a.local.forEach((l, i) => a.planes[i].copy(l).applyMatrix4(a.body.matrixWorld));
+      if (!a.cuts) continue;
+      // the cuts live in the friend's own space; the shader wants them in the world's
+      cutMat.copy(a.body.matrixWorld).invert().transpose();
+      a.cuts.forEach((c, i) => {
+        a.cutU[i].value.fromArray(c.u).applyMatrix4(cutMat);
+        a.cutV[i].value.fromArray(c.v).applyMatrix4(cutMat);
+      });
     }
   }
   function draw3D(fr, bg, withBg) {
@@ -880,7 +943,8 @@
       sctx.save();
       sctx.setLineDash([16, 10]); sctx.lineCap = 'round';
       sctx.lineWidth = 5 * W / stage.clientWidth; sctx.strokeStyle = '#ff5a5f';
-      sctx.beginPath(); sctx.moveTo(drag.a.x, drag.a.y); sctx.lineTo(drag.b.x, drag.b.y); sctx.stroke();
+      sctx.lineJoin = 'round';
+      sctx.beginPath(); drag.path.forEach((q, i) => i ? sctx.lineTo(q.x, q.y) : sctx.moveTo(q.x, q.y)); sctx.stroke();
       sctx.restore();
     }
 
@@ -1081,7 +1145,7 @@
       while (o && o.userData.id == null) o = o.parent;
       if (!o) continue;
       const it = fr.items.find(i => i.id === o.userData.id), a = pool.get(it.id);
-      if (a.planes && a.planes.some(q => q.distanceToPoint(h.point) < 0)) continue;   // cut away
+      if (a.cuts && cutAway(a, h.point)) continue;
       return { it: it, a: a, m: h.object.userData.outline ? h.object.parent : h.object };
     }
     return null;
@@ -1104,41 +1168,68 @@
     return i >= 0 ? { it: h.it, i: i } : null;
   }
 
-  /* Cutting: the line drawn across the picture becomes a knife — a flat
-     sheet from the camera through both ends of the line. Every friend it
-     crosses becomes two pieces, nudged apart, each its own friend. Like
-     painting, it happens from this frame on. */
-  const MAX_CUTS = 6;
-  function cutAlong(p0, p1) {
+  /* Cutting: drag a path across a friend, any shape you like. A path that
+     goes across splits it in two along the path; a loop drawn on it cuts
+     the loop out, like a cookie cutter. Every friend the path touches is
+     cut, into two pieces nudged apart, each its own friend. Like painting,
+     it happens from this frame on. */
+  function cutAlong(path) {
+    const pts = [path[0]];
+    for (const q of path) { const l = pts[pts.length - 1]; if (Math.hypot(q.x - l.x, q.y - l.y) >= 6) pts.push(q); }
+    while (pts.length > 64) for (let i = pts.length - 2; i > 0; i -= 2) pts.splice(i, 1);
     const ids = new Set();
-    for (let i = 0; i <= 30; i++) {
-      const h = firstHit({ x: p0.x + (p1.x - p0.x) * i / 30, y: p0.y + (p1.y - p0.y) * i / 30 });
+    for (const q of pts) {
+      const h = firstHit(q);
       if (h && (h.it.cut || []).length < MAX_CUTS) ids.add(h.it.id);
     }
-    if (!ids.size) { hint('Draw a line right across a friend!'); return; }
-    pose(frame(), movie.bg, true);
-    castFrom(p0); const e0 = ray.ray.at(10, new THREE.Vector3());
-    castFrom(p1); const e1 = ray.ray.at(10, new THREE.Vector3());
-    const knife = new THREE.Plane().setFromCoplanarPoints(camera.position, e0, e1);
+    if (pts.length < 2 || !ids.size) { hint('Drag right across a friend to cut it!'); return; }
+
+    // the shape, in stage pixels, whose inside is one piece
+    const a0 = pts[0], b0 = pts[pts.length - 1];
+    const closed = pts.length > 8 && Math.hypot(b0.x - a0.x, b0.y - a0.y) < 40;
+    let shape = pts, side = null;
+    if (!closed) {
+      // carry both ends far off, then close the shape round one side
+      const ext = (p, q) => { const dx = p.x - q.x, dy = p.y - q.y, l = Math.hypot(dx, dy) || 1; return { x: p.x + dx / l * 5000, y: p.y + dy / l * 5000 }; };
+      const A = ext(a0, pts[1]), B = ext(b0, pts[pts.length - 2]);
+      const cx = b0.x - a0.x, cy = b0.y - a0.y, l = Math.hypot(cx, cy) || 1;
+      side = { x: -cy / l, y: cx / l };
+      shape = [A].concat(pts, [B, { x: (A.x + B.x) / 2 + side.x * 20000, y: (A.y + B.y) / 2 + side.y * 20000 }]);
+    }
+
     const was = [];
     for (let f = cur; f < movie.frames.length; f++) was.push({ at: f, items: movie.frames[f].items.map(copyItem) });
-    const inv = new THREE.Matrix4();
+    const R = new THREE.Vector3(), Up = new THREE.Vector3(), c0 = new THREE.Vector3(), MT = new THREE.Matrix4();
     for (const id of ids) {
-      inv.copy(pool.get(id).body.matrixWorld).invert();
-      const loc = knife.clone().applyMatrix4(inv);
-      const A = { n: [loc.normal.x, loc.normal.y, loc.normal.z], c: loc.constant };
-      const B = { n: A.n.map(v => -v), c: -A.c };
-      const push = knife.normal.clone().multiplyScalar(0.18);
-      const idA = nextId++, idB = nextId++;
+      const it = frame().items.find(i => i.id === id), a = pool.get(id);
+      const b = handles(it);                       // poses the frame and boxes the friend
+      box3.getCenter(c0);
+      R.setFromMatrixColumn(camera.matrixWorld, 0); Up.setFromMatrixColumn(camera.matrixWorld, 1);
+      const sc = c0.clone().project(camera), sx0 = (sc.x + 1) / 2 * W, sy0 = (1 - sc.y) / 2 * H;
+      const k = 2 * camera.position.distanceTo(c0) * Math.tan(camera.fov * PI / 360) / H;   // world size of one pixel
+      const mw = (b.x1 - b.x0) * 0.15, mh = (b.y1 - b.y0) * 0.15;
+      const rx = b.x0 - mw, ry = b.y0 - mh, rw = b.x1 - b.x0 + mw * 2, rh = b.y1 - b.y0 + mh * 2;
+      // where a world point lands on the picture, as 0..1 across the friend's box
+      const uW = [R.x / (k * rw), R.y / (k * rw), R.z / (k * rw), (sx0 - R.dot(c0) / k - rx) / rw];
+      const vW = [-Up.x / (k * rh), -Up.y / (k * rh), -Up.z / (k * rh), (sy0 + Up.dot(c0) / k - ry) / rh];
+      // ...and the same, from the friend's own space
+      MT.copy(a.body.matrixWorld).transpose();
+      const u = new THREE.Vector4().fromArray(uW).applyMatrix4(MT).toArray().map(n => +n.toFixed(5));
+      const v = new THREE.Vector4().fromArray(vW).applyMatrix4(MT).toArray().map(n => +n.toFixed(5));
+      const poly = shape.map(q => [+((q.x - rx) / rw).toFixed(4), +((q.y - ry) / rh).toFixed(4)]);
+      // the piece inside the shape pops out: towards the camera, or off to its side
+      const push = closed ? camera.position.clone().sub(c0).normalize().multiplyScalar(0.3)
+        : R.clone().multiplyScalar(side.x).addScaledVector(Up, -side.y).normalize().multiplyScalar(0.18);
+      const idIn = nextId++, idOut = nextId++;
       for (let f = cur; f < movie.frames.length; f++) {
-        const items = movie.frames[f].items, k = items.findIndex(i => i.id === id);
-        if (k < 0) continue;
-        const o = items[k];
-        const piece = (nid, cut, dir) => Object.assign(copyItem(o), {
-          id: nid, cut: (o.cut || []).concat([cut]),
+        const items = movie.frames[f].items, n = items.findIndex(i => i.id === id);
+        if (n < 0) continue;
+        const o = items[n];
+        const piece = (nid, keep, dir) => Object.assign(copyItem(o), {
+          id: nid, cut: (o.cut || []).concat([{ u: u, v: v, poly: poly, k: keep }]),
           x: o.x + push.x * dir, z: o.z + push.z * dir, h: Math.max(0, o.h + push.y * dir)
         });
-        items.splice(k, 1, piece(idA, A, 1), piece(idB, B, -1));
+        items.splice(n, 1, piece(idIn, 1, 1), piece(idOut, 0, closed ? 0 : -1));
         thumbDirty.add(f);
       }
     }
@@ -1148,28 +1239,13 @@
     hint('Snip! Use the hand to move the pieces.');
   }
 
-  /* Painting a friend: this piece takes the colour from this frame on, so
-     painting on frame 1 paints it for the whole movie. */
-  function paintFriend(hit) {
-    const was = [], col = parseInt(color.slice(1), 16);
-    for (let f = cur; f < movie.frames.length; f++) {
-      const it = movie.frames[f].items.find(i => i.id === hit.it.id);
-      if (!it) continue;
-      was.push({ at: f, id: it.id, p: it.p ? Object.assign({}, it.p) : undefined });
-      it.p = Object.assign({}, it.p, { [hit.i]: col });
-      thumbDirty.add(f);
-    }
-    pushUndo({ type: 'paint', at: cur, was: was });
-    touched();
-  }
-
   let drag = null;
   stage.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (playing) { stopPlay(); return; }
     stage.setPointerCapture(e.pointerId);
     const p = toStage(e);
-    if (tool === 'split') { drag = { kind: 'cut', a: p, b: p }; dirty = true; return; }
+    if (tool === 'split') { drag = { kind: 'cut', path: [p] }; dirty = true; return; }
     if (tool === 'camera') {
       pushUndo();
       drag = { kind: 'cam', x0: p.x, y0: p.y, c0: Object.assign({}, frame().cam) };
@@ -1247,7 +1323,7 @@
       drag.it.h = clamp(drag.h0 + (drag.y0 - p.y) * drag.k, 0, 8);
       touched();
     } else if (drag.kind === 'cut') {
-      drag.b = p; dirty = true;
+      drag.path.push(p); dirty = true;
     } else if (drag.kind === 'cam') {
       const c = frame().cam;
       c.a = drag.c0.a - (p.x - drag.x0) * 0.008;
@@ -1272,8 +1348,10 @@
     if (drag.kind === 'cut') {
       const d = drag;
       drag = null; dirty = true;
-      if (Math.hypot(d.b.x - d.a.x, d.b.y - d.a.y) > 12) cutAlong(d.a, d.b);
-      else hint('Draw a line right across a friend!');
+      let len = 0;
+      for (let i = 1; i < d.path.length; i++) len += Math.hypot(d.path[i].x - d.path[i - 1].x, d.path[i].y - d.path[i - 1].y);
+      if (len > 12) cutAlong(d.path);
+      else hint('Drag right across a friend to cut it!');
       return;
     }
     // Finish the stroke right where the finger came off.
@@ -1408,7 +1486,7 @@
       setTool(b.dataset.tool);
       if (b.dataset.tool === 'camera' && !seenCamHint) { seenCamHint = true; hint('Drag to move the camera!'); }
       if (b.dataset.tool === 'fill' && !seenPaintHint) { seenPaintHint = true; hint('Tap a friend to paint it!'); }
-      if (b.dataset.tool === 'split' && !seenCutHint) { seenCutHint = true; hint('Draw a line across a friend to cut it in two!'); }
+      if (b.dataset.tool === 'split' && !seenCutHint) { seenCutHint = true; hint('Drag across a friend to cut it — any shape!'); }
     }));
     document.querySelectorAll('.ts-size').forEach(b => b.addEventListener('click', () => {
       size = +b.dataset.size;
@@ -1518,7 +1596,9 @@
   }
   function cuts(c) {
     if (!Array.isArray(c)) return undefined;
-    const ok = c.filter(q => q && Array.isArray(q.n) && q.n.length === 3 && q.n.every(v => typeof v === 'number' && isFinite(v)) && typeof q.c === 'number' && isFinite(q.c));
+    const nums = (a, n) => Array.isArray(a) && a.length === n && a.every(v => typeof v === 'number' && isFinite(v));
+    const ok = c.filter(q => q && nums(q.u, 4) && nums(q.v, 4) && (q.k === 0 || q.k === 1) &&
+      Array.isArray(q.poly) && q.poly.length >= 3 && q.poly.every(p => nums(p, 2)));
     return ok.length ? ok.slice(0, MAX_CUTS) : undefined;
   }
   function load() {
