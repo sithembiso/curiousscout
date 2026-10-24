@@ -12246,6 +12246,24 @@ function updateVisuals(realDt, simDt) {
 
     if (p.surf && !tiny) p.surf.rotation.y = b.rot;
     if (p.cloud) p.cloud.rotation.y = b.rot * 1.12;
+    /* Standing on the ground you are INSIDE the cloud shell, looking up at its
+       underside — which is the side a sphere normally doesn't draw. So while
+       you are landed here, the clouds show their inside instead. */
+    {
+      const want = land.b === b ? THREE.BackSide : THREE.FrontSide;
+      for (const c of [p.cloud, p.terraCloud]) {
+        if (c && c.material.side !== want) {
+          c.material.side = want; c.material.needsUpdate = true;
+          if (c.material.emissiveMap && want === THREE.FrontSide) c.material.emissiveIntensity = 0.14;
+        }
+        // seen from below, sunlit cloud glows white through rather than going
+        // grey — by day; at night it is dark like the sky around it
+        if (c && want === THREE.BackSide && c.material.emissiveMap) {
+          const day = land.dome ? land.dome.material.uniforms.uDay.value : 1;
+          c.material.emissiveIntensity = 0.06 + 0.64 * day;
+        }
+      }
+    }
 
     /* The air: how much is left after impacts blew some of it away, and how
        hot the hit left it. A heated sky turns orange-white and glows round the
