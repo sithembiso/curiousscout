@@ -631,8 +631,7 @@
       }
       a.uni = {
         uBody: { value: new THREE.Matrix4() }, uBodyInv: { value: new THREE.Matrix4() },
-        uMoleP: { value: Array.from({ length: MAX_MOLES }, () => new THREE.Vector3()) },
-        uMoleD: { value: Array.from({ length: MAX_MOLES }, () => new THREE.Vector3()) },
+        uMoles: { value: null }, uMoleRows: { value: 1 },
         uMoleN: { value: 0 }, uMoleR: { value: MOLE_REACH }
       };
       const line = outlineMaterial(a);
@@ -649,7 +648,30 @@
      the shape in those units, and the piece keeps what's inside it (k = 1)
      or outside (k = 0). */
   const MAX_CUTS = 4;
-  const MAX_MOLES = 12, MOLE_REACH = 0.45;
+  /* As many moles as you like: each friend keeps its moles in a little
+     table of numbers (a texture the shader reads), MOLE_ROW moles a row,
+     growing when it fills. Each mole takes two spots: where, and how far. */
+  const MOLE_ROW = 128, MOLE_REACH = 0.45;
+  function moleTable(a, mo) {
+    const rows = Math.max(1, Math.ceil(mo.length / MOLE_ROW));
+    let t = a.moleTex;
+    if (!t || t.image.height < rows) {
+      if (t) t.dispose();
+      let cap = 1; while (cap < rows) cap *= 2;
+      t = a.moleTex = new THREE.DataTexture(new Float32Array(MOLE_ROW * 2 * cap * 4), MOLE_ROW * 2, cap, THREE.RGBAFormat, THREE.FloatType);
+      t.minFilter = t.magFilter = THREE.NearestFilter;
+      t.generateMipmaps = false;
+    }
+    const d = t.image.data;
+    mo.forEach((m, i) => {
+      const at = i * 8;
+      d[at] = m.p[0]; d[at + 1] = m.p[1]; d[at + 2] = m.p[2];
+      d[at + 4] = m.d[0]; d[at + 5] = m.d[1]; d[at + 6] = m.d[2];
+    });
+    t.needsUpdate = true;
+    a.uni.uMoles.value = t;
+    a.uni.uMoleRows.value = t.image.height;
+  }
   function maskTex(poly) {
     const c = newCanvas(256, 256), x = c.getContext('2d');
     x.fillStyle = '#fff'; x.beginPath();
@@ -703,16 +725,19 @@
      cut edge stays where it was cut. */
   function addShape(sh, a) {
     Object.assign(sh.uniforms, a.uni);
-    sh.vertexShader = 'uniform mat4 uBody; uniform mat4 uBodyInv; uniform vec3 uMoleP[' + MAX_MOLES + ']; uniform vec3 uMoleD[' + MAX_MOLES + '];\n' +
+    sh.vertexShader = 'uniform mat4 uBody; uniform mat4 uBodyInv; uniform sampler2D uMoles; uniform float uMoleRows;\n' +
       'uniform int uMoleN; uniform float uMoleR;\n' + (a.cuts ? 'varying vec3 vCutW;\n' : '') +
       sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n' +
         '  vec4 shapeW = modelMatrix * vec4(transformed, 1.0);\n' + (a.cuts ? '  vCutW = shapeW.xyz;\n' : '') +
         '  if (uMoleN > 0) {\n' +
         '    vec3 bp = (uBodyInv * shapeW).xyz, pull = vec3(0.0);\n' +
-        '    for (int i = 0; i < ' + MAX_MOLES + '; i++) {\n' +
+        '    for (int i = 0; i < 1000000; i++) {\n' +
         '      if (i >= uMoleN) break;\n' +
-        '      float q = length(bp - uMoleP[i]) / uMoleR;\n' +
-        '      pull += uMoleD[i] * exp(-2.0 * q * q);\n' +
+        '      float row = floor(float(i) / ' + MOLE_ROW + '.0), col = float(i) - row * ' + MOLE_ROW + '.0;\n' +
+        '      vec2 at = vec2((col * 2.0 + 0.5) / ' + (MOLE_ROW * 2) + '.0, (row + 0.5) / uMoleRows);\n' +
+        '      vec3 mp = texture2D(uMoles, at).xyz, md = texture2D(uMoles, at + vec2(1.0 / ' + (MOLE_ROW * 2) + '.0, 0.0)).xyz;\n' +
+        '      float q = length(bp - mp) / uMoleR;\n' +
+        '      pull += md * exp(-2.0 * q * q);\n' +
         '    }\n' +
         '    mvPosition = viewMatrix * (uBody * vec4(bp + pull, 1.0));\n' +
         '    gl_Position = projectionMatrix * mvPosition;\n' +
@@ -943,7 +968,7 @@
       a.uni.uBodyInv.value.copy(a.body.matrixWorld).invert();
       const mo = it.mo || [];
       a.uni.uMoleN.value = mo.length;
-      mo.forEach((m, i) => { a.uni.uMoleP.value[i].fromArray(m.p); a.uni.uMoleD.value[i].fromArray(m.d); });
+      if (mo.length) moleTable(a, mo);
       if (!a.cuts) continue;
       // the cuts live in the friend's own space; the shader wants them in the world's
       cutMat.copy(a.body.matrixWorld).invert().transpose();
@@ -1052,7 +1077,7 @@
     return out;
   }
   // a dot about a millimetre across, so it hides as little as possible
-  // (it can still be grabbed from further off: see the moles tool)
+  // (it can be grabbed from a little further off: see the moles tool)
   function drawMole(q) {
     const px = W / stage.clientWidth;
     sctx.beginPath(); sctx.arc(q.x, q.y, 2.5 * px, 0, PI * 2);
@@ -1420,7 +1445,8 @@
     if (tool === 'split') { drag = { kind: 'cut', path: [p] }; dirty = true; return; }
     if (tool === 'moles') {
       // grab a mole that's there, or dig a new one where the friend was tapped
-      const r = handleR();
+      // (a small reach, so moles can sit close together)
+      const r = 9 * W / stage.clientWidth;
       let got = null, best = r;
       for (const q of moleSpots()) { const d = Math.hypot(p.x - q.x, p.y - q.y); if (d < best) { best = d; got = q; } }
       let it, m, fresh = false;
@@ -1429,7 +1455,6 @@
         const h = firstHit(p);
         if (!h) { hint('Tap a friend to give it a mole!'); return; }
         it = h.it;
-        if ((it.mo || []).length >= MAX_MOLES) { hint('That friend has lots of moles already!'); return; }
         pushUndo();
         const lp = h.a.body.worldToLocal(hitV.copy(h.point));
         m = { p: [lp.x, lp.y, lp.z], d: [0, 0, 0] };
@@ -1841,7 +1866,7 @@
   function moles(mo) {
     if (!Array.isArray(mo)) return undefined;
     const v3ok = (a) => Array.isArray(a) && a.length === 3 && a.every(v => typeof v === 'number' && isFinite(v));
-    const ok = mo.filter(m => m && v3ok(m.p) && v3ok(m.d)).slice(0, MAX_MOLES).map(m => ({ p: m.p.slice(), d: m.d.slice() }));
+    const ok = mo.filter(m => m && v3ok(m.p) && v3ok(m.d)).map(m => ({ p: m.p.slice(), d: m.d.slice() }));
     return ok.length ? ok : undefined;
   }
   function cuts(c) {
