@@ -1051,12 +1051,12 @@
     }
     return out;
   }
-  function drawMole(q, r) {
-    sctx.save();
-    sctx.translate(q.x, q.y); sctx.scale(r / 26, r / 26);
-    sctx.beginPath(); sctx.arc(0, 0, 17, 0, PI * 2);
-    sctx.fillStyle = '#7a5233'; sctx.fill(); sctx.lineWidth = 4; sctx.strokeStyle = '#fff'; sctx.stroke();
-    sctx.restore();
+  // a dot about a millimetre across, so it hides as little as possible
+  // (it can still be grabbed from further off: see the moles tool)
+  function drawMole(q) {
+    const px = W / stage.clientWidth;
+    sctx.beginPath(); sctx.arc(q.x, q.y, 2.5 * px, 0, PI * 2);
+    sctx.fillStyle = '#7a5233'; sctx.fill(); sctx.lineWidth = 1.5 * px; sctx.strokeStyle = '#fff'; sctx.stroke();
   }
 
   function render() {
@@ -1079,7 +1079,7 @@
       sctx.restore();
     }
 
-    if (tool === 'moles') for (const q of moleSpots()) drawMole(q, handleR() * 0.8);
+    if (tool === 'moles') for (const q of moleSpots()) drawMole(q);
 
     const it = tool === 'move' ? selItem() : null;
     if (it) {
