@@ -1785,41 +1785,84 @@ function puffTexture(size) {
 }
 
 /** Broken cloud deck with transparency, painted onto its own shell. */
+/*
+ * Earth-like weather follows the climate, the way real cloud does: a belt of
+ * towering storms along the equator, clear skies over the subtropics where
+ * the deserts are, the stormy westerlies at 45–65° in both hemispheres, and
+ * a little over the poles. Bonus added to the cloud field at each latitude.
+ */
+function cloudClimate(latDeg) {
+  const a = Math.abs(latDeg);
+  return 0.06 * Math.exp(-Math.pow(a / 9, 2))            // the equatorial storm belt
+       - 0.05 * Math.exp(-Math.pow((a - 25) / 8, 2))     // the dry subtropics
+       + 0.06 * Math.exp(-Math.pow((a - 55) / 11, 2))    // the storm tracks
+       + 0.015 * clamp((a - 70) / 20, 0, 1);              // the polar overcast
+}
+
 function cloudTexture(seed, W, H, opacity, tintCol, swirl, cover) {
   const cv = newCanvas(W, H);
   const ctx = cv.getContext('2d');
-  // Earth-like weather: big soft swirling systems with crisper detail laid in
-  const f = fbm(seed, 6, 3, 5), crisp = swirl ? fbm(seed + 3, 12, 6, 5) : null;
+  // Earth-like weather: swirling systems a few thousand km across with crisper
+  // detail laid in. (Any bigger, and a whole hemisphere could come out clear.)
+  const f = swirl ? fbm(seed, 10, 5, 5) : fbm(seed, 6, 3, 5), crisp = swirl ? fbm(seed + 3, 18, 9, 4) : null;
   const band = fbm(seed + 2, 3, 9, 3);
   // Weather on an Earth-like world: the cloud field is pushed round by two
   // slow noise fields, which curls it into storms and long sweeping fronts.
-  const wx = swirl ? fbm(seed + 11, 3, 2, 3) : null, wy = swirl ? fbm(seed + 23, 3, 2, 3) : null;
+  const wx = swirl ? fbm(seed + 11, 4, 2, 3) : null, wy = swirl ? fbm(seed + 23, 4, 2, 3) : null;
   const tint = tintCol || [255, 255, 255];
   const img = ctx.createImageData(W, H);
   const d = img.data;
-  let i = 0;
-  for (let y = 0; y < H; y++) {
+  const field = new Float32Array(W * H);
+  for (let y = 0, k = 0; y < H; y++) {
     const v = (y + 0.5) / H;
-    for (let x = 0; x < W; x++) {
+    for (let x = 0; x < W; x++, k++) {
       const u = (x + 0.5) / W;
       let uu = u, vv = v;
       if (swirl) {
-        const a1 = (wx(u, v) - 0.5) * TAU * 1.6, r1 = 0.07 * swirl;
-        uu = u + Math.cos(a1) * r1; vv = clamp(v + Math.sin(a1) * r1 * 0.5 + (wy(u, v) - 0.5) * 0.04 * swirl, 0, 0.999);
+        // (the swirl calms toward the poles, where the map's columns crowd together)
+        const calm = 1 - clamp((Math.abs(0.5 - v) * 180 - 60) / 25, 0, 1);
+        const a1 = (wx(u, v) - 0.5) * TAU * 1.6, r1 = 0.05 * swirl * calm;
+        uu = u + Math.cos(a1) * r1; vv = clamp(v + Math.sin(a1) * r1 * 0.5 + (wy(u, v) - 0.5) * 0.03 * swirl, 0, 0.999);
         uu -= Math.floor(uu);
       }
-      let n = (swirl ? f(uu, vv) * 0.55 + crisp(uu, vv) * 0.45 : f(uu, vv)) * 0.75 + band(uu, vv) * 0.25;
-      // swirled weather is also thicker: more sky covered, brighter white
-      let a;
-      if (swirl) {
-        // bright clean clouds that fade off softly at the edges, not too many of them
-        // solid white through the body of a cloud, with only a soft rim
-        a = clamp((n - 0.578 + (cover || 0)) * 16.0, 0, 1);
-        a = a * a * (3 - 2 * a) * Math.max(opacity, 0.98);
-      } else a = Math.pow(clamp((n - 0.48) * 3.4, 0, 1), 1.25) * opacity;
-      d[i++] = tint[0]; d[i++] = tint[1]; d[i++] = tint[2];
-      d[i++] = (a * 255) | 0;
+      field[k] = swirl
+        ? (f(uu, vv) * 0.55 + crisp(uu, vv) * 0.45) * 0.8 + band(uu, vv) * 0.2
+        : f(uu, vv) * 0.75 + band(uu, vv) * 0.25;
     }
+  }
+  /* Swirled weather covers the share of sky its climate calls for, at every
+     latitude, whatever the seed: each 10° band reads its own threshold off its
+     own values (about 30% overall, more in the storm belts, less over the
+     subtropics), and neighbouring bands blend, so there are no seams. That is
+     what stops one hemisphere coming out clear and the other socked in. */
+  const NB = 18, thrB = new Float32Array(NB);
+  if (swirl) {
+    const rowsPer = H / NB;
+    for (let bnd = 0; bnd < NB; bnd++) {
+      const lat = 90 - (bnd + 0.5) * 10;
+      const want = clamp(0.3 + (cover || 0) * 2 + cloudClimate(lat) * 3, 0.05, 0.9), samples = [];
+      for (let s = 0; s < 1500; s++) {
+        const y = Math.min(H - 1, Math.floor((bnd + Math.random()) * rowsPer));
+        samples.push(field[y * W + ((Math.random() * W) | 0)]);
+      }
+      samples.sort((p, q) => p - q);
+      // the cloud's soft rim starts a little below where it counts as cloud
+      thrB[bnd] = samples[Math.floor(samples.length * (1 - want))] - 0.02;
+    }
+  }
+  for (let k = 0, i = 0; k < W * H; k++) {
+    let a;
+    if (swirl) {
+      const fb = clamp(((Math.floor(k / W) + 0.5) / H) * NB - 0.5, 0, NB - 1), b0 = Math.floor(fb), b1 = Math.min(b0 + 1, NB - 1);
+      const thr = lerp(thrB[b0], thrB[b1], fb - b0);
+      // solid white through the body of a cloud, with only a soft rim — softer
+      // and hazier near the poles, so nothing pinches into a star there
+      const pole = clamp((Math.abs(0.5 - (Math.floor(k / W) + 0.5) / H) * 180 - 62) / 22, 0, 1);
+      a = clamp((field[k] - thr) * lerp(16.0, 3.0, pole), 0, 1);
+      a = a * a * (3 - 2 * a) * Math.max(opacity, 0.98);
+    } else a = Math.pow(clamp((field[k] - 0.48) * 3.4, 0, 1), 1.25) * opacity;
+    d[i++] = tint[0]; d[i++] = tint[1]; d[i++] = tint[2];
+    d[i++] = (a * 255) | 0;
   }
   ctx.putImageData(img, 0, 0);
   return cv;
@@ -2265,7 +2308,7 @@ const TYPES = {
   },
   sol_earth: {
     label: 'Earth', group: 'SOLAR SYSTEM', pname: 'Earth', mass: 1, rad: 1,
-    surf: 'earth', spin: 0.99727, tilt: 0.4091, atmo: SKY, clouds: 0.95, cloudCover: 0.03, water: 0.295,
+    surf: 'earth', spin: 0.99727, tilt: 0.4091, atmo: SKY, clouds: 0.95, water: 0.295,
     blurb: 'The only place anyone has ever lived. Seven-tenths water, tipped 23.4° on its axis — which is the entire reason we have seasons.'
   },
   sol_luna: {
