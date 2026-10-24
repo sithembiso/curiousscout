@@ -216,6 +216,9 @@
     <button class="ts-tool" data-tool="fill" aria-label="Paint bucket" title="Paint bucket">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l7-7 8 8-7 7a2 2 0 0 1-2.8 0L5 13.8a2 2 0 0 1 0-2.8z"/><path d="M5 12h15"/><path d="M20 16s2 2.3 2 3.5a2 2 0 0 1-4 0c0-1.2 2-3.5 2-3.5z"/></svg>
     </button>
+    <button class="ts-tool" data-tool="split" aria-label="Cut friends in two" title="Cut friends in two">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12"/></svg>
+    </button>
     <button class="ts-tool" data-tool="eraser" aria-label="Eraser" title="Eraser">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 21h13"/><path d="M5.5 14.5l9-9a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L12 18H8.5z"/><path d="M9 11l5 5"/></svg>
     </button>
@@ -317,6 +320,7 @@
   const gl = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   gl.setPixelRatio(1);
   gl.setSize(W, H, false);
+  gl.localClippingEnabled = true;     // cut friends hide the far side of their cut
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(38, W / H, 0.1, 400);
@@ -356,6 +360,7 @@
     if (line !== false) {
       const T = typeof line === 'number' ? line : 0.035;
       const o = new THREE.Mesh(m.geometry, OUTLINE);
+      o.userData.outline = true;
       o.scale.set(1 + T / Math.abs(s[0]), 1 + T / Math.abs(s[1]), 1 + T / Math.abs(s[2]));
       m.add(o);
     }
@@ -575,7 +580,7 @@
 
   function actor(it) {
     let a = pool.get(it.id);
-    if (a && a.k !== it.k) { actors.remove(a.root); pool.delete(it.id); a = null; }
+    if (a && (a.k !== it.k || (a.local ? a.local.length : 0) !== (it.cut ? it.cut.length : 0))) { actors.remove(a.root); pool.delete(it.id); a = null; }
     if (!a) {
       const root = new THREE.Group(), body = new THREE.Group();
       CHARS[it.k].make(body);
@@ -586,8 +591,23 @@
       actors.add(root);
       // the paintable pieces, in build order, so a saved colour finds its piece again
       const parts = [];
-      body.traverse(o => { if (o.isMesh && o.material !== OUTLINE) parts.push({ m: o, mat: o.material }); });
+      body.traverse(o => { if (o.isMesh && !o.userData.outline) parts.push({ m: o, mat: o.material }); });
       a = { k: it.k, root: root, body: body, sh: sh, parts: parts };
+      if (it.cut && it.cut.length) {
+        /* A piece of a cut friend: the whole model, with everything on the
+           wrong side of each cut clipped away. The cuts are kept in the
+           model's own space, so they travel with it. Seen through the cut,
+           the inside shows in the piece's own colour, so it looks solid. */
+        a.local = it.cut.map(q => new THREE.Plane(new THREE.Vector3(q.n[0], q.n[1], q.n[2]), q.c));
+        a.planes = it.cut.map(() => new THREE.Plane());
+        const made = new Map();
+        a.clip = (m) => {
+          let c = made.get(m);
+          if (!c) { c = m.clone(); c.clippingPlanes = a.planes; c.side = m === OUTLINE ? THREE.BackSide : THREE.DoubleSide; made.set(m, c); }
+          return c;
+        };
+        body.traverse(o => { if (o.isMesh && o.userData.outline) o.material = a.clip(OUTLINE); });
+      }
       pool.set(it.id, a);
     }
     return a;
@@ -602,7 +622,10 @@
     const up = Math.min(it.h / 5, 0.7);
     a.sh.scale.setScalar(it.s * CHARS[it.k].w * (1 - up * 0.5));
     a.sh.material.opacity = 0.22 * (1 - up);
-    a.parts.forEach((q, i) => { q.m.material = it.p && it.p[i] != null ? toon(it.p[i]) : q.mat; });
+    a.parts.forEach((q, i) => {
+      const m = it.p && it.p[i] != null ? toon(it.p[i]) : q.mat;
+      q.m.material = a.clip ? a.clip(m) : m;
+    });
     return a;
   }
 
@@ -754,6 +777,10 @@
     hemi.color.setHex(p.light[2]); hemi.groundColor.setHex(p.light[3]);
     aim(fr.cam);
     actors.updateMatrixWorld(true);
+    for (const it of fr.items) {
+      const a = pool.get(it.id);
+      if (a.local) a.local.forEach((l, i) => a.planes[i].copy(l).applyMatrix4(a.body.matrixWorld));
+    }
   }
   function draw3D(fr, bg, withBg) {
     pose(fr, bg, withBg);
@@ -801,6 +828,7 @@
     return fr;
   }
   const frame = () => movie.frames[cur];
+  // (cuts are never changed in place — cutting makes new pieces — so they can be shared)
   const copyItem = (it) => Object.assign({}, it, it.p ? { p: Object.assign({}, it.p) } : null);
 
   /** One frame of the movie, on its own: the 3D picture, then the drawing on top. */
@@ -846,6 +874,14 @@
       onionCtx.clearRect(0, 0, W, H);
       paintFrame(onionCtx, movie.frames[cur - 1], false);
       sctx.globalAlpha = 0.28; sctx.drawImage(onionCv, 0, 0); sctx.globalAlpha = 1;
+    }
+
+    if (drag && drag.kind === 'cut') {
+      sctx.save();
+      sctx.setLineDash([16, 10]); sctx.lineCap = 'round';
+      sctx.lineWidth = 5 * W / stage.clientWidth; sctx.strokeStyle = '#ff5a5f';
+      sctx.beginPath(); sctx.moveTo(drag.a.x, drag.a.y); sctx.lineTo(drag.b.x, drag.b.y); sctx.stroke();
+      sctx.restore();
     }
 
     const it = tool === 'move' ? selItem() : null;
@@ -983,7 +1019,10 @@
     const u = undoStack.pop();
     $('ts-undo').disabled = !undoStack.length;
     if (!u) return;
-    if (u.type === 'paint') {
+    if (u.type === 'split') {
+      for (const w of u.was) if (movie.frames[w.at]) { movie.frames[w.at].items = w.items; thumbDirty.add(w.at); }
+      cur = u.at;
+    } else if (u.type === 'paint') {
       for (const w of u.was) {
         const it = movie.frames[w.at] && movie.frames[w.at].items.find(i => i.id === w.id);
         if (it) { it.p = w.p; thumbDirty.add(w.at); }
@@ -1005,7 +1044,7 @@
 
   /* ================================================================== tools */
   let tool = 'move', size = 12, color = '#2b2140';
-  let seenCamHint = false, seenPaintHint = false;
+  let seenCamHint = false, seenPaintHint = false, seenCutHint = false;
 
   function setTool(t) {
     tool = t;
@@ -1032,16 +1071,25 @@
     return ray.ray.intersectPlane(floor, hitV) ? { x: hitV.x, z: hitV.z } : null;
   }
 
-  function hitItem(p) {
+  /** The nearest friend you can actually see under the finger, and which piece of it. */
+  function firstHit(p) {
     const fr = frame();
     pose(fr, movie.bg, true);
     castFrom(p);
-    const hits = ray.intersectObjects(fr.items.map(it => pool.get(it.id).body), true);
-    for (const h of hits) {
+    for (const h of ray.intersectObjects(fr.items.map(it => pool.get(it.id).body), true)) {
       let o = h.object;
       while (o && o.userData.id == null) o = o.parent;
-      if (o) return fr.items.find(i => i.id === o.userData.id) || null;
+      if (!o) continue;
+      const it = fr.items.find(i => i.id === o.userData.id), a = pool.get(it.id);
+      if (a.planes && a.planes.some(q => q.distanceToPoint(h.point) < 0)) continue;   // cut away
+      return { it: it, a: a, m: h.object.userData.outline ? h.object.parent : h.object };
     }
+    return null;
+  }
+
+  function hitItem(p) {
+    const h = firstHit(p);
+    if (h) return h.it;
     // Small or far-away friends: anywhere inside the dashed box will do.
     const it = selItem();
     if (it) { const b = handles(it); if (p.x > b.x0 && p.x < b.x1 && p.y > b.y0 && p.y < b.y1) return it; }
@@ -1050,17 +1098,54 @@
 
   /** The friend, and which piece of it, under the finger. */
   function hitPart(p) {
-    const fr = frame();
-    pose(fr, movie.bg, true);
-    castFrom(p);
-    const hit = ray.intersectObjects(fr.items.map(it => pool.get(it.id).body), true)[0];
-    if (!hit) return null;
-    const m = hit.object.material === OUTLINE ? hit.object.parent : hit.object;
-    for (const it of fr.items) {
-      const i = pool.get(it.id).parts.findIndex(q => q.m === m);
-      if (i >= 0) return { it: it, i: i };
+    const h = firstHit(p);
+    if (!h) return null;
+    const i = h.a.parts.findIndex(q => q.m === h.m);
+    return i >= 0 ? { it: h.it, i: i } : null;
+  }
+
+  /* Cutting: the line drawn across the picture becomes a knife — a flat
+     sheet from the camera through both ends of the line. Every friend it
+     crosses becomes two pieces, nudged apart, each its own friend. Like
+     painting, it happens from this frame on. */
+  const MAX_CUTS = 6;
+  function cutAlong(p0, p1) {
+    const ids = new Set();
+    for (let i = 0; i <= 30; i++) {
+      const h = firstHit({ x: p0.x + (p1.x - p0.x) * i / 30, y: p0.y + (p1.y - p0.y) * i / 30 });
+      if (h && (h.it.cut || []).length < MAX_CUTS) ids.add(h.it.id);
     }
-    return null;
+    if (!ids.size) { hint('Draw a line right across a friend!'); return; }
+    pose(frame(), movie.bg, true);
+    castFrom(p0); const e0 = ray.ray.at(10, new THREE.Vector3());
+    castFrom(p1); const e1 = ray.ray.at(10, new THREE.Vector3());
+    const knife = new THREE.Plane().setFromCoplanarPoints(camera.position, e0, e1);
+    const was = [];
+    for (let f = cur; f < movie.frames.length; f++) was.push({ at: f, items: movie.frames[f].items.map(copyItem) });
+    const inv = new THREE.Matrix4();
+    for (const id of ids) {
+      inv.copy(pool.get(id).body.matrixWorld).invert();
+      const loc = knife.clone().applyMatrix4(inv);
+      const A = { n: [loc.normal.x, loc.normal.y, loc.normal.z], c: loc.constant };
+      const B = { n: A.n.map(v => -v), c: -A.c };
+      const push = knife.normal.clone().multiplyScalar(0.18);
+      const idA = nextId++, idB = nextId++;
+      for (let f = cur; f < movie.frames.length; f++) {
+        const items = movie.frames[f].items, k = items.findIndex(i => i.id === id);
+        if (k < 0) continue;
+        const o = items[k];
+        const piece = (nid, cut, dir) => Object.assign(copyItem(o), {
+          id: nid, cut: (o.cut || []).concat([cut]),
+          x: o.x + push.x * dir, z: o.z + push.z * dir, h: Math.max(0, o.h + push.y * dir)
+        });
+        items.splice(k, 1, piece(idA, A, 1), piece(idB, B, -1));
+        thumbDirty.add(f);
+      }
+    }
+    pushUndo({ type: 'split', at: cur, was: was });
+    sel = null;
+    touched();
+    hint('Snip! Use the hand to move the pieces.');
   }
 
   /* Painting a friend: this piece takes the colour from this frame on, so
@@ -1084,6 +1169,7 @@
     if (playing) { stopPlay(); return; }
     stage.setPointerCapture(e.pointerId);
     const p = toStage(e);
+    if (tool === 'split') { drag = { kind: 'cut', a: p, b: p }; dirty = true; return; }
     if (tool === 'camera') {
       pushUndo();
       drag = { kind: 'cam', x0: p.x, y0: p.y, c0: Object.assign({}, frame().cam) };
@@ -1160,6 +1246,8 @@
     } else if (drag.kind === 'lift') {
       drag.it.h = clamp(drag.h0 + (drag.y0 - p.y) * drag.k, 0, 8);
       touched();
+    } else if (drag.kind === 'cut') {
+      drag.b = p; dirty = true;
     } else if (drag.kind === 'cam') {
       const c = frame().cam;
       c.a = drag.c0.a - (p.x - drag.x0) * 0.008;
@@ -1181,6 +1269,13 @@
   });
   const endDrag = () => {
     if (!drag) return;
+    if (drag.kind === 'cut') {
+      const d = drag;
+      drag = null; dirty = true;
+      if (Math.hypot(d.b.x - d.a.x, d.b.y - d.a.y) > 12) cutAlong(d.a, d.b);
+      else hint('Draw a line right across a friend!');
+      return;
+    }
     // Finish the stroke right where the finger came off.
     if (drag.kind === 'draw' && (drag.last.x !== drag.mid.x || drag.last.y !== drag.mid.y)) {
       const x = frame().ctx;
@@ -1313,11 +1408,12 @@
       setTool(b.dataset.tool);
       if (b.dataset.tool === 'camera' && !seenCamHint) { seenCamHint = true; hint('Drag to move the camera!'); }
       if (b.dataset.tool === 'fill' && !seenPaintHint) { seenPaintHint = true; hint('Tap a friend to paint it!'); }
+      if (b.dataset.tool === 'split' && !seenCutHint) { seenCutHint = true; hint('Draw a line across a friend to cut it in two!'); }
     }));
     document.querySelectorAll('.ts-size').forEach(b => b.addEventListener('click', () => {
       size = +b.dataset.size;
       document.querySelectorAll('.ts-size').forEach(o => o.classList.toggle('on', o === b));
-      if (tool === 'move' || tool === 'fill' || tool === 'camera') setTool('pencil');
+      if (tool === 'move' || tool === 'fill' || tool === 'camera' || tool === 'split') setTool('pencil');
     }));
     const box = $('ts-colors');
     COLORS.forEach((c, i) => {
@@ -1326,7 +1422,7 @@
       b.addEventListener('click', () => {
         color = c;
         box.querySelectorAll('.ts-color').forEach(o => o.classList.toggle('on', o === b));
-        if (tool === 'move' || tool === 'eraser' || tool === 'camera') setTool('pencil');
+        if (tool === 'move' || tool === 'eraser' || tool === 'camera' || tool === 'split') setTool('pencil');
       });
       box.appendChild(b);
     });
@@ -1420,6 +1516,11 @@
     for (const k in p) if (/^\d+$/.test(k) && typeof p[k] === 'number') out[k] = p[k];
     return out;
   }
+  function cuts(c) {
+    if (!Array.isArray(c)) return undefined;
+    const ok = c.filter(q => q && Array.isArray(q.n) && q.n.length === 3 && q.n.every(v => typeof v === 'number' && isFinite(v)) && typeof q.c === 'number' && isFinite(q.c));
+    return ok.length ? ok.slice(0, MAX_CUTS) : undefined;
+  }
   function load() {
     let data = read(SAVE_KEY), old = false;
     if (!data) { data = read(OLD_KEY); old = !!data; }
@@ -1430,7 +1531,7 @@
     movie.frames = data.frames.slice(0, MAX_FRAMES).map((f, i) => {
       const fr = makeFrame();
       fr.items = (f.items || []).filter(it => it && CHARS[it.k]).map(it => old ? from2D(it) : {
-        id: it.id, k: it.k, x: num(it.x, 0), z: num(it.z, 0), h: num(it.h, 0), s: num(it.s, 1), r: num(it.r, 0), f: !!it.f, p: paints(it.p)
+        id: it.id, k: it.k, x: num(it.x, 0), z: num(it.z, 0), h: num(it.h, 0), s: num(it.s, 1), r: num(it.r, 0), f: !!it.f, p: paints(it.p), cut: cuts(it.cut)
       });
       const c = f.cam || {};
       fr.cam = { a: num(c.a, 0), t: clamp(num(c.t, 0.3), 0.02, 1.35), d: clamp(num(c.d, 11), 5, 24) };
