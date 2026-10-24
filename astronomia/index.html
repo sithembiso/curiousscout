@@ -1813,10 +1813,10 @@ function cloudTexture(seed, W, H, opacity, tintCol, swirl, cover) {
       let a;
       if (swirl) {
         // bright clean clouds that fade off softly at the edges, not too many of them
-        a = clamp((n - 0.53 + (cover || 0)) * 5.0, 0, 1);
-        a = a * a * (3 - 2 * a);
-      } else a = clamp((n - 0.48) * 3.4, 0, 1);
-      a = Math.pow(a, 1.25) * opacity;
+        // solid white through the body of a cloud, with only a soft rim
+        a = clamp((n - 0.578 + (cover || 0)) * 16.0, 0, 1);
+        a = a * a * (3 - 2 * a) * Math.max(opacity, 0.98);
+      } else a = Math.pow(clamp((n - 0.48) * 3.4, 0, 1), 1.25) * opacity;
       d[i++] = tint[0]; d[i++] = tint[1]; d[i++] = tint[2];
       d[i++] = (a * 255) | 0;
     }
@@ -6953,6 +6953,8 @@ function buildWorld(b, def, grp) {
       swirled ? 1 : 0, def.cloudCover || 0));
     if (swirled) ct.anisotropy = 4;
     const cm = new THREE.MeshStandardMaterial({ map: ct, transparent: true, depthWrite: false, roughness: 1 });
+    // a touch of their own brightness, so cloud tops stay white, not grey, where the light is low
+    if (swirled) { cm.emissive = new THREE.Color(1, 1, 1); cm.emissiveMap = ct; cm.emissiveIntensity = 0.14; }
     const cloud = new THREE.Mesh(SPHERE, cm);
     cloud.scale.setScalar(1.018);
     // After the sea (renderOrder 1): neither writes depth, so whichever is
