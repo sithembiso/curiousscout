@@ -180,6 +180,7 @@
     .ts-count { display: none; }
   }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script defer src="../analytics.js"></script>
 </head>
 <body>
@@ -205,6 +206,9 @@
   <aside id="ts-tools">
     <button class="ts-tool on" data-tool="move" aria-label="Move characters" title="Move characters">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12"/><path d="M11 11.5v-2a1.5 1.5 0 0 1 3 0V12"/><path d="M14 10.5a1.5 1.5 0 0 1 3 0V12"/><path d="M17 11.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-2a6 6 0 0 1-5-2.7L4.3 15a1.6 1.6 0 0 1 2.5-2l1.2 1.4"/></svg>
+    </button>
+    <button class="ts-tool" data-tool="camera" aria-label="Move the camera" title="Move the camera">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="14" height="11" rx="2.5"/><path d="M16 11l6-3.5v10L16 14z"/><circle cx="6.5" cy="4.5" r="2"/><circle cx="12" cy="4.5" r="2"/></svg>
     </button>
     <button class="ts-tool" data-tool="pencil" aria-label="Pencil" title="Pencil">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4L8 20l-5 1 1-5z"/><path d="M15 5l4 4"/></svg>
@@ -272,9 +276,10 @@
   'use strict';
 
   /* =================================================================== setup */
-  const W = 960, H = 540;          // the stage, in its own units
+  const W = 960, H = 540;          // the stage picture, in pixels
   const MAX_FRAMES = 48;
-  const SAVE_KEY = 'toonstudio.movie.v1';
+  const SAVE_KEY = 'toonstudio.movie.v2';
+  const OLD_KEY = 'toonstudio.movie.v1';   // flat 2D movies, brought into 3D on load
   const SPEEDS = [
     { fps: 4,  label: 'Slow',   icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16c0-4 3-7 7-7s7 3 7 7z"/><path d="M18 16h2a2 2 0 0 0 0-4h-1"/><path d="M7 16v2M15 16v2"/></svg>' },
     { fps: 8,  label: 'Medium', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4.5" r="2"/><path d="M9 21l3-6 3 2v4M7 12l3-4 4 1 2 3 3 1"/><path d="M10 8l2 7"/></svg>' },
@@ -288,234 +293,489 @@
   const sctx = stage.getContext('2d');
   const track = (name, props) => { try { if (window.track) window.track(name, props); } catch (e) {} };
 
-  const newCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+  if (!window.THREE) {
+    $('ts-mtitle').textContent = 'Toon Studio needs the internet';
+    $('ts-mtext').textContent = 'The 3D part couldn\'t load. Check your connection and try again.';
+    $('ts-modal').classList.add('show');
+    return;
+  }
 
-  // A seeded random, so the backgrounds come out the same every time.
+  const newCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  // A seeded random, so the places come out the same every time.
   function rng(seed) {
     let s = seed >>> 0;
     return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   }
 
-  /* ============================================================= characters */
-  /* Each one is drawn round its own middle, about 100 units across, with a
-     chunky outline so it reads at any size. */
-  const LINE = '#2b2140';
-  function blob(ctx, fill, lw) {
-    ctx.fillStyle = fill; ctx.fill();
-    ctx.lineWidth = lw || 4; ctx.strokeStyle = LINE; ctx.stroke();
-  }
-  function circle(ctx, x, y, r, fill, lw) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); blob(ctx, fill, lw); }
-  function dot(ctx, x, y, r, fill) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = fill || LINE; ctx.fill(); }
-  function eyes(ctx, x1, x2, y, r) {
-    dot(ctx, x1, y, r); dot(ctx, x2, y, r);
-    dot(ctx, x1 + r * 0.35, y - r * 0.35, r * 0.35, '#fff'); dot(ctx, x2 + r * 0.35, y - r * 0.35, r * 0.35, '#fff');
-  }
-  function smile(ctx, x, y, w) {
-    ctx.beginPath(); ctx.arc(x, y - w * 0.4, w, Math.PI * 0.2, Math.PI * 0.8);
-    ctx.lineWidth = 3.5; ctx.strokeStyle = LINE; ctx.lineCap = 'round'; ctx.stroke();
-  }
-  function rrect(ctx, x, y, w, h, r) {
-    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
-  }
+  /* ============================================================= 3D world */
+  /* One WebGL renderer draws every picture: the stage, the onion skin, the
+     frame strip, the pickers and the saved movie. Each picture is rendered,
+     then copied onto an ordinary 2D canvas, where the drawing layer goes on
+     top. */
+  const gl = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  gl.setPixelRatio(1);
+  gl.setSize(W, H, false);
 
-  const CHARS = {
-    ball(ctx) {
-      circle(ctx, 0, 0, 40, '#ff5a5f');
-      ctx.save(); ctx.beginPath(); ctx.arc(0, 0, 38, 0, Math.PI * 2); ctx.clip();
-      ctx.fillStyle = '#ffd23f'; ctx.fillRect(-45, -8, 90, 16); ctx.restore();
-      ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI * 2); ctx.lineWidth = 4; ctx.strokeStyle = LINE; ctx.stroke();
-      dot(ctx, -16, -20, 7, 'rgba(255,255,255,0.7)');
-    },
-    cat(ctx) {
-      ctx.beginPath(); ctx.moveTo(-30, -14); ctx.lineTo(-24, -46); ctx.lineTo(-6, -28); ctx.closePath(); blob(ctx, '#f6a04d');
-      ctx.beginPath(); ctx.moveTo(30, -14); ctx.lineTo(24, -46); ctx.lineTo(6, -28); ctx.closePath(); blob(ctx, '#f6a04d');
-      circle(ctx, 0, 4, 36, '#f6a04d');
-      eyes(ctx, -13, 13, -2, 5.5);
-      ctx.beginPath(); ctx.moveTo(-5, 9); ctx.lineTo(5, 9); ctx.lineTo(0, 15); ctx.closePath(); ctx.fillStyle = '#ff7ac6'; ctx.fill();
-      ctx.lineWidth = 2.5; ctx.strokeStyle = LINE; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(0, 15); ctx.quadraticCurveTo(-6, 22, -11, 18); ctx.moveTo(0, 15); ctx.quadraticCurveTo(6, 22, 11, 18); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(-18, 12); ctx.lineTo(-40, 8); ctx.moveTo(-18, 17); ctx.lineTo(-40, 20);
-      ctx.moveTo(18, 12); ctx.lineTo(40, 8); ctx.moveTo(18, 17); ctx.lineTo(40, 20); ctx.stroke();
-    },
-    dog(ctx) {
-      circle(ctx, 0, 2, 36, '#c8925f');
-      ctx.beginPath(); ctx.ellipse(-34, 2, 11, 24, 0.3, 0, Math.PI * 2); blob(ctx, '#7a5233');
-      ctx.beginPath(); ctx.ellipse(34, 2, 11, 24, -0.3, 0, Math.PI * 2); blob(ctx, '#7a5233');
-      ctx.beginPath(); ctx.ellipse(0, 16, 18, 13, 0, 0, Math.PI * 2); blob(ctx, '#f3dcc0', 3);
-      eyes(ctx, -13, 13, -6, 5.5);
-      ctx.beginPath(); ctx.ellipse(0, 9, 7, 5, 0, 0, Math.PI * 2); ctx.fillStyle = LINE; ctx.fill();
-      ctx.beginPath(); ctx.ellipse(0, 26, 6, 8, 0, 0, Math.PI); blob(ctx, '#ff7ac6', 3);
-    },
-    bird(ctx) {
-      circle(ctx, 0, 4, 34, '#4dabf7');
-      ctx.beginPath(); ctx.ellipse(-6, 12, 18, 12, -0.4, 0, Math.PI * 2); blob(ctx, '#1c7ed6', 3);
-      ctx.beginPath(); ctx.moveTo(30, 0); ctx.lineTo(48, 6); ctx.lineTo(30, 14); ctx.closePath(); blob(ctx, '#ff9f1c', 3);
-      eyes(ctx, 10, 22, -6, 4.5);
-      ctx.beginPath(); ctx.moveTo(-6, -28); ctx.quadraticCurveTo(-2, -44, 8, -40); ctx.moveTo(-2, -29); ctx.quadraticCurveTo(6, -40, 14, -32);
-      ctx.lineWidth = 3.5; ctx.strokeStyle = LINE; ctx.stroke();
-    },
-    fish(ctx) {
-      ctx.beginPath(); ctx.moveTo(-28, 0); ctx.lineTo(-50, -20); ctx.lineTo(-48, 20); ctx.closePath(); blob(ctx, '#ff9f1c');
-      ctx.beginPath(); ctx.ellipse(4, 0, 38, 26, 0, 0, Math.PI * 2); blob(ctx, '#ffb84d');
-      ctx.beginPath(); ctx.moveTo(-4, -24); ctx.quadraticCurveTo(8, -40, 18, -22); blob(ctx, '#ff9f1c', 3);
-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(43,33,64,0.5)';
-      ctx.beginPath(); ctx.arc(-6, 0, 12, -1, 1); ctx.stroke();
-      eyes(ctx, 22, 22, -6, 5.5);
-      smile(ctx, 30, 10, 5);
-    },
-    frog(ctx) {
-      circle(ctx, -16, -24, 13, '#69db7c'); circle(ctx, 16, -24, 13, '#69db7c');
-      ctx.beginPath(); ctx.ellipse(0, 6, 40, 30, 0, 0, Math.PI * 2); blob(ctx, '#69db7c');
-      dot(ctx, -16, -24, 8, '#fff'); dot(ctx, 16, -24, 8, '#fff');
-      eyes(ctx, -15, 17, -24, 4.5);
-      smile(ctx, 0, 8, 18);
-      dot(ctx, -24, 10, 5, 'rgba(255,122,198,0.6)'); dot(ctx, 24, 10, 5, 'rgba(255,122,198,0.6)');
-    },
-    car(ctx) {
-      rrect(ctx, -46, -6, 92, 26, 10); blob(ctx, '#ff5a5f');
-      ctx.beginPath(); ctx.moveTo(-26, -6); ctx.lineTo(-16, -30); ctx.lineTo(18, -30); ctx.lineTo(30, -6); ctx.closePath(); blob(ctx, '#ff5a5f');
-      ctx.beginPath(); ctx.moveTo(-18, -9); ctx.lineTo(-12, -25); ctx.lineTo(-1, -25); ctx.lineTo(-1, -9); ctx.closePath(); blob(ctx, '#bfe6ff', 3);
-      ctx.beginPath(); ctx.moveTo(4, -9); ctx.lineTo(4, -25); ctx.lineTo(15, -25); ctx.lineTo(23, -9); ctx.closePath(); blob(ctx, '#bfe6ff', 3);
-      circle(ctx, -26, 22, 12, '#3d3550'); circle(ctx, 26, 22, 12, '#3d3550');
-      dot(ctx, -26, 22, 5, '#c9c4d4'); dot(ctx, 26, 22, 5, '#c9c4d4');
-      dot(ctx, 42, 4, 4, '#ffd23f');
-    },
-    rocket(ctx) {
-      ctx.beginPath(); ctx.moveTo(-12, 32); ctx.quadraticCurveTo(0, 62, 12, 32); ctx.closePath(); blob(ctx, '#ffd23f', 3);
-      ctx.beginPath(); ctx.moveTo(-16, 10); ctx.lineTo(-32, 34); ctx.lineTo(-14, 30); ctx.closePath(); blob(ctx, '#ff5a5f');
-      ctx.beginPath(); ctx.moveTo(16, 10); ctx.lineTo(32, 34); ctx.lineTo(14, 30); ctx.closePath(); blob(ctx, '#ff5a5f');
-      ctx.beginPath(); ctx.moveTo(0, -50); ctx.bezierCurveTo(26, -30, 22, 10, 16, 32); ctx.lineTo(-16, 32); ctx.bezierCurveTo(-22, 10, -26, -30, 0, -50); ctx.closePath(); blob(ctx, '#f1f3f5');
-      circle(ctx, 0, -10, 10, '#4dabf7', 3.5);
-      dot(ctx, -3, -13, 3, 'rgba(255,255,255,0.8)');
-    },
-    tree(ctx) {
-      rrect(ctx, -9, 8, 18, 42, 4); blob(ctx, '#a0673b');
-      circle(ctx, -20, -2, 22, '#51cf66'); circle(ctx, 20, -2, 22, '#51cf66'); circle(ctx, 0, -22, 26, '#51cf66');
-      ctx.beginPath(); ctx.arc(-20, -2, 20, 0, Math.PI * 2); ctx.arc(20, -2, 20, 0, Math.PI * 2); ctx.arc(0, -22, 24, 0, Math.PI * 2); ctx.fillStyle = '#51cf66'; ctx.fill();
-      dot(ctx, -10, -26, 4, '#ff5a5f'); dot(ctx, 14, -12, 4, '#ff5a5f'); dot(ctx, -22, 2, 4, '#ff5a5f');
-    },
-    flower(ctx) {
-      ctx.beginPath(); ctx.moveTo(0, 6); ctx.quadraticCurveTo(-6, 30, 0, 50); ctx.lineWidth = 6; ctx.strokeStyle = '#2f9e44'; ctx.lineCap = 'round'; ctx.stroke();
-      ctx.beginPath(); ctx.ellipse(-12, 32, 12, 6, -0.5, 0, Math.PI * 2); blob(ctx, '#51cf66', 3);
-      for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; circle(ctx, Math.cos(a) * 20, -14 + Math.sin(a) * 20, 13, '#ff7ac6', 3.5); }
-      circle(ctx, 0, -14, 13, '#ffd23f', 3.5);
-      eyes(ctx, -5, 5, -16, 2.6); smile(ctx, 0, -11, 4);
-    },
-    star(ctx) {
-      ctx.beginPath();
-      for (let i = 0; i < 10; i++) { const r = i % 2 ? 20 : 46, a = -Math.PI / 2 + i * Math.PI / 5; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
-      ctx.closePath(); ctx.lineJoin = 'round'; blob(ctx, '#ffd23f');
-      eyes(ctx, -8, 8, -2, 3.5); smile(ctx, 0, 6, 6);
-    },
-    heart(ctx) {
-      ctx.beginPath(); ctx.moveTo(0, 38); ctx.bezierCurveTo(-60, 0, -30, -48, 0, -18); ctx.bezierCurveTo(30, -48, 60, 0, 0, 38); ctx.closePath(); blob(ctx, '#ff5a5f');
-      dot(ctx, -20, -16, 6, 'rgba(255,255,255,0.65)');
-    },
-    sun(ctx) {
-      ctx.fillStyle = '#ff9f1c';
-      for (let i = 0; i < 12; i++) {
-        const a = i * Math.PI / 6; ctx.beginPath();
-        ctx.moveTo(Math.cos(a - 0.14) * 32, Math.sin(a - 0.14) * 32); ctx.lineTo(Math.cos(a) * 48, Math.sin(a) * 48); ctx.lineTo(Math.cos(a + 0.14) * 32, Math.sin(a + 0.14) * 32);
-        ctx.closePath(); ctx.fill();
-      }
-      circle(ctx, 0, 0, 32, '#ffd23f');
-      eyes(ctx, -10, 10, -4, 4); smile(ctx, 0, 6, 10);
-    },
-    cloud(ctx) {
-      ctx.beginPath(); ctx.arc(-24, 6, 18, 0, Math.PI * 2); ctx.arc(0, -6, 24, 0, Math.PI * 2); ctx.arc(26, 6, 18, 0, Math.PI * 2);
-      ctx.rect(-24, 6, 50, 18); ctx.lineWidth = 8; ctx.strokeStyle = LINE; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.fill();
-      eyes(ctx, -8, 8, 2, 3.5); smile(ctx, 0, 10, 6);
-    },
-    robot(ctx) {
-      ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(0, -44); ctx.lineWidth = 4; ctx.strokeStyle = LINE; ctx.stroke();
-      circle(ctx, 0, -46, 6, '#ff5a5f', 3);
-      rrect(ctx, -30, -30, 60, 44, 10); blob(ctx, '#adb5bd');
-      rrect(ctx, -22, 18, 44, 30, 8); blob(ctx, '#868e96');
-      rrect(ctx, -20, -20, 40, 20, 6); blob(ctx, '#2b2140', 2);
-      dot(ctx, -9, -10, 5, '#63e6be'); dot(ctx, 9, -10, 5, '#63e6be');
-      dot(ctx, -8, 30, 4, '#ffd23f'); dot(ctx, 8, 30, 4, '#ff5a5f');
-    },
-    ghost(ctx) {
-      ctx.beginPath(); ctx.moveTo(-34, 40); ctx.lineTo(-34, -4); ctx.arc(0, -4, 34, Math.PI, 0); ctx.lineTo(34, 40);
-      for (let i = 0; i < 4; i++) { const x = 34 - i * 17; ctx.quadraticCurveTo(x - 8.5, 28, x - 17, 40); }
-      ctx.closePath(); blob(ctx, '#f8f9fa');
-      ctx.beginPath(); ctx.ellipse(-12, -6, 6, 9, 0, 0, Math.PI * 2); ctx.ellipse(12, -6, 6, 9, 0, 0, Math.PI * 2); ctx.fillStyle = LINE; ctx.fill();
-      ctx.beginPath(); ctx.ellipse(0, 14, 6, 8, 0, 0, Math.PI * 2); ctx.fill();
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, W / H, 0.1, 400);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0xc8b9a0, 0.6);
+  const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+  sun.position.set(5, 10, 7);
+  scene.add(hemi, sun);
+
+  // Toon shading: three flat steps of light instead of a smooth fade.
+  const GRAD = new THREE.DataTexture(new Uint8Array([120, 120, 120, 255, 195, 195, 195, 255, 255, 255, 255, 255]), 3, 1, THREE.RGBAFormat);
+  GRAD.minFilter = GRAD.magFilter = THREE.NearestFilter;
+  GRAD.generateMipmaps = false;
+  GRAD.needsUpdate = true;
+
+  const mats = {};
+  const toon = (c) => mats[c] || (mats[c] = new THREE.MeshToonMaterial({ color: c, gradientMap: GRAD }));
+  const glow = (c) => mats['g' + c] || (mats['g' + c] = new THREE.MeshBasicMaterial({ color: c }));
+  const INK = 0x2b2140;
+  const OUTLINE = new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide });
+  const GEO = {
+    s: new THREE.SphereGeometry(1, 28, 18),
+    b: new THREE.BoxGeometry(1, 1, 1),
+    c: new THREE.CylinderGeometry(1, 1, 1, 24),
+    k: new THREE.ConeGeometry(1, 1, 24),
+    t: new THREE.TorusGeometry(1, 0.12, 10, 40),
+    arc: new THREE.TorusGeometry(1, 0.16, 8, 20, Math.PI)
+  };
+
+  /* One piece of a model. Sizes are scales of unit shapes; `line` adds the
+     chunky cartoon outline (a slightly bigger copy, inside out, in ink). */
+  function part(g, geo, color, p, s, r, line) {
+    const m = new THREE.Mesh(typeof geo === 'string' ? GEO[geo] : geo, typeof color === 'object' ? color : toon(color));
+    s = s == null ? [1, 1, 1] : typeof s === 'number' ? [s, s, s] : s;
+    m.position.set(p[0], p[1], p[2]);
+    m.scale.set(s[0], s[1], s[2]);
+    if (r) m.rotation.set(r[0], r[1], r[2]);
+    if (line !== false) {
+      const T = typeof line === 'number' ? line : 0.035;
+      const o = new THREE.Mesh(m.geometry, OUTLINE);
+      o.scale.set(1 + T / Math.abs(s[0]), 1 + T / Math.abs(s[1]), 1 + T / Math.abs(s[2]));
+      m.add(o);
     }
+    g.add(m);
+    return m;
+  }
+  function eye(g, x, y, z, r, nx) {
+    nx = nx || 0;
+    part(g, 's', INK, [x, y, z], r, null, false);
+    part(g, 's', 0xffffff, [x + r * (0.3 + nx * 0.5), y + r * 0.35, z + r * (nx ? 0.3 : 0.7)], r * 0.35, null, false);
+  }
+  function grin(g, x, y, z, r) { part(g, 'arc', INK, [x, y, z], r, [0, 0, Math.PI], false); }
+
+  function extruded(shape, depth, bevel) {
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 16 });
+    geo.center();
+    return geo;
+  }
+  const STAR_GEO = (() => {
+    const sh = new THREE.Shape();
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 ? 0.22 : 0.5, a = Math.PI / 2 + i * Math.PI / 5;
+      if (i) sh.lineTo(Math.cos(a) * r, Math.sin(a) * r); else sh.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    return extruded(sh, 0.16, 0.05);
+  })();
+  const HEART_GEO = (() => {
+    const k = 0.011, sh = new THREE.Shape();
+    sh.moveTo(0, -38 * k);
+    sh.bezierCurveTo(-60 * k, 0, -30 * k, 48 * k, 0, 18 * k);
+    sh.bezierCurveTo(30 * k, 48 * k, 60 * k, 0, 0, -38 * k);
+    return extruded(sh, 0.18, 0.06);
+  })();
+  const GHOST_GEO = new THREE.LatheGeometry([
+    [0, 0.08], [0.42, 0.08], [0.42, 0.2], [0.41, 0.42], [0.39, 0.64], [0.33, 0.84], [0.2, 0.98], [0, 1.03]
+  ].map(p => new THREE.Vector2(p[0], p[1])), 32);
+
+  /* ============================================================= characters */
+  /* Each friend is built standing on its own spot (y = 0), facing the camera
+     (+z) — except the fish and the car, which travel sideways (+x). About one
+     unit tall. `h` is how high it floats when first added; `w` sizes its
+     shadow. */
+  const PI = Math.PI;
+  const CHARS = {
+    ball: { h: 0, w: 1, make(g) {
+      part(g, 's', 0xff5a5f, [0, 0.5, 0], 0.5);
+      part(g, 't', 0xffd23f, [0, 0.5, 0], 0.5, null, false);
+      part(g, 't', 0xffd23f, [0, 0.5, 0], 0.5, [0, PI / 2, 0], false);
+    } },
+    cat: { h: 0, w: 0.9, make(g) {
+      const c = 0xf6a04d;
+      part(g, 's', c, [0, 0.36, 0], [0.36, 0.34, 0.32]);
+      part(g, 's', c, [-0.16, 0.06, 0.18], 0.1); part(g, 's', c, [0.16, 0.06, 0.18], 0.1);
+      part(g, 'c', c, [0, 0.52, -0.36], [0.05, 0.5, 0.05], [-0.6, 0, 0]);
+      part(g, 's', c, [0, 0.86, 0.05], 0.32);
+      for (const sx of [-1, 1]) {
+        part(g, 'k', c, [sx * 0.19, 1.15, 0.04], [0.11, 0.24, 0.11], [0, 0, -sx * 0.35]);
+        part(g, 'k', 0xff7ac6, [sx * 0.185, 1.13, 0.1], [0.06, 0.13, 0.03], [0, 0, -sx * 0.35], false);
+        for (const dy of [0, -0.05]) part(g, 'c', INK, [sx * 0.29, 0.83 + dy, 0.27], [0.008, 0.26, 0.008], [0, 0, PI / 2 + sx * dy * 3], false);
+      }
+      eye(g, -0.11, 0.92, 0.33, 0.05); eye(g, 0.11, 0.92, 0.33, 0.05);
+      part(g, 's', 0xff7ac6, [0, 0.84, 0.37], 0.04, null, false);
+      grin(g, 0, 0.8, 0.36, 0.05);
+    } },
+    dog: { h: 0, w: 0.9, make(g) {
+      const c = 0xc8925f, e = 0x7a5233;
+      part(g, 's', c, [0, 0.36, -0.02], [0.38, 0.34, 0.42]);
+      part(g, 's', c, [-0.17, 0.06, 0.22], 0.1); part(g, 's', c, [0.17, 0.06, 0.22], 0.1);
+      part(g, 'c', c, [0, 0.58, -0.42], [0.05, 0.35, 0.05], [-0.9, 0, 0]);
+      part(g, 's', c, [0, 0.9, 0.1], 0.32);
+      part(g, 's', 0xf3dcc0, [0, 0.81, 0.38], [0.17, 0.13, 0.15]);
+      part(g, 's', INK, [0, 0.88, 0.52], 0.055, null, false);
+      part(g, 's', e, [-0.32, 0.88, 0.08], [0.09, 0.2, 0.07], [0, 0, -0.35]);
+      part(g, 's', e, [0.32, 0.88, 0.08], [0.09, 0.2, 0.07], [0, 0, 0.35]);
+      eye(g, -0.12, 0.99, 0.36, 0.05); eye(g, 0.12, 0.99, 0.36, 0.05);
+      part(g, 's', 0xff7ac6, [0, 0.7, 0.44], [0.06, 0.08, 0.03]);
+    } },
+    bird: { h: 1.4, w: 0.8, make(g) {
+      const c = 0x4dabf7, d = 0x1c7ed6;
+      part(g, 's', c, [0, 0.42, 0], 0.36);
+      part(g, 's', 0xd0ebff, [0, 0.34, 0.24], [0.22, 0.2, 0.12], null, false);
+      part(g, 's', d, [-0.36, 0.44, -0.02], [0.07, 0.2, 0.25], [0, 0, 0.5]);
+      part(g, 's', d, [0.36, 0.44, -0.02], [0.07, 0.2, 0.25], [0, 0, -0.5]);
+      part(g, 's', d, [0, 0.46, -0.4], [0.12, 0.04, 0.2], [0.4, 0, 0]);
+      part(g, 'k', 0xff9f1c, [0, 0.44, 0.42], [0.08, 0.2, 0.08], [PI / 2, 0, 0]);
+      part(g, 'k', d, [0.02, 0.82, 0], [0.05, 0.16, 0.05], [0, 0, -0.3]);
+      eye(g, -0.13, 0.56, 0.3, 0.05); eye(g, 0.13, 0.56, 0.3, 0.05);
+      part(g, 's', 0xff9f1c, [-0.1, 0.05, 0.05], 0.05, null, false); part(g, 's', 0xff9f1c, [0.1, 0.05, 0.05], 0.05, null, false);
+    } },
+    fish: { h: 0.8, w: 1.1, make(g) {
+      const c = 0xffb84d, d = 0xff9f1c;
+      part(g, 's', c, [0, 0.4, 0], [0.5, 0.34, 0.24]);
+      part(g, 'k', d, [-0.6, 0.4, 0], [0.28, 0.32, 0.08], [0, 0, -PI / 2]);
+      part(g, 'k', d, [-0.02, 0.76, 0], [0.22, 0.2, 0.05], [0, 0, 0.5]);
+      part(g, 's', d, [-0.08, 0.4, 0], [0.06, 0.28, 0.245], null, false);
+      eye(g, 0.3, 0.5, 0.19, 0.055); eye(g, 0.3, 0.5, -0.19, 0.055, -1);
+      part(g, 's', INK, [0.49, 0.36, 0], 0.035, null, false);
+    } },
+    frog: { h: 0, w: 1, make(g) {
+      const c = 0x69db7c;
+      part(g, 's', c, [0, 0.34, 0], [0.48, 0.34, 0.42]);
+      for (const sx of [-1, 1]) {
+        part(g, 's', c, [sx * 0.2, 0.68, 0.12], 0.15);
+        part(g, 's', 0xffffff, [sx * 0.2, 0.71, 0.2], 0.1, null, false);
+        part(g, 's', INK, [sx * 0.2, 0.72, 0.29], 0.05, null, false);
+        part(g, 's', 0xff7ac6, [sx * 0.28, 0.42, 0.33], 0.06, null, false);
+        part(g, 's', c, [sx * 0.26, 0.04, 0.26], [0.14, 0.06, 0.12]);
+      }
+      grin(g, 0, 0.5, 0.405, 0.18);
+    } },
+    car: { h: 0, w: 1.4, make(g) {
+      const c = 0xff5a5f;
+      part(g, 'b', c, [0, 0.33, 0], [1.2, 0.32, 0.62]);
+      part(g, 'b', c, [-0.08, 0.62, 0], [0.62, 0.3, 0.56]);
+      part(g, 'b', 0xbfe6ff, [-0.08, 0.64, 0], [0.5, 0.2, 0.58], null, false);
+      part(g, 'b', 0xbfe6ff, [-0.08, 0.64, 0], [0.66, 0.2, 0.46], null, false);
+      for (const x of [-0.38, 0.38]) for (const z of [-0.31, 0.31]) {
+        part(g, 'c', 0x3d3550, [x, 0.18, z], [0.18, 0.14, 0.18], [PI / 2, 0, 0]);
+        part(g, 'c', 0xc9c4d4, [x, 0.18, z], [0.08, 0.15, 0.08], [PI / 2, 0, 0], false);
+      }
+      part(g, 's', glow(0xffd23f), [0.6, 0.38, 0.2], 0.06, null, false);
+      part(g, 's', glow(0xffd23f), [0.6, 0.38, -0.2], 0.06, null, false);
+    } },
+    rocket: { h: 0, w: 0.8, make(g) {
+      for (let i = 0; i < 3; i++) {
+        const a = i * PI * 2 / 3 + PI / 3;
+        part(g, 'b', 0xff5a5f, [Math.sin(a) * 0.26, 0.17, Math.cos(a) * 0.26], [0.06, 0.32, 0.24], [0, a, 0]);
+      }
+      part(g, 'k', glow(0xffd23f), [0, 0.14, 0], [0.13, 0.26, 0.13], [PI, 0, 0], false);
+      part(g, 'c', 0xf1f3f5, [0, 0.6, 0], [0.24, 0.7, 0.24]);
+      part(g, 'k', 0xff5a5f, [0, 1.13, 0], [0.24, 0.36, 0.24]);
+      part(g, 's', 0x4dabf7, [0, 0.72, 0.22], [0.11, 0.11, 0.05]);
+      part(g, 't', 0x9aa3ad, [0, 0.72, 0.235], 0.11, null, false);
+    } },
+    tree: { h: 0, w: 1.1, make(g) {
+      const c = 0x51cf66;
+      part(g, 'c', 0xa0673b, [0, 0.3, 0], [0.11, 0.6, 0.11]);
+      part(g, 's', c, [0, 0.95, 0], 0.36);
+      part(g, 's', c, [-0.28, 0.74, 0.04], 0.28); part(g, 's', c, [0.28, 0.74, 0.04], 0.28);
+      part(g, 's', c, [0, 0.76, 0.22], 0.27);
+      for (const p of [[0.15, 1.12, 0.29], [-0.32, 0.86, 0.22], [0.36, 0.7, 0.2], [0.05, 0.7, 0.48]]) part(g, 's', 0xff5a5f, p, 0.05, null, false);
+    } },
+    flower: { h: 0, w: 0.6, make(g) {
+      part(g, 'c', 0x2f9e44, [0, 0.31, 0], [0.035, 0.62, 0.035]);
+      part(g, 's', 0x51cf66, [0.12, 0.3, 0], [0.14, 0.05, 0.08], [0, 0, 0.5]);
+      for (let i = 0; i < 6; i++) {
+        const a = i * PI / 3;
+        part(g, 's', 0xff7ac6, [Math.cos(a) * 0.19, 0.8 + Math.sin(a) * 0.19, -0.02], [0.12, 0.12, 0.05]);
+      }
+      part(g, 's', 0xffd23f, [0, 0.8, 0.02], [0.14, 0.14, 0.08]);
+      eye(g, -0.05, 0.83, 0.09, 0.025); eye(g, 0.05, 0.83, 0.09, 0.025);
+      grin(g, 0, 0.79, 0.1, 0.04);
+    } },
+    star: { h: 1.1, w: 0.9, make(g) {
+      part(g, STAR_GEO, 0xffd23f, [0, 0.55, 0], 1);
+      eye(g, -0.09, 0.58, 0.14, 0.04); eye(g, 0.09, 0.58, 0.14, 0.04);
+      grin(g, 0, 0.52, 0.145, 0.07);
+    } },
+    heart: { h: 1, w: 0.9, make(g) {
+      part(g, HEART_GEO, 0xff5a5f, [0, 0.5, 0], 1);
+      part(g, 's', 0xffffff, [-0.2, 0.62, 0.15], [0.07, 0.07, 0.02], null, false);
+    } },
+    sun: { h: 3, w: 1.2, make(g) {
+      for (let i = 0; i < 12; i++) {
+        const a = i * PI / 6;
+        part(g, 'k', 0xff9f1c, [Math.cos(a) * 0.58, 0.75 + Math.sin(a) * 0.58, 0], [0.08, 0.22, 0.06], [0, 0, a - PI / 2]);
+      }
+      part(g, 's', 0xffd23f, [0, 0.75, 0], 0.42);
+      eye(g, -0.13, 0.82, 0.38, 0.05); eye(g, 0.13, 0.82, 0.38, 0.05);
+      grin(g, 0, 0.72, 0.39, 0.12);
+    } },
+    cloud: { h: 2.6, w: 1.4, make(g) {
+      part(g, 's', 0xffffff, [-0.34, 0.32, 0], 0.25); part(g, 's', 0xffffff, [0.34, 0.32, 0], 0.25);
+      part(g, 's', 0xffffff, [0.16, 0.55, -0.04], 0.24);
+      part(g, 's', 0xffffff, [0, 0.42, 0], 0.34);
+      eye(g, -0.1, 0.46, 0.31, 0.04); eye(g, 0.1, 0.46, 0.31, 0.04);
+      grin(g, 0, 0.39, 0.33, 0.06);
+    } },
+    robot: { h: 0, w: 0.9, make(g) {
+      const d = 0x868e96;
+      part(g, 'b', d, [-0.13, 0.12, 0], [0.12, 0.24, 0.14]); part(g, 'b', d, [0.13, 0.12, 0], [0.12, 0.24, 0.14]);
+      part(g, 'b', 0xadb5bd, [0, 0.46, 0], [0.56, 0.44, 0.4]);
+      part(g, 'c', d, [-0.36, 0.45, 0], [0.06, 0.36, 0.06], [0, 0, -0.25]);
+      part(g, 'c', d, [0.36, 0.45, 0], [0.06, 0.36, 0.06], [0, 0, 0.25]);
+      part(g, 's', d, [-0.41, 0.26, 0], 0.07); part(g, 's', d, [0.41, 0.26, 0], 0.07);
+      part(g, 'b', 0xced4da, [0, 0.88, 0], [0.46, 0.36, 0.38]);
+      part(g, 'b', INK, [0, 0.9, 0.195], [0.36, 0.2, 0.02], null, false);
+      part(g, 's', glow(0x63e6be), [-0.08, 0.9, 0.21], 0.045, null, false);
+      part(g, 's', glow(0x63e6be), [0.08, 0.9, 0.21], 0.045, null, false);
+      part(g, 'c', INK, [0, 1.13, 0], [0.02, 0.16, 0.02], null, false);
+      part(g, 's', 0xff5a5f, [0, 1.23, 0], 0.06);
+      part(g, 's', 0xffd23f, [-0.08, 0.5, 0.205], 0.04, null, false);
+      part(g, 's', 0xff5a5f, [0.08, 0.5, 0.205], 0.04, null, false);
+    } },
+    ghost: { h: 0.3, w: 0.9, make(g) {
+      part(g, GHOST_GEO, 0xf8f9fa, [0, 0, 0], 1);
+      for (let i = 0; i < 8; i++) {
+        const a = i * PI / 4;
+        part(g, 's', 0xf8f9fa, [Math.cos(a) * 0.36, 0.09, Math.sin(a) * 0.36], 0.1, null, false);
+      }
+      part(g, 's', INK, [-0.13, 0.72, 0.37], [0.06, 0.09, 0.03], null, false);
+      part(g, 's', INK, [0.13, 0.72, 0.37], [0.06, 0.09, 0.03], null, false);
+      part(g, 's', INK, [0, 0.52, 0.4], [0.06, 0.08, 0.03], null, false);
+    } }
   };
   const CHAR_KEYS = Object.keys(CHARS);
 
-  function drawChar(ctx, it) {
-    const f = CHARS[it.k]; if (!f) return;
-    ctx.save();
-    ctx.translate(it.x, it.y); ctx.rotate(it.r || 0); ctx.scale((it.f ? -1 : 1) * it.s, it.s);
-    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    f(ctx);
-    ctx.restore();
+  /* The characters on stage. Frames share ids (a new frame copies the last),
+     so one model per id is posed for whichever frame is being drawn. */
+  const actors = new THREE.Group();
+  scene.add(actors);
+  const SHADOW_GEO = new THREE.CircleGeometry(0.5, 28);
+  const pool = new Map();
+
+  function actor(it) {
+    let a = pool.get(it.id);
+    if (a && a.k !== it.k) { actors.remove(a.root); pool.delete(it.id); a = null; }
+    if (!a) {
+      const root = new THREE.Group(), body = new THREE.Group();
+      CHARS[it.k].make(body);
+      body.userData.id = it.id;
+      const sh = new THREE.Mesh(SHADOW_GEO, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2, depthWrite: false }));
+      sh.rotation.x = -PI / 2; sh.position.y = 0.015;
+      root.add(body, sh);
+      actors.add(root);
+      a = { k: it.k, root: root, body: body, sh: sh };
+      pool.set(it.id, a);
+    }
+    return a;
+  }
+  function placeActor(it) {
+    const a = actor(it);
+    a.root.visible = true;
+    a.root.position.set(it.x, 0, it.z);
+    a.body.position.y = it.h;
+    a.body.rotation.y = it.r || 0;
+    a.body.scale.set(it.f ? -it.s : it.s, it.s, it.s);
+    const up = Math.min(it.h / 5, 0.7);
+    a.sh.scale.setScalar(it.s * CHARS[it.k].w * (1 - up * 0.5));
+    a.sh.material.opacity = 0.22 * (1 - up);
+    return a;
   }
 
-  /* ============================================================ backgrounds */
-  const BGS = {
-    paper(ctx) { ctx.fillStyle = '#fffdf6'; ctx.fillRect(0, 0, W, H); },
-    meadow(ctx) {
-      const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#7cc8ff'); g.addColorStop(0.7, '#d4efff'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-      const r = rng(11);
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      for (let i = 0; i < 4; i++) { const x = 80 + i * 240 + r() * 60, y = 60 + r() * 70; ctx.beginPath(); ctx.arc(x, y, 26, 0, 7); ctx.arc(x + 30, y - 10, 32, 0, 7); ctx.arc(x + 62, y, 24, 0, 7); ctx.fill(); }
-      ctx.fillStyle = '#8fd47a'; ctx.beginPath(); ctx.moveTo(0, 380); ctx.quadraticCurveTo(240, 300, 520, 370); ctx.quadraticCurveTo(760, 320, W, 360); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
-      ctx.fillStyle = '#69c45a'; ctx.beginPath(); ctx.moveTo(0, 430); ctx.quadraticCurveTo(300, 390, 620, 440); ctx.quadraticCurveTo(820, 410, W, 425); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
-      for (let i = 0; i < 26; i++) { const x = r() * W, y = 440 + r() * 90; ctx.fillStyle = ['#ffd23f', '#fff', '#ff7ac6'][i % 3]; ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill(); }
-    },
-    night(ctx) {
-      const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#141a4a'); g.addColorStop(1, '#3b3f8f'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-      const r = rng(5);
-      for (let i = 0; i < 120; i++) { ctx.fillStyle = 'rgba(255,255,255,' + (0.4 + r() * 0.6) + ')'; ctx.beginPath(); ctx.arc(r() * W, r() * 380, r() * 1.8 + 0.4, 0, 7); ctx.fill(); }
-      ctx.fillStyle = '#fff7d1'; ctx.beginPath(); ctx.arc(800, 100, 44, 0, 7); ctx.fill();
-      ctx.fillStyle = '#3b3f8f'; ctx.beginPath(); ctx.arc(822, 86, 40, 0, 7); ctx.fill();
-      ctx.fillStyle = '#1d2259'; ctx.beginPath(); ctx.moveTo(0, 440); ctx.quadraticCurveTo(320, 380, 640, 440); ctx.quadraticCurveTo(820, 470, W, 430); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
-    },
-    ocean(ctx) {
-      const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#4dc3ff'); g.addColorStop(1, '#0b5aa8'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = 'rgba(255,255,255,0.12)';
-      for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(120 + i * 180, 0); ctx.lineTo(180 + i * 180, 0); ctx.lineTo(80 + i * 200, H); ctx.lineTo(20 + i * 200, H); ctx.fill(); }
-      const r = rng(9);
-      for (let i = 0; i < 26; i++) { ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(r() * W, r() * 420, 3 + r() * 6, 0, 7); ctx.stroke(); }
-      ctx.fillStyle = '#f2d59b'; ctx.beginPath(); ctx.moveTo(0, 470); ctx.quadraticCurveTo(480, 430, W, 480); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
-      for (let i = 0; i < 7; i++) {
-        const x = 60 + i * 140 + r() * 40; ctx.strokeStyle = '#2f9e44'; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, 480);
-        ctx.bezierCurveTo(x - 20, 440, x + 20, 410, x, 370 + r() * 30); ctx.stroke();
-      }
-    },
-    space(ctx) {
-      const g = ctx.createRadialGradient(300, 200, 40, 480, 270, 620); g.addColorStop(0, '#3a1f6b'); g.addColorStop(1, '#0a0620'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-      const r = rng(3);
-      for (let i = 0; i < 160; i++) { ctx.fillStyle = 'rgba(255,255,255,' + (0.3 + r() * 0.7) + ')'; ctx.beginPath(); ctx.arc(r() * W, r() * H, r() * 1.9 + 0.3, 0, 7); ctx.fill(); }
-      ctx.fillStyle = '#ff9f6b'; ctx.beginPath(); ctx.arc(780, 400, 70, 0, 7); ctx.fill();
-      ctx.strokeStyle = '#ffd6a5'; ctx.lineWidth = 8; ctx.beginPath(); ctx.ellipse(780, 400, 120, 26, -0.3, 0, 7); ctx.stroke();
-      ctx.fillStyle = '#8e5cf7'; ctx.beginPath(); ctx.arc(140, 110, 30, 0, 7); ctx.fill();
-    },
-    city(ctx) {
-      const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#ff9a8b'); g.addColorStop(0.6, '#ffd3a5'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = '#ffe9a8'; ctx.beginPath(); ctx.arc(480, 300, 70, 0, 7); ctx.fill();
-      const r = rng(21);
-      let x = 0;
-      while (x < W) {
-        const w = 60 + r() * 70, h = 140 + r() * 200;
-        ctx.fillStyle = ['#5b4b8a', '#6c5ba7', '#4a3c78'][(x / 7 | 0) % 3]; ctx.fillRect(x, H - 60 - h, w, h);
-        ctx.fillStyle = 'rgba(255,233,168,0.85)';
-        for (let wy = H - 40 - h; wy < H - 80; wy += 26) for (let wx = x + 10; wx < x + w - 16; wx += 20) if (r() > 0.4) ctx.fillRect(wx, wy, 10, 14);
-        x += w + 6;
-      }
-      ctx.fillStyle = '#3d3550'; ctx.fillRect(0, H - 60, W, 60);
-      ctx.fillStyle = '#ffd23f'; for (let i = 0; i < 12; i++) ctx.fillRect(20 + i * 82, H - 32, 44, 6);
+  /* ================================================================= places */
+  function skyTex(top, bottom) {
+    const c = newCanvas(4, 256), x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, 256); g.addColorStop(0, top); g.addColorStop(1, bottom);
+    x.fillStyle = g; x.fillRect(0, 0, 4, 256);
+    return new THREE.CanvasTexture(c);
+  }
+  function ground(g, color) {
+    // floors face the sun full on, so start them a shade darker
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), toon(new THREE.Color(color).multiplyScalar(0.78).getHex()));
+    m.rotation.x = -PI / 2;
+    g.add(m);
+  }
+  function starsIn(g, n, r, upperOnly, seed) {
+    const rnd = rng(seed), pos = [];
+    for (let i = 0; i < n; i++) {
+      const a = rnd() * PI * 2, y = upperOnly ? 0.08 + rnd() * 0.92 : rnd() * 2 - 1, k = Math.sqrt(1 - y * y);
+      pos.push(Math.cos(a) * k * r, y * r, Math.sin(a) * k * r);
     }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, fog: false })));
+  }
+  /* Scenery goes all the way round, so the camera can spin anywhere: `n`
+     spots on a ring between radius r0 and r1. */
+  function around(r, n, r0, r1, fn) {
+    for (let i = 0; i < n; i++) {
+      const a = (i + r() * 0.6) / n * PI * 2, d = r0 + r() * (r1 - r0);
+      fn(Math.sin(a) * d, -Math.cos(a) * d, i);
+    }
+  }
+  function tree(g, x, z, s) { const t = new THREE.Group(); CHARS.tree.make(t); t.position.set(x, 0, z); t.scale.setScalar(s); g.add(t); }
+  function windowsTex(wall, seed) {
+    const c = newCanvas(64, 128), x = c.getContext('2d'), r = rng(seed);
+    x.fillStyle = wall; x.fillRect(0, 0, 64, 128);
+    for (let y = 8; y < 120; y += 16) for (let wx = 6; wx < 56; wx += 14) {
+      x.fillStyle = r() > 0.4 ? '#ffe9a8' : 'rgba(43,33,64,0.35)'; x.fillRect(wx, y, 8, 10);
+    }
+    return new THREE.CanvasTexture(c);
+  }
+
+  /* Each place: its sky (top, bottom), how far the haze starts and ends,
+     its light [sky light, sun, sky colour, ground colour], and its scenery. */
+  const PLACES = {
+    paper: { sky: ['#fffdf6', '#f3e6cc'], fog: [30, 110], light: [0.62, 0.55, 0xffffff, 0xc8b9a0], make(g) {
+      ground(g, 0xfbf1dc);
+    } },
+    meadow: { sky: ['#7cc8ff', '#d4efff'], fog: [30, 120], light: [0.6, 0.6, 0xffffff, 0x8fd47a], make(g, r) {
+      ground(g, 0x8fd47a);
+      around(r, 12, 50, 60, (x, z, i) => part(g, 's', i % 2 ? 0x7cc96a : 0x69c45a, [x, -2, z], [14, 6 + r() * 3, 14], null, false));
+      around(r, 12, 40, 50, (x, z) => {
+        const y = 14 + r() * 6;
+        part(g, 's', 0xffffff, [x, y, z], 2.6, null, false); part(g, 's', 0xffffff, [x + 3, y + 1, z], 3.2, null, false); part(g, 's', 0xffffff, [x + 6, y, z], 2.4, null, false);
+      });
+      around(r, 14, 14, 26, (x, z) => tree(g, x, z, 2.4 + r()));
+      for (let i = 0; i < 70; i++) part(g, 's', [0xffd23f, 0xffffff, 0xff7ac6][i % 3], [-14 + r() * 28, 0.05, -12 + r() * 22], 0.07, null, false);
+    } },
+    night: { sky: ['#141a4a', '#3b3f8f'], fog: [40, 130], light: [0.42, 0.35, 0x9fb0ff, 0x1d2259], make(g, r) {
+      ground(g, 0x1d2259);
+      starsIn(g, 500, 150, true, 5);
+      const moon = part(g, 's', new THREE.MeshBasicMaterial({ color: 0xfff7d1, fog: false }), [24, 24, -80], 5, null, false);
+      moon.renderOrder = -1;
+      around(r, 10, 50, 60, (x, z) => part(g, 's', 0x262c70, [x, -2, z], [16, 7 + r() * 3, 16], null, false));
+      around(r, 10, 16, 26, (x, z) => tree(g, x, z, 2.2 + r()));
+      for (let i = 0; i < 40; i++) part(g, 's', glow(0xfff3a0), [-12 + r() * 24, 0.3 + r() * 2.5, -10 + r() * 20], 0.05, null, false);
+    } },
+    ocean: { sky: ['#4dc3ff', '#0b5aa8'], fog: [14, 50], light: [0.62, 0.5, 0xbfe9ff, 0x0b5aa8], make(g, r) {
+      ground(g, 0xf2d59b);
+      around(r, 30, 13, 24, (x, z, i) => {
+        const n = 3 + (r() * 3 | 0), c = i % 2 ? 0x2f9e44 : 0x40c057;
+        let px = x, py = 0;
+        for (let j = 0; j < n; j++) {
+          const tilt = (j % 2 ? 0.25 : -0.25);
+          part(g, 'c', c, [px, py + 0.4, z], [0.13, 0.9, 0.13], [0, 0, tilt], false);
+          px -= Math.sin(tilt) * 0.85; py += Math.cos(tilt) * 0.85;
+        }
+      });
+      around(r, 16, 6, 20, (x, z, i) => part(g, 's', i % 2 ? 0x9aa3ad : 0x868e96, [x, 0, z], [0.4 + r() * 0.8, 0.3 + r() * 0.5, 0.4 + r() * 0.6], null, false));
+      around(r, 14, 6, 18, (x, z) => part(g, 'c', 0xff7ac6, [x, 0.3, z], [0.12, 0.6 + r() * 0.5, 0.12], [0, 0, r() - 0.5], false));
+      const bub = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45 });
+      for (let i = 0; i < 60; i++) part(g, 's', bub, [-16 + r() * 32, 1 + r() * 8, -16 + r() * 32], 0.06 + r() * 0.14, null, false);
+    } },
+    space: { sky: ['#0a0620', '#3a1f6b'], fog: null, light: [0.52, 0.7, 0xd0bfff, 0x3a1f6b], make(g, r) {
+      ground(g, 0xb8b3c7);
+      for (let i = 0; i < 36; i++) {
+        const s = 0.4 + r() * 1.4;
+        part(g, 's', 0x9c97ad, [-20 + r() * 40, 0, -20 + r() * 40], [s, 0.06, s], null, false);
+      }
+      starsIn(g, 700, 160, false, 3);
+      part(g, 's', 0xff9f6b, [34, 16, -100], 10, null, false);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(13, 19, 64), new THREE.MeshToonMaterial({ color: 0xffd6a5, gradientMap: GRAD, side: THREE.DoubleSide }));
+      ring.position.set(34, 16, -100); ring.rotation.set(-1.2, 0.3, 0); g.add(ring);
+      part(g, 's', 0x8e5cf7, [-30, 22, -80], 3.4, null, false);
+    } },
+    city: { sky: ['#ff9a8b', '#ffd3a5'], fog: [35, 120], light: [0.58, 0.6, 0xffd3a5, 0x5b4b8a], make(g, r) {
+      ground(g, 0x9a90b4);
+      part(g, 'b', 0x3d3550, [0, 0.01, 0.5], [300, 0.02, 4], null, false);
+      for (let x = -60; x <= 60; x += 3) part(g, 'b', 0xffd23f, [x, 0.03, 0.5], [1.2, 0.02, 0.15], null, false);
+      part(g, 's', new THREE.MeshBasicMaterial({ color: 0xffe9a8, fog: false }), [0, 8, -95], 8, null, false);
+      const walls = ['#5b4b8a', '#6c5ba7', '#4a3c78'].map((c, i) => new THREE.MeshToonMaterial({ map: windowsTex(c, 21 + i), gradientMap: GRAD }));
+      // a street: buildings on both sides, so turning round still looks like town
+      for (const row of [[-12, 3, 5, 10], [-26, 4, 9, 18], [13, 3, 5, 10], [27, 4, 9, 18]]) {
+        let x = -80;
+        while (x < 80) {
+          const w = row[1] + r() * 2.5, h = row[2] + r() * row[3];
+          part(g, 'b', walls[(r() * 3) | 0], [x + w / 2, h / 2, row[0] + Math.sign(row[0]) * r() * 3], [w, h, 3], null, false);
+          x += w + 0.5;
+        }
+      }
+    } }
   };
-  const BG_KEYS = Object.keys(BGS);
-  const bgCache = {};
-  function bgCanvas(k) {
-    if (!bgCache[k]) { const c = newCanvas(W, H); (BGS[k] || BGS.paper)(c.getContext('2d')); bgCache[k] = c; }
-    return bgCache[k];
+  const BG_KEYS = Object.keys(PLACES);
+  const built = {};
+  function place(k) {
+    if (!built[k]) {
+      const def = PLACES[k] || PLACES.paper, g = new THREE.Group();
+      def.make(g, rng(k.length * 97 + 11));
+      scene.add(g);
+      built[k] = {
+        g: g, sky: skyTex(def.sky[0], def.sky[1]), light: def.light,
+        fog: def.fog ? new THREE.Fog(new THREE.Color(def.sky[1]).getHex(), def.fog[0], def.fog[1]) : null
+      };
+    }
+    return built[k];
+  }
+
+  /* ================================================================ cameras */
+  /* Every frame keeps its own view, so moving the camera between frames
+     animates it — pans and swoops, just like real stop-motion. */
+  const defaultCam = () => ({ a: 0, t: 0.3, d: 11 });
+  function aim(c) {
+    camera.position.set(Math.sin(c.a) * Math.cos(c.t) * c.d, 1 + Math.sin(c.t) * c.d, Math.cos(c.a) * Math.cos(c.t) * c.d);
+    camera.lookAt(0, 1, 0);
+    camera.updateMatrixWorld();
+  }
+
+  /** Set the whole world up as one frame shows it. */
+  function pose(fr, bg, withBg) {
+    for (const a of pool.values()) a.root.visible = false;
+    for (const it of fr.items) placeActor(it);
+    const p = place(bg);
+    for (const k in built) built[k].g.visible = withBg && k === bg;
+    scene.background = withBg ? p.sky : null;
+    scene.fog = withBg ? p.fog : null;
+    hemi.intensity = p.light[0]; sun.intensity = p.light[1];
+    hemi.color.setHex(p.light[2]); hemi.groundColor.setHex(p.light[3]);
+    aim(fr.cam);
+    actors.updateMatrixWorld(true);
+  }
+  function draw3D(fr, bg, withBg) {
+    pose(fr, bg, withBg);
+    gl.setClearColor(0x000000, 0);
+    gl.render(scene, camera);
+    return gl.domElement;
+  }
+
+  /* Picker pictures of one friend on its own. */
+  const soloScene = new THREE.Scene();
+  soloScene.add(new THREE.HemisphereLight(0xffffff, 0xc8b9a0, 0.62));
+  const soloSun = new THREE.DirectionalLight(0xffffff, 0.55); soloSun.position.set(5, 10, 7); soloScene.add(soloSun);
+  const soloCam = new THREE.PerspectiveCamera(30, W / H, 0.1, 50);
+  const box3 = new THREE.Box3(), v3 = new THREE.Vector3(), size3 = new THREE.Vector3();
+  function charPicture(k, ctx, px) {
+    const g = new THREE.Group();
+    CHARS[k].make(g);
+    g.rotation.y = (k === 'car' || k === 'fish') ? -0.5 : 0.3;
+    soloScene.add(g);
+    g.updateMatrixWorld(true);
+    box3.setFromObject(g); box3.getCenter(v3); box3.getSize(size3);
+    const m = Math.max(size3.x, size3.y, size3.z * 0.8) * 1.2;
+    const dist = m / (2 * Math.tan(15 * PI / 180)) + size3.z / 2;
+    soloCam.position.set(v3.x, v3.y + dist * 0.22, v3.z + dist);
+    soloCam.lookAt(v3);
+    gl.setClearColor(0x000000, 0);
+    gl.render(soloScene, soloCam);
+    ctx.drawImage(gl.domElement, (W - H) / 2, 0, H, H, 0, 0, px, px);
+    soloScene.remove(g);
   }
 
   /* ================================================================== movie */
@@ -525,20 +785,20 @@
 
   function makeFrame(src) {
     const cv = newCanvas(W, H);
-    const fr = { cv: cv, ctx: cv.getContext('2d'), ink: false, items: [] };
+    const fr = { cv: cv, ctx: cv.getContext('2d'), ink: false, items: [], cam: defaultCam() };
     if (src) {
       if (src.ink) { fr.ctx.drawImage(src.cv, 0, 0); fr.ink = true; }
       fr.items = src.items.map(it => Object.assign({}, it));
+      fr.cam = Object.assign({}, src.cam);
     }
     return fr;
   }
   const frame = () => movie.frames[cur];
 
-  /** One frame of the movie, on its own: drawing, then characters on top. */
+  /** One frame of the movie, on its own: the 3D picture, then the drawing on top. */
   function paintFrame(ctx, fr, withBg) {
-    if (withBg) ctx.drawImage(bgCanvas(movie.bg), 0, 0);
+    ctx.drawImage(draw3D(fr, movie.bg, withBg), 0, 0, W, H);
     if (fr.ink) ctx.drawImage(fr.cv, 0, 0);
-    for (const it of fr.items) drawChar(ctx, it);
   }
 
   /* ================================================================= render */
@@ -552,36 +812,45 @@
 
   function selItem() { const fr = frame(); return sel == null ? null : fr.items.find(i => i.id === sel) || null; }
 
-  /* The three buttons round a selected character, in stage units. */
+  /* Where a character sits on screen, and the four buttons at its corners. */
   function handles(it) {
-    const half = 52 * it.s, c = Math.cos(it.r || 0), s = Math.sin(it.r || 0);
-    const at = (lx, ly) => ({ x: it.x + lx * c - ly * s, y: it.y + lx * s + ly * c });
-    return { turn: at(half, -half), del: at(-half, -half), flip: at(-half, half), box: half };
+    pose(frame(), movie.bg, true);
+    const a = pool.get(it.id);
+    box3.setFromObject(a.body);
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      v3.set(i & 1 ? box3.max.x : box3.min.x, i & 2 ? box3.max.y : box3.min.y, i & 4 ? box3.max.z : box3.min.z).project(camera);
+      const sx = (v3.x + 1) / 2 * W, sy = (1 - v3.y) / 2 * H;
+      x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+    }
+    const pad = 6 * W / stage.clientWidth;
+    x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
+    return { turn: { x: x1, y: y0 }, del: { x: x0, y: y0 }, flip: { x: x0, y: y1 }, lift: { x: x1, y: y1 },
+      x0: x0, y0: y0, x1: x1, y1: y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
   }
 
   function render() {
     dirty = false;
     sctx.clearRect(0, 0, W, H);
     if (playing) { paintFrame(sctx, movie.frames[playIdx], true); return; }
-    sctx.drawImage(bgCanvas(movie.bg), 0, 0);
+    paintFrame(sctx, frame(), true);
     if (onion && cur > 0) {
       onionCtx.clearRect(0, 0, W, H);
       paintFrame(onionCtx, movie.frames[cur - 1], false);
       sctx.globalAlpha = 0.28; sctx.drawImage(onionCv, 0, 0); sctx.globalAlpha = 1;
     }
-    paintFrame(sctx, frame(), false);
 
     const it = tool === 'move' ? selItem() : null;
     if (it) {
       const h = handles(it), r = handleR();
       sctx.save();
-      sctx.translate(it.x, it.y); sctx.rotate(it.r || 0);
       sctx.setLineDash([10, 8]); sctx.lineWidth = 3 * W / stage.clientWidth; sctx.strokeStyle = '#3a86ff';
-      sctx.strokeRect(-h.box, -h.box, h.box * 2, h.box * 2);
+      sctx.strokeRect(h.x0, h.y0, h.x1 - h.x0, h.y1 - h.y0);
       sctx.restore();
       button(h.turn, r, '#3a86ff', 'turn');
       button(h.del, r, '#ff5a5f', 'del');
       button(h.flip, r, '#2fb5a8', 'flip');
+      button(h.lift, r, '#8e5cf7', 'lift');
     }
   }
 
@@ -594,6 +863,7 @@
     sctx.beginPath();
     if (kind === 'del') { sctx.moveTo(-8, -8); sctx.lineTo(8, 8); sctx.moveTo(8, -8); sctx.lineTo(-8, 8); }
     else if (kind === 'turn') { sctx.arc(0, 0, 10, -2.6, 1.6); sctx.moveTo(-1, 10); sctx.lineTo(4, 5); sctx.moveTo(-1, 10); sctx.lineTo(4, 15); }
+    else if (kind === 'lift') { sctx.moveTo(0, -12); sctx.lineTo(0, 12); sctx.moveTo(0, -12); sctx.lineTo(-6, -6); sctx.moveTo(0, -12); sctx.lineTo(6, -6); sctx.moveTo(0, 12); sctx.lineTo(-6, 6); sctx.moveTo(0, 12); sctx.lineTo(6, 6); }
     else { sctx.moveTo(-12, 0); sctx.lineTo(12, 0); sctx.moveTo(-12, 0); sctx.lineTo(-6, -6); sctx.moveTo(-12, 0); sctx.lineTo(-6, 6); sctx.moveTo(12, 0); sctx.lineTo(6, -6); sctx.moveTo(12, 0); sctx.lineTo(6, 6); }
     sctx.stroke();
     sctx.restore();
@@ -693,7 +963,7 @@
     const fr = frame();
     let img = null;
     if (fr.ink) { img = newCanvas(W, H); img.getContext('2d').drawImage(fr.cv, 0, 0); }
-    return { type: 'edit', at: cur, img: img, items: fr.items.map(i => Object.assign({}, i)) };
+    return { type: 'edit', at: cur, img: img, items: fr.items.map(i => Object.assign({}, i)), cam: Object.assign({}, fr.cam) };
   }
   function pushUndo(u) {
     undoStack.push(u || snap());
@@ -713,7 +983,7 @@
       const fr = movie.frames[u.at]; if (!fr) return;
       fr.ctx.clearRect(0, 0, W, H);
       if (u.img) fr.ctx.drawImage(u.img, 0, 0);
-      fr.ink = !!u.img; fr.items = u.items; cur = u.at;
+      fr.ink = !!u.img; fr.items = u.items; fr.cam = u.cam; cur = u.at;
       thumbDirty.add(u.at);
     }
     goTo(cur); scheduleSave();
@@ -721,6 +991,7 @@
 
   /* ================================================================== tools */
   let tool = 'move', size = 12, color = '#2b2140';
+  let seenCamHint = false;
 
   function setTool(t) {
     tool = t;
@@ -733,14 +1004,33 @@
     return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
   }
 
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hitV = new THREE.Vector3();
+  function castFrom(p) {
+    aim(frame().cam);
+    ndc.set(p.x / W * 2 - 1, 1 - p.y / H * 2);
+    ray.setFromCamera(ndc, camera);
+  }
+  /** The point on a flat floor `y` high that's under the finger. */
+  function floorAt(p, y) {
+    castFrom(p);
+    floor.constant = -y;
+    return ray.ray.intersectPlane(floor, hitV) ? { x: hitV.x, z: hitV.z } : null;
+  }
+
   function hitItem(p) {
-    const items = frame().items;
-    for (let i = items.length - 1; i >= 0; i--) {
-      const it = items[i];
-      const dx = p.x - it.x, dy = p.y - it.y, c = Math.cos(-(it.r || 0)), s = Math.sin(-(it.r || 0));
-      const lx = (dx * c - dy * s) / it.s, ly = (dx * s + dy * c) / it.s;
-      if (Math.abs(lx) < 52 && Math.abs(ly) < 52) return it;
+    const fr = frame();
+    pose(fr, movie.bg, true);
+    castFrom(p);
+    const hits = ray.intersectObjects(fr.items.map(it => pool.get(it.id).body), true);
+    for (const h of hits) {
+      let o = h.object;
+      while (o && o.userData.id == null) o = o.parent;
+      if (o) return fr.items.find(i => i.id === o.userData.id) || null;
     }
+    // Small or far-away friends: anywhere inside the dashed box will do.
+    const it = selItem();
+    if (it) { const b = handles(it); if (p.x > b.x0 && p.x < b.x1 && p.y > b.y0 && p.y < b.y1) return it; }
     return null;
   }
 
@@ -750,6 +1040,11 @@
     if (playing) { stopPlay(); return; }
     stage.setPointerCapture(e.pointerId);
     const p = toStage(e);
+    if (tool === 'camera') {
+      pushUndo();
+      drag = { kind: 'cam', x0: p.x, y0: p.y, c0: Object.assign({}, frame().cam) };
+      return;
+    }
     if (tool === 'move') {
       const it = selItem();
       if (it) {
@@ -761,8 +1056,15 @@
         if (near(h.flip)) { pushUndo(); it.f = !it.f; touched(); return; }
         if (near(h.turn)) {
           pushUndo();
-          drag = { kind: 'turn', it: it, a0: Math.atan2(p.y - it.y, p.x - it.x), r0: it.r || 0,
-            d0: Math.hypot(p.x - it.x, p.y - it.y), s0: it.s };
+          drag = { kind: 'turn', it: it, cx: h.cx, cy: h.cy, a0: Math.atan2(p.y - h.cy, p.x - h.cx), r0: it.r || 0,
+            d0: Math.hypot(p.x - h.cx, p.y - h.cy), s0: it.s };
+          return;
+        }
+        if (near(h.lift)) {
+          pushUndo();
+          // how far one pixel of finger is, out where the character stands
+          const dist = camera.position.distanceTo(v3.set(it.x, it.h, it.z));
+          drag = { kind: 'lift', it: it, y0: p.y, h0: it.h, k: 2 * dist * Math.tan(camera.fov * PI / 360) / H };
           return;
         }
       }
@@ -770,9 +1072,8 @@
       if (hit) {
         pushUndo();
         sel = hit.id;
-        // to the front, so what you grab is what you see on top
-        const items = frame().items; items.splice(items.indexOf(hit), 1); items.push(hit);
-        drag = { kind: 'move', it: hit, ox: p.x - hit.x, oy: p.y - hit.y };
+        const f = floorAt(p, hit.h);
+        drag = { kind: 'move', it: hit, ox: f ? hit.x - f.x : 0, oz: f ? hit.z - f.z : 0 };
         touched();
       } else { sel = null; dirty = true; }
       return;
@@ -794,13 +1095,24 @@
     if (!drag) return;
     const p = toStage(e);
     if (drag.kind === 'move') {
-      drag.it.x = Math.max(0, Math.min(W, p.x - drag.ox));
-      drag.it.y = Math.max(0, Math.min(H, p.y - drag.oy));
-      touched();
+      const f = floorAt(p, drag.it.h);
+      if (f) {
+        drag.it.x = clamp(f.x + drag.ox, -14, 14);
+        drag.it.z = clamp(f.z + drag.oz, -12, 7);
+        touched();
+      }
     } else if (drag.kind === 'turn') {
       const it = drag.it;
-      it.r = drag.r0 + Math.atan2(p.y - it.y, p.x - it.x) - drag.a0;
-      it.s = Math.max(0.3, Math.min(4, drag.s0 * Math.hypot(p.x - it.x, p.y - it.y) / Math.max(drag.d0, 1)));
+      it.r = drag.r0 + Math.atan2(p.y - drag.cy, p.x - drag.cx) - drag.a0;
+      it.s = clamp(drag.s0 * Math.hypot(p.x - drag.cx, p.y - drag.cy) / Math.max(drag.d0, 1), 0.3, 4);
+      touched();
+    } else if (drag.kind === 'lift') {
+      drag.it.h = clamp(drag.h0 + (drag.y0 - p.y) * drag.k, 0, 8);
+      touched();
+    } else if (drag.kind === 'cam') {
+      const c = frame().cam;
+      c.a = drag.c0.a - (p.x - drag.x0) * 0.008;
+      c.t = clamp(drag.c0.t + (p.y - drag.y0) * 0.005, 0.02, 1.35);
       touched();
     } else if (drag.kind === 'draw') {
       const fr = frame(), x = fr.ctx;
@@ -833,8 +1145,22 @@
   stage.addEventListener('pointerup', endDrag);
   stage.addEventListener('pointercancel', endDrag);
 
+  // Mouse wheel / trackpad: zoom the camera in and out.
+  let wheelUndoAt = 0;
+  stage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (playing) return;
+    const now = performance.now();
+    if (now - wheelUndoAt > 600) pushUndo();
+    wheelUndoAt = now;
+    const c = frame().cam;
+    c.d = clamp(c.d * Math.exp(e.deltaY * 0.001), 5, 24);
+    touched();
+  }, { passive: false });
+
   /* Paint bucket: fills the region of the drawing that was clicked, bounded by
-     whatever has been drawn (characters don't stop it — they float on top). */
+     whatever has been drawn (characters don't stop it — they're in the world
+     behind the drawing). */
   function floodFill(fr, sx, sy, hex) {
     if (sx < 0 || sy < 0 || sx >= W || sy >= H) return;
     const img = fr.ctx.getImageData(0, 0, W, H), d = img.data;
@@ -888,7 +1214,8 @@
     pushUndo();
     const fr = frame();
     const n = fr.items.length;
-    const it = { id: nextId++, k: k, x: W / 2 + ((n * 37) % 160) - 80, y: H / 2 + ((n * 53) % 120) - 60, s: 1.2, r: 0, f: false };
+    // spiral outwards from the middle, so new friends don't land on each other
+    const it = { id: nextId++, k: k, x: Math.sin(n * 2.4) * 1.5 * Math.sqrt(n), z: Math.cos(n * 2.4) * 1.1 * Math.sqrt(n), h: CHARS[k].h, s: 1.2, r: 0, f: false };
     fr.items.push(it);
     sel = it.id;
     setTool('move');
@@ -902,16 +1229,18 @@
     for (const k of CHAR_KEYS) {
       const b = document.createElement('button');
       b.className = 'ts-pick'; b.setAttribute('aria-label', k); b.title = k;
-      const c = newCanvas(120, 120); const x = c.getContext('2d');
-      x.translate(60, 60); x.scale(1.05, 1.05); drawChar(x, { k: k, x: 0, y: 0, s: 1, r: 0 });
+      const c = newCanvas(120, 120);
+      charPicture(k, c.getContext('2d'), 120);
       b.appendChild(c);
       b.addEventListener('click', () => addChar(k));
       chars.appendChild(b);
     }
+    const empty = { items: [], cam: defaultCam() };
     for (const k of BG_KEYS) {
       const b = document.createElement('button');
       b.className = 'ts-pick' + (k === movie.bg ? ' on' : ''); b.dataset.bg = k; b.setAttribute('aria-label', k); b.title = k;
-      const c = newCanvas(192, 108); const x = c.getContext('2d'); x.scale(192 / W, 108 / H); x.drawImage(bgCanvas(k), 0, 0);
+      const c = newCanvas(192, 108);
+      c.getContext('2d').drawImage(draw3D(empty, k, true), 0, 0, 192, 108);
       b.appendChild(c);
       b.addEventListener('click', () => {
         movie.bg = k;
@@ -929,11 +1258,14 @@
   }
 
   function buildTools() {
-    document.querySelectorAll('.ts-tool').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+    document.querySelectorAll('.ts-tool').forEach(b => b.addEventListener('click', () => {
+      setTool(b.dataset.tool);
+      if (b.dataset.tool === 'camera' && !seenCamHint) { seenCamHint = true; hint('Drag to move the camera!'); }
+    }));
     document.querySelectorAll('.ts-size').forEach(b => b.addEventListener('click', () => {
       size = +b.dataset.size;
       document.querySelectorAll('.ts-size').forEach(o => o.classList.toggle('on', o === b));
-      if (tool === 'move' || tool === 'fill') setTool('pencil');
+      if (tool === 'move' || tool === 'fill' || tool === 'camera') setTool('pencil');
     }));
     const box = $('ts-colors');
     COLORS.forEach((c, i) => {
@@ -942,7 +1274,7 @@
       b.addEventListener('click', () => {
         color = c;
         box.querySelectorAll('.ts-color').forEach(o => o.classList.toggle('on', o === b));
-        if (tool === 'move' || tool === 'eraser') setTool('pencil');
+        if (tool === 'move' || tool === 'eraser' || tool === 'camera') setTool('pencil');
       });
       box.appendChild(b);
     });
@@ -1015,22 +1347,35 @@
   function saveNow() {
     try {
       const data = {
-        v: 1, bg: movie.bg, speed: movie.speed, nextId: nextId,
-        frames: movie.frames.map(fr => ({ d: fr.ink ? fr.cv.toDataURL('image/png') : null, items: fr.items }))
+        v: 2, bg: movie.bg, speed: movie.speed, nextId: nextId,
+        frames: movie.frames.map(fr => ({ d: fr.ink ? fr.cv.toDataURL('image/png') : null, items: fr.items, cam: fr.cam }))
       };
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch (e) { /* full or blocked: the movie still works, it just won't be kept */ }
   }
+  function read(key) {
+    try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; }
+  }
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  /* A friend from a flat (2D) movie: left/right stays left/right, and higher
+     up the old picture becomes further back. */
+  function from2D(it) {
+    return { id: it.id, k: it.k, x: (num(it.x, W / 2) / W - 0.5) * 12, z: num(it.y, H / 2) / H * 8 - 5, h: CHARS[it.k].h, s: num(it.s, 1), r: 0, f: !!it.f };
+  }
   function load() {
-    let data = null;
-    try { data = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { data = null; }
+    let data = read(SAVE_KEY), old = false;
+    if (!data) { data = read(OLD_KEY); old = !!data; }
     if (!data || !Array.isArray(data.frames) || !data.frames.length) return false;
-    movie.bg = BGS[data.bg] ? data.bg : 'meadow';
+    movie.bg = PLACES[data.bg] ? data.bg : 'meadow';
     movie.speed = SPEEDS[data.speed] ? data.speed : 1;
-    nextId = data.nextId || 1;
+    nextId = num(data.nextId, 1);
     movie.frames = data.frames.slice(0, MAX_FRAMES).map((f, i) => {
       const fr = makeFrame();
-      fr.items = (f.items || []).filter(it => CHARS[it.k]);
+      fr.items = (f.items || []).filter(it => it && CHARS[it.k]).map(it => old ? from2D(it) : {
+        id: it.id, k: it.k, x: num(it.x, 0), z: num(it.z, 0), h: num(it.h, 0), s: num(it.s, 1), r: num(it.r, 0), f: !!it.f
+      });
+      const c = f.cam || {};
+      fr.cam = { a: num(c.a, 0), t: clamp(num(c.t, 0.3), 0.02, 1.35), d: clamp(num(c.d, 11), 5, 24) };
       for (const it of fr.items) if (it.id >= nextId) nextId = it.id + 1;
       if (f.d) {
         const img = new Image();
@@ -1042,22 +1387,20 @@
     return true;
   }
 
-  /* A first movie to press play on: a ball bouncing across the meadow, and a
-     cat watching it go. */
+  /* A first movie to press play on: a ball bouncing across the meadow, a cat
+     turning to watch it, a bird flying past, and the camera swaying along. */
   function demo() {
     movie.bg = 'meadow'; movie.speed = 1; movie.frames = [];
-    const cat = { id: nextId++, k: 'cat', x: 150, y: 420, s: 1.1, r: 0, f: false };
-    const ballId = nextId++;
+    const catId = nextId++, ballId = nextId++, birdId = nextId++;
     const N = 12;
     for (let i = 0; i < N; i++) {
       const fr = makeFrame();
       const t = i / N;
-      const x = 280 + t * 560;
-      const bounce = Math.abs(Math.sin(t * Math.PI * 3));
-      const y = 440 - bounce * 260;
-      const squash = bounce < 0.12 ? 0.85 : 1;
-      fr.items.push(Object.assign({}, cat, { r: (i % 4 < 2 ? -0.08 : 0.08) }));
-      fr.items.push({ id: ballId, k: 'ball', x: x, y: y + (squash < 1 ? 6 : 0), s: squash, r: t * 6, f: false });
+      const x = -3 + t * 7;
+      fr.cam = { a: Math.sin(t * PI * 2) * 0.35, t: 0.3, d: 11 };
+      fr.items.push({ id: catId, k: 'cat', x: -5, z: -1.2, h: 0, s: 1.1, r: Math.atan2(x + 5, 1.2), f: false });
+      fr.items.push({ id: ballId, k: 'ball', x: x, z: 0, h: Math.abs(Math.sin(t * PI * 3)) * 2.6, s: 0.9, r: t * 6, f: false });
+      fr.items.push({ id: birdId, k: 'bird', x: 6 - t * 12, z: -4, h: 3 + Math.sin(t * PI * 4) * 0.4, s: 0.9, r: -PI / 2, f: false });
       movie.frames.push(fr);
     }
   }

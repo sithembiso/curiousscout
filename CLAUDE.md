@@ -19,7 +19,7 @@ There is **no package.json, bundler, test runner, linter, or CI**. Everything is
 
 - `analytics.js` — the one shared local script in the repo, loaded by the landing page and every game. See **Analytics** below.
 
-The only external runtime dependencies in the entire repo are CDN `<script>`/`<link>` tags: the landing page loads Google Fonts (Orbitron, Press Start 2P), and `claudecraft/` plus `astronomia/` load three.js from cdnjs. Note the cdnjs path uses `r128`, **not** `0.128.0` — the latter 404s. Games are otherwise dependency-free — there is no local `node_modules` to install, and any that appears is stray and should not be committed (see `.gitignore`).
+The only external runtime dependencies in the entire repo are CDN `<script>`/`<link>` tags: the landing page loads Google Fonts (Orbitron, Press Start 2P), and `claudecraft/`, `astronomia/` and `toon studio/` load three.js from cdnjs. Note the cdnjs path uses `r128`, **not** `0.128.0` — the latter 404s. Games are otherwise dependency-free — there is no local `node_modules` to install, and any that appears is stray and should not be committed (see `.gitignore`).
 
 ## Running / verifying
 
