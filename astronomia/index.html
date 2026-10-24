@@ -1200,23 +1200,24 @@ const SURFACE = {
          monsoon coast at the Sahara's latitude is green, and why the desert
          reaches further from the equator in some places than others. */
       const t = clamp((deg + (arid(u, v) - 0.5) * 15) / 90, 0, 1);
+      // (muted, the way it looks from orbit, not a map's bright greens and yellows)
       let c = ramp([
-        [0.00, [ 38,  84,  44]],   // equator — rain forest
-        [0.15, [ 74, 104,  54]],
-        [0.24, [200, 170, 112]],   // ~22° — the desert belt
-        [0.31, [178, 158, 108]],
-        [0.40, [ 88, 110,  62]],   // ~36° — temperate
-        [0.52, [ 58,  88,  58]],   // ~47° — taiga
-        [0.68, [116, 124, 112]],   // ~61° — tundra
+        [0.00, [ 30,  62,  34]],   // equator — rain forest
+        [0.13, [ 58,  80,  44]],
+        [0.19, [158, 134,  96]],   // ~17–30° — the desert belt
+        [0.33, [150, 128,  94]],
+        [0.40, [ 84,  92,  58]],   // ~36° — temperate
+        [0.52, [ 46,  64,  44]],   // ~47° — taiga
+        [0.68, [108, 110, 100]],   // ~61° — tundra
         [0.79, [216, 226, 236]],   // ~71° — permanent snow
         [1.00, [240, 246, 252]]
       ], t);
       // Local variety on top, so no two patches at one latitude are identical.
-      c = mix(c, mix(c, [86, 104, 68], 0.5), (veg(u, v) - 0.5) * 0.9 + 0.5);
+      c = mix(c, mix(c, [76, 86, 60], 0.5), (veg(u, v) - 0.5) * 0.9 + 0.5);
 
       // Bare rock then snow on the high ground, wherever it is.
       if (high > 0) c = mix(c, [124, 116, 106], Math.min(high * 1.5, 1));
-      if (e > 0.82) c = mix(c, [244, 248, 252], clamp((e - 0.82) * 6, 0, 1));
+      if (e > 0.78) c = mix(c, [236, 240, 246], clamp((e - 0.78) * 6, 0, 1));
       return c;
     }, hf);
     iceCaps(ctx, W, H, rng, 0.10, [240, 246, 252]);
@@ -1784,10 +1785,11 @@ function puffTexture(size) {
 }
 
 /** Broken cloud deck with transparency, painted onto its own shell. */
-function cloudTexture(seed, W, H, opacity, tintCol, swirl) {
+function cloudTexture(seed, W, H, opacity, tintCol, swirl, cover) {
   const cv = newCanvas(W, H);
   const ctx = cv.getContext('2d');
-  const f = fbm(seed, 6, 3, 5);
+  // swirled weather gets finer detail, for crisp wisps rather than a smear
+  const f = swirl ? fbm(seed, 12, 6, 5) : fbm(seed, 6, 3, 5);
   const band = fbm(seed + 2, 3, 9, 3);
   // Weather on an Earth-like world: the cloud field is pushed round by two
   // slow noise fields, which curls it into storms and long sweeping fronts.
@@ -1808,7 +1810,7 @@ function cloudTexture(seed, W, H, opacity, tintCol, swirl) {
       }
       let n = f(uu, vv) * 0.75 + band(uu, vv) * 0.25;
       // swirled weather is also thicker: more sky covered, brighter white
-      let a = swirl ? clamp((n - 0.5) * 4.0, 0, 1) : clamp((n - 0.48) * 3.4, 0, 1);
+      let a = swirl ? clamp((n - 0.5 + (cover || 0)) * 5.0, 0, 1) : clamp((n - 0.48) * 3.4, 0, 1);
       a = Math.pow(a, 1.25) * opacity;
       d[i++] = tint[0]; d[i++] = tint[1]; d[i++] = tint[2];
       d[i++] = (a * 255) | 0;
@@ -2258,7 +2260,7 @@ const TYPES = {
   },
   sol_earth: {
     label: 'Earth', group: 'SOLAR SYSTEM', pname: 'Earth', mass: 1, rad: 1,
-    surf: 'earth', spin: 0.99727, tilt: 0.4091, atmo: SKY, clouds: 0.8, water: 0.295,
+    surf: 'earth', spin: 0.99727, tilt: 0.4091, atmo: SKY, clouds: 0.95, cloudCover: 0.03, water: 0.295,
     blurb: 'The only place anyone has ever lived. Seven-tenths water, tipped 23.4° on its axis — which is the entire reason we have seasons.'
   },
   sol_luna: {
@@ -3357,7 +3359,7 @@ function waterDelivered(a, b) {
   return clamp(Math.max(byMass, share * 0.05), 0, 1);
 }
 
-const WATER_LIQUID = new THREE.Color(0.025, 0.15, 0.46);   // deep ocean blue
+const WATER_LIQUID = new THREE.Color(0.015, 0.075, 0.26);  // deep navy ocean, as seen from orbit
 const WATER_ICE = new THREE.Color(0.84, 0.91, 0.97);
 
 /**
@@ -3391,7 +3393,7 @@ function setWater(b, w) {
   }
   if (!p.sea) {
     const sea = new THREE.Mesh(SPHERE, new THREE.MeshStandardMaterial({
-      color: WATER_LIQUID.clone(), roughness: 0.22, metalness: 0.04,
+      color: WATER_LIQUID.clone(), roughness: 0.42, metalness: 0.04,   // a soft sheen, not a hard spot
       // Shallow water lets a little of the seabed through, and it must not write
       // depth or it would hide the land standing out of it.
       transparent: true, opacity: 0.92, depthWrite: false
@@ -6940,7 +6942,7 @@ function buildWorld(b, def, grp) {
 
   if (def.clouds) {
     const ct = cachedTexture('cloud:' + b.type + ':' + (b.seed % 3), () => cloudTexture(hashStr(b.type + b.seed % 3), 512, 256, def.clouds, [255, 255, 255],
-      def.surf === 'terran' || def.surf === 'earth' || def.surf === 'ocean' ? 1 : 0));
+      def.surf === 'terran' || def.surf === 'earth' || def.surf === 'ocean' ? 1 : 0, def.cloudCover || 0));
     const cm = new THREE.MeshStandardMaterial({ map: ct, transparent: true, depthWrite: false, roughness: 1 });
     const cloud = new THREE.Mesh(SPHERE, cm);
     cloud.scale.setScalar(1.018);
@@ -12200,7 +12202,7 @@ function updateVisuals(realDt, simDt) {
         const hc = ramp(HEAT_RAMP, h);
         u.uColor.value.setRGB(def.atmo[0] / 255, def.atmo[1] / 255, def.atmo[2] / 255)
           .lerp(_tmpC.setRGB(hc[0] / 255, hc[1] / 255, hc[2] / 255), clamp(h * 1.3, 0, 1));
-        u.uStrength.value = 0.95 * air;
+        u.uStrength.value = 0.75 * air;
         u.uGlow.value = h * 1.4 * Math.max(air, 0.25);
       }
       if (p.cloud) {
