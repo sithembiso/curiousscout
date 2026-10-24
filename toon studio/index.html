@@ -219,6 +219,9 @@
     <button class="ts-tool" data-tool="split" aria-label="Cut friends in two" title="Cut friends in two">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12"/></svg>
     </button>
+    <button class="ts-tool" data-tool="moles" aria-label="Moles: pull friends into new shapes" title="Moles: pull friends into new shapes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21c1.5-4 4-6 10-6s8.5 2 10 6z"/><path d="M6 16c0-5 2.7-9 6-9s6 4 6 9"/><circle cx="10" cy="11" r="0.6" fill="currentColor"/><circle cx="14" cy="11" r="0.6" fill="currentColor"/><path d="M11 13.5h2"/></svg>
+    </button>
     <button class="ts-tool" data-tool="eraser" aria-label="Eraser" title="Eraser">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 21h13"/><path d="M5.5 14.5l9-9a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L12 18H8.5z"/><path d="M9 11l5 5"/></svg>
     </button>
@@ -625,14 +628,15 @@
         a.cutV = it.cut.map(() => ({ value: new THREE.Vector4() }));
         a.cutM = it.cut.map(c => ({ value: maskTex(c.poly) }));
         a.cutK = it.cut.map(c => ({ value: c.k }));
-        const made = new Map();
-        a.clip = (m) => {
-          let c = made.get(m);
-          if (!c) { c = cutMaterial(m, a); made.set(m, c); }
-          return c;
-        };
-        body.traverse(o => { if (o.isMesh && o.userData.outline) o.material = a.clip(OUTLINE); });
       }
+      a.uni = {
+        uBody: { value: new THREE.Matrix4() }, uBodyInv: { value: new THREE.Matrix4() },
+        uMoleP: { value: Array.from({ length: MAX_MOLES }, () => new THREE.Vector3()) },
+        uMoleD: { value: Array.from({ length: MAX_MOLES }, () => new THREE.Vector3()) },
+        uMoleN: { value: 0 }, uMoleR: { value: MOLE_REACH }
+      };
+      const line = outlineMaterial(a);
+      body.traverse(o => { if (o.isMesh && o.userData.outline) o.material = line; });
       for (const q of parts) q.m.material = partMaterial(q.m.material, a);
       pool.set(it.id, a);
     }
@@ -645,6 +649,7 @@
      the shape in those units, and the piece keeps what's inside it (k = 1)
      or outside (k = 0). */
   const MAX_CUTS = 4;
+  const MAX_MOLES = 12, MOLE_REACH = 0.45;
   function maskTex(poly) {
     const c = newCanvas(256, 256), x = c.getContext('2d');
     x.fillStyle = '#fff'; x.beginPath();
@@ -671,11 +676,11 @@
       return inside !== (c.k === 1);
     });
   }
-  function cutMaterial(m, a) {
-    const c = m.clone();
-    c.side = m === OUTLINE ? THREE.BackSide : THREE.DoubleSide;
-    c.onBeforeCompile = (sh) => addCuts(sh, a);
-    c.customProgramCacheKey = () => 'cut' + a.cuts.length;
+  const shaderKey = (a) => 'mole' + (a.cuts ? 'cut' + a.cuts.length : '');
+  function outlineMaterial(a) {
+    const c = OUTLINE.clone();
+    c.onBeforeCompile = (sh) => addShape(sh, a);
+    c.customProgramCacheKey = () => shaderKey(a);
     return c;
   }
   /* One piece of one friend. Its colour is set each time it's posed (the
@@ -687,10 +692,32 @@
     c.onBeforeCompile = (sh) => {
       if (c.map) sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>',
         'vec4 skinC = texture2D(map, vUv);\n  diffuseColor.rgb = mix(diffuseColor.rgb, skinC.rgb, skinC.a);');
-      if (a.cuts) addCuts(sh, a);
+      addShape(sh, a);
     };
-    c.customProgramCacheKey = () => (c.map ? 'skin' : '') + (a.cuts ? 'cut' + a.cuts.length : '');
+    c.customProgramCacheKey = () => (c.map ? 'skin' : '') + shaderKey(a);
     return c;
+  }
+  /* Moles reshape a friend: each one is a point on it (in the friend's own
+     space) pulled some way, dragging the surface near it along, less and
+     less further off. Cuts are tested on the friend's unbent shape, so a
+     cut edge stays where it was cut. */
+  function addShape(sh, a) {
+    Object.assign(sh.uniforms, a.uni);
+    sh.vertexShader = 'uniform mat4 uBody; uniform mat4 uBodyInv; uniform vec3 uMoleP[' + MAX_MOLES + ']; uniform vec3 uMoleD[' + MAX_MOLES + '];\n' +
+      'uniform int uMoleN; uniform float uMoleR;\n' + (a.cuts ? 'varying vec3 vCutW;\n' : '') +
+      sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n' +
+        '  vec4 shapeW = modelMatrix * vec4(transformed, 1.0);\n' + (a.cuts ? '  vCutW = shapeW.xyz;\n' : '') +
+        '  if (uMoleN > 0) {\n' +
+        '    vec3 bp = (uBodyInv * shapeW).xyz, pull = vec3(0.0);\n' +
+        '    for (int i = 0; i < ' + MAX_MOLES + '; i++) {\n' +
+        '      if (i >= uMoleN) break;\n' +
+        '      float q = length(bp - uMoleP[i]) / uMoleR;\n' +
+        '      pull += uMoleD[i] * exp(-2.0 * q * q);\n' +
+        '    }\n' +
+        '    mvPosition = viewMatrix * (uBody * vec4(bp + pull, 1.0));\n' +
+        '    gl_Position = projectionMatrix * mvPosition;\n' +
+        '  }');
+    if (a.cuts) addCuts(sh, a);
   }
   function addCuts(sh, a) {
     {
@@ -703,8 +730,6 @@
           '  float inside = (q.x < 0.0 || q.y < 0.0 || q.x > 1.0 || q.y > 1.0) ? 0.0 : step(0.5, texture2D(uCutM' + i + ', vec2(q.x, 1.0 - q.y)).r);\n' +
           '  if (inside != uCutK' + i + ') discard; }\n';
       });
-      sh.vertexShader = 'varying vec3 vCutW;\n' + sh.vertexShader.replace('#include <project_vertex>',
-        '#include <project_vertex>\n  vCutW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
       sh.fragmentShader = decl + sh.fragmentShader.replace('#include <clipping_planes_fragment>', test + '#include <clipping_planes_fragment>');
     }
   }
@@ -914,6 +939,11 @@
     actors.updateMatrixWorld(true);
     for (const it of fr.items) {
       const a = pool.get(it.id);
+      a.uni.uBody.value.copy(a.body.matrixWorld);
+      a.uni.uBodyInv.value.copy(a.body.matrixWorld).invert();
+      const mo = it.mo || [];
+      a.uni.uMoleN.value = mo.length;
+      mo.forEach((m, i) => { a.uni.uMoleP.value[i].fromArray(m.p); a.uni.uMoleD.value[i].fromArray(m.d); });
       if (!a.cuts) continue;
       // the cuts live in the friend's own space; the shader wants them in the world's
       cutMat.copy(a.body.matrixWorld).invert().transpose();
@@ -970,7 +1000,8 @@
   }
   const frame = () => movie.frames[cur];
   // (cuts are never changed in place — cutting makes new pieces — so they can be shared)
-  const copyItem = (it) => Object.assign({}, it, it.p ? { p: Object.assign({}, it.p) } : null);
+  const copyItem = (it) => Object.assign({}, it, it.p ? { p: Object.assign({}, it.p) } : null,
+    it.mo ? { mo: it.mo.map(m => ({ p: m.p.slice(), d: m.d.slice() })) } : null);
 
   /** One frame of the movie, on its own: the 3D picture, then the drawing on top. */
   function paintFrame(ctx, fr, withBg) {
@@ -1006,6 +1037,30 @@
       x0: x0, y0: y0, x1: x1, y1: y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
   }
 
+  /** Each mole of this frame, with where it sits on the stage. */
+  function moleSpots() {
+    const fr = frame(), out = [];
+    pose(fr, movie.bg, true);
+    for (const it of fr.items) {
+      if (!it.mo) continue;
+      const a = pool.get(it.id);
+      for (const m of it.mo) {
+        v3.set(m.p[0] + m.d[0], m.p[1] + m.d[1], m.p[2] + m.d[2]).applyMatrix4(a.body.matrixWorld).project(camera);
+        out.push({ it: it, m: m, x: (v3.x + 1) / 2 * W, y: (1 - v3.y) / 2 * H });
+      }
+    }
+    return out;
+  }
+  function drawMole(q, r) {
+    sctx.save();
+    sctx.translate(q.x, q.y); sctx.scale(r / 26, r / 26);
+    sctx.beginPath(); sctx.arc(0, 0, 17, 0, PI * 2);
+    sctx.fillStyle = '#7a5233'; sctx.fill(); sctx.lineWidth = 4; sctx.strokeStyle = '#fff'; sctx.stroke();
+    sctx.fillStyle = '#fff'; sctx.beginPath(); sctx.arc(-6, -4, 3, 0, PI * 2); sctx.arc(6, -4, 3, 0, PI * 2); sctx.fill();
+    sctx.fillStyle = '#ff7ac6'; sctx.beginPath(); sctx.ellipse(0, 5, 5, 3.5, 0, 0, PI * 2); sctx.fill();
+    sctx.restore();
+  }
+
   function render() {
     dirty = false;
     sctx.clearRect(0, 0, W, H);
@@ -1025,6 +1080,8 @@
       sctx.beginPath(); drag.path.forEach((q, i) => i ? sctx.lineTo(q.x, q.y) : sctx.moveTo(q.x, q.y)); sctx.stroke();
       sctx.restore();
     }
+
+    if (tool === 'moles') for (const q of moleSpots()) drawMole(q, handleR() * 0.8);
 
     const it = tool === 'move' ? selItem() : null;
     if (it) {
@@ -1190,7 +1247,7 @@
 
   /* ================================================================== tools */
   let tool = 'move', size = 12, color = '#2b2140';
-  let seenCamHint = false, seenPaintHint = false, seenCutHint = false, seenPenHint = false;
+  let seenCamHint = false, seenPaintHint = false, seenCutHint = false, seenPenHint = false, seenMoleHint = false, seenMoleDrag = false;
 
   function setTool(t) {
     tool = t;
@@ -1228,7 +1285,7 @@
       if (!o) continue;
       const it = fr.items.find(i => i.id === o.userData.id), a = pool.get(it.id);
       if (a.cuts && cutAway(a, h.point)) continue;
-      return { it: it, a: a, m: h.object.userData.outline ? h.object.parent : h.object, uv: h.uv ? h.uv.clone() : null };
+      return { it: it, a: a, m: h.object.userData.outline ? h.object.parent : h.object, uv: h.uv ? h.uv.clone() : null, point: h.point.clone() };
     }
     return null;
   }
@@ -1363,6 +1420,36 @@
     stage.setPointerCapture(e.pointerId);
     const p = toStage(e);
     if (tool === 'split') { drag = { kind: 'cut', path: [p] }; dirty = true; return; }
+    if (tool === 'moles') {
+      // grab a mole that's there, or dig a new one where the friend was tapped
+      const r = handleR();
+      let got = null, best = r;
+      for (const q of moleSpots()) { const d = Math.hypot(p.x - q.x, p.y - q.y); if (d < best) { best = d; got = q; } }
+      let it, m, fresh = false;
+      if (got) { it = got.it; m = got.m; }
+      else {
+        const h = firstHit(p);
+        if (!h) { hint('Tap a friend to give it a mole!'); return; }
+        it = h.it;
+        if ((it.mo || []).length >= MAX_MOLES) { hint('That friend has lots of moles already!'); return; }
+        pushUndo();
+        const lp = h.a.body.worldToLocal(hitV.copy(h.point));
+        m = { p: [lp.x, lp.y, lp.z], d: [0, 0, 0] };
+        it.mo = (it.mo || []).concat([m]);
+        fresh = true;
+        touched();
+      }
+      if (!fresh) pushUndo();
+      // how far a pixel of finger is, out where the mole is, in the friend's own space
+      pose(frame(), movie.bg, true);
+      const a = pool.get(it.id);
+      const at = new THREE.Vector3(m.p[0] + m.d[0], m.p[1] + m.d[1], m.p[2] + m.d[2]).applyMatrix4(a.body.matrixWorld);
+      const k = 2 * camera.position.distanceTo(at) * Math.tan(camera.fov * PI / 360) / H;
+      const R = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), Up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      drag = { kind: 'mole', it: it, m: m, fresh: fresh, moved: false, x0: p.x, y0: p.y, d0: m.d.slice(), k: k, R: R, Up: Up,
+        inv: new THREE.Matrix3().setFromMatrix4(a.body.matrixWorld).invert() };
+      return;
+    }
     if (tool === 'camera') {
       pushUndo();
       drag = { kind: 'cam', x0: p.x, y0: p.y, c0: Object.assign({}, frame().cam) };
@@ -1453,6 +1540,12 @@
     } else if (drag.kind === 'lift') {
       drag.it.h = clamp(drag.h0 + (drag.y0 - p.y) * drag.k, 0, 8);
       touched();
+    } else if (drag.kind === 'mole') {
+      const dx = p.x - drag.x0, dy = p.y - drag.y0;
+      if (Math.hypot(dx, dy) > 4) drag.moved = true;
+      const w = drag.R.clone().multiplyScalar(dx * drag.k).addScaledVector(drag.Up, -dy * drag.k).applyMatrix3(drag.inv);
+      drag.m.d = [drag.d0[0] + w.x, drag.d0[1] + w.y, drag.d0[2] + w.z];
+      touched();
     } else if (drag.kind === 'cut') {
       drag.path.push(p); dirty = true;
     } else if (drag.kind === 'cam') {
@@ -1485,6 +1578,12 @@
   const endDrag = () => {
     if (!drag) return;
     if (drag.kind === 'skin') { drag = null; allThumbs(); scheduleSave(); return; }
+    if (drag.kind === 'mole') {
+      // a tap on a mole sends it home, and that bit springs back
+      if (!drag.moved && !drag.fresh) { const it = drag.it, m = drag.m; it.mo = it.mo.filter(o => o !== m); if (!it.mo.length) delete it.mo; touched(); }
+      else if (drag.fresh && !drag.moved && !seenMoleDrag) { seenMoleDrag = true; hint('Now drag the mole to pull!'); }
+      drag = null; scheduleSave(); return;
+    }
     if (drag.kind === 'cut') {
       const d = drag;
       drag = null; dirty = true;
@@ -1627,12 +1726,13 @@
       if (b.dataset.tool === 'camera' && !seenCamHint) { seenCamHint = true; hint('Drag to move the camera!'); }
       if (b.dataset.tool === 'fill' && !seenPaintHint) { seenPaintHint = true; hint('Tap a friend to paint it!'); }
       if (b.dataset.tool === 'pencil' && !seenPenHint) { seenPenHint = true; hint('Draw on a friend to paint on it!'); }
+      if (b.dataset.tool === 'moles' && !seenMoleHint) { seenMoleHint = true; hint('Tap a friend for a mole, then drag it!'); }
       if (b.dataset.tool === 'split' && !seenCutHint) { seenCutHint = true; hint('Drag across a friend to cut it — any shape!'); }
     }));
     document.querySelectorAll('.ts-size').forEach(b => b.addEventListener('click', () => {
       size = +b.dataset.size;
       document.querySelectorAll('.ts-size').forEach(o => o.classList.toggle('on', o === b));
-      if (tool === 'move' || tool === 'fill' || tool === 'camera' || tool === 'split') setTool('pencil');
+      if (tool === 'move' || tool === 'fill' || tool === 'camera' || tool === 'split' || tool === 'moles') setTool('pencil');
     }));
     const box = $('ts-colors');
     COLORS.forEach((c, i) => {
@@ -1641,7 +1741,7 @@
       b.addEventListener('click', () => {
         color = c;
         box.querySelectorAll('.ts-color').forEach(o => o.classList.toggle('on', o === b));
-        if (tool === 'move' || tool === 'eraser' || tool === 'camera' || tool === 'split') setTool('pencil');
+        if (tool === 'move' || tool === 'eraser' || tool === 'camera' || tool === 'split' || tool === 'moles') setTool('pencil');
       });
       box.appendChild(b);
     });
@@ -1740,6 +1840,12 @@
     for (const k in p) if (/^\d+$/.test(k) && typeof p[k] === 'number') out[k] = p[k];
     return out;
   }
+  function moles(mo) {
+    if (!Array.isArray(mo)) return undefined;
+    const v3ok = (a) => Array.isArray(a) && a.length === 3 && a.every(v => typeof v === 'number' && isFinite(v));
+    const ok = mo.filter(m => m && v3ok(m.p) && v3ok(m.d)).slice(0, MAX_MOLES).map(m => ({ p: m.p.slice(), d: m.d.slice() }));
+    return ok.length ? ok : undefined;
+  }
   function cuts(c) {
     if (!Array.isArray(c)) return undefined;
     const nums = (a, n) => Array.isArray(a) && a.length === n && a.every(v => typeof v === 'number' && isFinite(v));
@@ -1757,7 +1863,7 @@
     movie.frames = data.frames.slice(0, MAX_FRAMES).map((f, i) => {
       const fr = makeFrame();
       fr.items = (f.items || []).filter(it => it && CHARS[it.k]).map(it => old ? from2D(it) : {
-        id: it.id, k: it.k, x: num(it.x, 0), z: num(it.z, 0), h: num(it.h, 0), s: num(it.s, 1), r: num(it.r, 0), f: !!it.f, p: paints(it.p), cut: cuts(it.cut)
+        id: it.id, k: it.k, x: num(it.x, 0), z: num(it.z, 0), h: num(it.h, 0), s: num(it.s, 1), r: num(it.r, 0), f: !!it.f, p: paints(it.p), cut: cuts(it.cut), mo: moles(it.mo)
       });
       const c = f.cam || {};
       fr.cam = { a: num(c.a, 0), t: clamp(num(c.t, 0.3), 0.02, 1.35), d: clamp(num(c.d, 11), 5, 24) };
