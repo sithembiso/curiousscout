@@ -1352,6 +1352,81 @@ const SURFACE = {
     return hgtV;
   },
 
+  /* Mars, the way Universe Sandbox (and every Mars globe) shows it: butterscotch
+     dust, the great dark albedo regions (Syrtis Major, Acidalia, the dark belt
+     south of the equator), the smooth northern lowlands against the cratered
+     southern highlands, Hellas, Valles Marineris splitting a quarter of the
+     planet, the Tharsis volcanoes with Olympus Mons, and white polar caps — the
+     northern one with its spiral troughs. Longitude u runs 0..1 from 180°W. */
+  mars(ctx, W, H, rng, o) {
+    const seed = (rng() * 1e6) | 0;
+    const big = fbm(seed, 4, 2, 5), mid = fbm(seed + 7, 10, 5, 4), grain = fbm(seed + 13, 40, 20, 3);
+    const lat = (v) => (0.5 - v) * 180, lon = (u) => u * 360 - 180;
+    const dd = (u, v, lo, la) => {                   // great-circle-ish distance in degrees
+      let dl = lon(u) - lo; dl -= Math.round(dl / 360) * 360;
+      const L = lat(v), c = Math.cos((L + la) * Math.PI / 360);
+      return Math.sqrt(dl * dl * c * c + (L - la) * (L - la));
+    };
+    const VOLC = [[-134, 18, 1.0, 9], [-113, 12, 0.7, 5], [-104, 1, 0.75, 5], [-101, -9, 0.7, 5], [-110, 40, 0.5, 6]];
+    // a deterministic field of craters, densest in the southern highlands
+    const crat = [];
+    for (let i = 0; i < 260; i++) {
+      const la = Math.asin(rng() * 2 - 1) * 180 / Math.PI, lo = rng() * 360 - 180;
+      if (la > 10 && rng() < 0.75) continue;
+      crat.push([lo, la, 0.5 + Math.pow(rng(), 4) * 5]);
+    }
+    const field = (u, v) => {
+      const L = lat(v), Lo = lon(u);
+      // the dichotomy: northern plains lie lower and smoother
+      const north = clamp((L - 5 + (big(u, v) - 0.5) * 30) / 20, 0, 1);
+      let h = 0.5 - north * 0.18 + (mid(u, v) - 0.5) * 0.12 * (1 - north * 0.6);
+      let rim = 0;
+      for (const [lo, la, hh, r] of VOLC) {
+        const d = dd(u, v, lo, la) / r;
+        if (d < 3) h += hh * 0.5 * Math.exp(-d * d) - (d < 0.18 ? 0.06 * hh : 0);
+      }
+      const ht = dd(u, v, -101, 2) / 22; if (ht < 2) h += 0.12 * Math.exp(-ht * ht);   // the Tharsis bulge
+      const hb = dd(u, v, 70, -42) / 18; if (hb < 1.6) h -= 0.25 * Math.exp(-hb * hb * 1.5);   // Hellas
+      // Valles Marineris: a long trough just south of the equator, ragged at the edges
+      let vm = 0;
+      if (Lo > -110 && Lo < -40) {
+        const cl = -8 + (Lo + 75) * 0.06 + (mid(u, v) - 0.5) * 3, w = 1.6 + (Lo + 110) / 70 * 1.6;
+        vm = Math.exp(-Math.pow((L - cl) / w, 2)) * clamp(Math.min(Lo + 110, -40 - Lo) / 8, 0, 1);
+        h -= vm * 0.22;
+      }
+      for (const [lo, la, r] of crat) {
+        const d = dd(u, v, lo, la) / r;
+        if (d < 1.25) { const bowl = d < 1 ? (d * d - 1) * 0.025 : 0; h += bowl; if (d > 0.85) rim = Math.max(rim, (1.25 - d) * 2.5); }
+      }
+      return { h, north, vm, rim, L };
+    };
+    const hgtM = pixelPass(ctx, W, H, (u, v) => {
+      const f = field(u, v);
+      // butterscotch dust, paler on the high ground
+      let c = ramp([[0, [150, 82, 46]], [0.5, [194, 116, 64]], [1, [222, 160, 104]]], clamp(f.h * 1.1 - 0.05, 0, 1));
+      // the dark albedo regions: a belt through the southern tropics plus the
+      // big northern Acidalia patch, broken up by noise so they look like Mars
+      const darkBelt = Math.exp(-Math.pow((f.L + 12) / 22, 2)) * 0.9 + Math.exp(-Math.pow((f.L - 48) / 10, 2)) * 0.5;
+      const dk = clamp((big(u * 1.3 % 1, v) * 0.7 + mid(u, v) * 0.5 + grain(u, v) * 0.12 - 0.5) * 5.5, 0, 1) * clamp(darkBelt * 1.4, 0, 1);
+      c = mix(c, [70, 50, 42], dk * 0.95);
+      c = mix(c, [206, 140, 88], clamp(f.rim, 0, 1) * 0.12);       // crater rims catch the light, just
+      c = mix(c, [108, 64, 40], f.vm * 0.6);                        // the canyon floor
+      // polar caps: the north one cut by spiral troughs
+      const aL = Math.abs(f.L);
+      if (aL > 66) {
+        let cap = clamp((aL - (f.L > 0 ? 68 : 70) - (mid(u, v) - 0.5) * 8) / 5, 0, 1);
+        if (f.L > 0) {
+          const ang = u * TAU, rr = (90 - aL) / 16;
+          const trough = Math.pow(Math.max(0, Math.sin(ang * 2 + rr * 14)), 8);
+          cap *= 1 - trough * 0.3;
+        }
+        c = mix(c, [246, 244, 238], cap);
+      }
+      return mix(c, [255, 255, 255], (grain(u, v) - 0.5) * 0.07);
+    }, (u, v) => field(u, v).h);
+    return hgtM;
+  },
+
   /* Fractured ice shell — Europa, Enceladus. */
   ice(ctx, W, H, rng, o) {
     const seed = (rng() * 1e6) | 0;
@@ -2424,7 +2499,7 @@ const TYPES = {
   },
   sol_mars: {
     label: 'Mars', group: 'SOLAR SYSTEM', pname: 'Mars', mass: 0.107, rad: 0.5320,
-    surf: 'desert', spin: 1.02595, tilt: 0.4396, atmo: [255, 170, 130], clouds: 0.05,
+    surf: 'mars', spin: 1.02595, tilt: 0.4396, atmo: [150, 96, 72], clouds: 0.05,   // a thin, faint dusty air
     blurb: 'The rusty one. It has the tallest volcano and the deepest canyon in the Solar System, and a day almost exactly as long as ours.'
   },
   sol_jupiter: {
@@ -6892,6 +6967,7 @@ const RELIEF = {
   lava: 0.14,         // crust plates riding on an open magma ocean
   ice: 0.13,          // Europa's ridges and chaos terrain
   venus: 0.09,        // shield volcanoes standing over the lava plains
+  mars: 0.07,         // Olympus Mons, Valles Marineris, Hellas
   earth: 0.105,       // the real one, and it is very nearly a smooth ball
   terran: 0.115,      // rain and rivers file mountains down
   eyeball: 0.10,
