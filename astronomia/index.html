@@ -5368,18 +5368,18 @@ function tripleRing(variant, n, rng) {
       }
       const k = clamp(knots(th / TAU, which / 3 + 0.1) * 2.2 - 0.7, 0, 1);  // bright beads along it
       const c = mix(RING, BEAD, k * (which ? 0.5 : 0.9));
-      const j = (which ? 0.8 : 0.95) * (0.75 + k * 0.6);
-      push(x, y, z, [c[0] * j, c[1] * j, c[2] * j], (which ? 0.05 : 0.06) + rng() * 0.05);
+      const j = (which ? 1.35 : 1.6) * (0.75 + k * 0.6);
+      push(x, y, z, [c[0] * j, c[1] * j, c[2] * j], (which ? 0.06 : 0.07) + rng() * 0.05);
     } else if (pick < 0.9) {
       // the hourglass of faint blue haze joining the rings
       const yy = (rng() * 2 - 1) * h, f = Math.abs(yy) / h;
       const R = lerp(rIn * 0.9, rOut, f * f) * (0.85 + rng() * 0.3);
-      const j = 0.22 + rng() * 0.12;
+      const j = 0.4 + rng() * 0.2;
       push(Math.cos(th) * R, yy, Math.sin(th) * R, [HAZE[0] * j, HAZE[1] * j, HAZE[2] * j], 0.14 + rng() * 0.14);
     } else {
       // the glow at the heart
       const R = Math.pow(rng(), 2) * 0.1;
-      const j = 0.7 + rng() * 0.3;
+      const j = 1.3 + rng() * 0.4;
       push(Math.cos(th) * R, g() * 0.05, Math.sin(th) * R, [CORE[0] * j, CORE[1] * j, CORE[2] * j], 0.1 + rng() * 0.1);
     }
   }
