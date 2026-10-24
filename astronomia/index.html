@@ -1356,8 +1356,8 @@ const SURFACE = {
      dust, the great dark albedo regions (Syrtis Major, Acidalia, the dark belt
      south of the equator), the smooth northern lowlands against the cratered
      southern highlands, Hellas, Valles Marineris splitting a quarter of the
-     planet, the Tharsis volcanoes with Olympus Mons, and white polar caps — the
-     northern one with its spiral troughs. Longitude u runs 0..1 from 180°W. */
+     planet, the Tharsis volcanoes with Olympus Mons, and white polar caps.
+     Longitude u runs 0..1 from 180°W. */
   mars(ctx, W, H, rng, o) {
     const seed = (rng() * 1e6) | 0;
     const big = fbm(seed, 4, 2, 5), mid = fbm(seed + 7, 10, 5, 4), grain = fbm(seed + 13, 40, 20, 3);
@@ -1411,15 +1411,10 @@ const SURFACE = {
       c = mix(c, [70, 50, 42], dk * 0.95);
       c = mix(c, [206, 140, 88], clamp(f.rim, 0, 1) * 0.12);       // crater rims catch the light, just
       c = mix(c, [108, 64, 40], f.vm * 0.6);                        // the canyon floor
-      // polar caps: the north one cut by spiral troughs
+      // polar caps, with ragged, frosty edges
       const aL = Math.abs(f.L);
-      if (aL > 66) {
-        let cap = clamp((aL - (f.L > 0 ? 68 : 70) - (mid(u, v) - 0.5) * 8) / 5, 0, 1);
-        if (f.L > 0) {
-          const ang = u * TAU, rr = (90 - aL) / 16;
-          const trough = Math.pow(Math.max(0, Math.sin(ang * 2 + rr * 14)), 8);
-          cap *= 1 - trough * 0.3;
-        }
+      if (aL > 62) {
+        const cap = clamp((aL - (f.L > 0 ? 68 : 70) - (mid(u, v) - 0.5) * 10 - (grain(u, v) - 0.5) * 4) / 4, 0, 1);
         c = mix(c, [246, 244, 238], cap);
       }
       return mix(c, [255, 255, 255], (grain(u, v) - 0.5) * 0.07);
