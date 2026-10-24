@@ -5348,7 +5348,7 @@ function tripleRing(variant, n, rng) {
   const tint = rng() * 0.25;                       // a little more orange or more pink
   const RING = [1.0, 0.32 + tint * 0.4, 0.42 - tint * 0.3], BEAD = [1.0, 0.78, 0.82];
   const HAZE = [0.30, 0.50, 1.0], CORE = [0.72, 0.86, 1.0];
-  const rIn = 0.3, rOut = 0.58 + rng() * 0.08, h = 0.6 + rng() * 0.1;
+  const rIn = 0.28, rOut = 0.6 + rng() * 0.08, h = 1.2 + rng() * 0.2;   // a tall hourglass, like the real one
   const tilt1 = (rng() - 0.5) * 0.3, tilt2 = (rng() - 0.5) * 0.3;
   const pos = [], col = [], siz = [], rot = [];
   const g = () => (rng() + rng() + rng() - 1.5) / 1.5;
