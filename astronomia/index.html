@@ -491,6 +491,7 @@
 <canvas id="an-canvas"></canvas>
 <svg id="an-overlay">
   <circle id="an-ret" fill="none" stroke="#ff6fd8" stroke-width="2" stroke-dasharray="13 10" opacity="0.95" style="display:none"/>
+  <circle id="an-sweep" r="34" fill="rgba(139,224,255,0.12)" stroke="#8be0ff" stroke-width="2.5" opacity="0.95" style="display:none"/>
   <g id="an-aim" style="display:none">
     <line id="an-aim-line" stroke="#ff6fd8" stroke-width="2" stroke-dasharray="6 5"/>
     <circle id="an-aim-dot" r="5" fill="none" stroke="#ff6fd8" stroke-width="2"/>
@@ -13068,6 +13069,7 @@ function bindInput() {
       input.pinchX = (p[0].x + p[1].x) / 2;
       input.pinchY = (p[0].y + p[1].y) / 2;
       hideAim();
+      hideSweep();
       return;
     }
     if (input.pointers.size > 2) return;
@@ -13136,7 +13138,7 @@ function bindInput() {
       dropArmed();
       hideAim();
     } else if (input.mode === 'sweep' && input.moved) {
-      hideAim();
+      hideSweep();
       // A swipe is a stroke across a good part of the screen; anything shorter
       // is let go, so a nudge does not wipe the sky. (No time limit: on a slow
       // device a perfectly good swipe can take a second.)
@@ -13234,7 +13236,7 @@ function openTools() {
     tgl('tl-swipe', 'Swipe to clear particles',
       'While this is on, a quick swipe across the screen sweeps away every particle — debris, vapour and sparks. Objects are never touched: planets, stars, moons, asteroids, gas knots and supernova clouds all stay. Dragging to turn the view is paused until you switch it off; two fingers still zoom and pan.') +
     '<p class="an-note" id="tl-count" style="margin-top:12px"></p>' +
-    '<p class="an-note">Press <b>Ctrl+R</b> again, or <b>Esc</b>, to close this menu.</p>';
+    '<p class="an-note">Press <b>Ctrl+R</b> again, or <b>Esc</b>, to close this menu. Once the swipe is on, <b>Ctrl+R</b> switches it straight back off.</p>';
   const loose = looseParticles();
   const count = () => $('tl-count').textContent = loose
     ? loose.toLocaleString() + ' particles in the sky right now.' : 'No particles in the sky right now.';
@@ -13246,15 +13248,13 @@ function openTools() {
   openModal();
 }
 
-/** The stroke of the broom, drawn while the finger is down. */
+/** The broom: a circle that follows the finger while it is down. */
 function drawSweep() {
-  $('an-aim').style.display = 'block';
-  const l = $('an-aim-line'), d = $('an-aim-dot');
-  l.setAttribute('x1', input.x0); l.setAttribute('y1', input.y0);
-  l.setAttribute('x2', input.x); l.setAttribute('y2', input.y);
-  d.setAttribute('cx', input.x); d.setAttribute('cy', input.y);
-  $('an-aim-txt').textContent = '';
+  const c = $('an-sweep');
+  c.setAttribute('cx', input.x); c.setAttribute('cy', input.y);
+  c.style.display = 'block';
 }
+function hideSweep() { $('an-sweep').style.display = 'none'; }
 
 /** Loose particles only. Grains belonging to a supernova cloud are part of an
     object you can select, so they stay. */
@@ -13311,11 +13311,17 @@ function dropArmed() {
 
 function onKey(e) {
   if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
-  // Ctrl+R opens the Tools menu instead of reloading the page
+  // Ctrl+R opens the Tools menu instead of reloading the page — and while the
+  // swipe is switched on, pressing it again switches it straight back off.
   if (e.ctrlKey && !e.altKey && (e.key === 'r' || e.key === 'R')) {
     e.preventDefault();
     if ($('an-modal').classList.contains('show') && $('an-modal-title').textContent === 'Tools') closeModal();
-    else openTools();
+    else if (settings.swipeClear) {
+      settings.swipeClear = false;
+      hideSweep();
+      updateHint();
+      toast('Swipe to clear is off — dragging turns the view again');
+    } else openTools();
     return;
   }
   if (land.b) {
@@ -13408,7 +13414,7 @@ function updateHint() {
   } else if (input.armed && sim.selected && sim.selected.kind === 'bary') {
     s = 'Click near <b>' + sim.selected.name + '</b> to add a <b>' + TYPES[input.armed].label + '</b> to its system';
   } else if (settings.swipeClear && !input.armed) {
-    s = '<b>Swipe</b> across the screen to sweep away every particle &middot; <kbd>Ctrl</kbd>+<kbd>R</kbd> for Tools';
+    s = '<b>Swipe</b> across the screen to sweep away every particle &middot; <kbd>Ctrl</kbd>+<kbd>R</kbd> to stop';
   } else if (input.armed) {
     s = 'Click empty space to drop <b>' + TYPES[input.armed].label + '</b> &middot; <b>drag</b> to aim its speed';
     if (settings.grid) s += ' &middot; grid square <b class="an-cell">—</b>';
@@ -15965,7 +15971,7 @@ function openHelp() {
     '<div><kbd>F</kbd></div><span>Lock the camera onto the selected body</span>' +
     '<div><kbd>Del</kbd></div><span>Remove the selected body</span>' +
     '<div><kbd>T</kbd> <kbd>L</kbd></div><span>Toggle trails / labels</span>' +
-    '<div><kbd>Ctrl</kbd>+<kbd>R</kbd></div><span>Tools — switch on <b>Swipe to clear particles</b>, then swipe across the screen to sweep away every particle</span>' +
+    '<div><kbd>Ctrl</kbd>+<kbd>R</kbd></div><span>Tools — switch on <b>Swipe to clear particles</b>, then swipe across the screen to sweep away every particle. Press it again to stop.</span>' +
     '<div><kbd>M</kbd></div><span>Music on / off (or the &#9835; button)</span>' +
     '</div>' +
     '<p style="margin-top:8px">On a touch screen: one finger rotates, two fingers pinch to zoom and drag to pan.</p>' +
