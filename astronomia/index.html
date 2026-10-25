@@ -6061,9 +6061,9 @@ function updateSNVisual(e) {
     // few strong ones — otherwise the colour is lost exactly where it matters.
     // wisps have more gap than glow, so they are drawn stronger than plain puffs were
       // blazing: as bright as a sun, and it stays bright as it spreads
-    u.uOp.value = puff * Math.max(fade, 0.65) * 1.15 * SN_GLOW;
+    u.uOp.value = puff * Math.max(fade, 0.65) * 1.15 * SN_GLOW * (e.dim || 1);
     e.neb.visible = puff > 0.01 && big;
-    if (e.heart) e.heart.material.opacity = Math.min(1, puff * Math.max(fade, 0.65) * 1.2 * SN_GLOW);
+    if (e.heart) e.heart.material.opacity = Math.min(1, puff * Math.max(fade, 0.65) * 1.2 * SN_GLOW * (e.dim || 1));
   }
 
   // The glowing photosphere, as bright as the light curve says — with a pixel
@@ -11803,7 +11803,9 @@ function updateParticles(simDt) {
     if (!parts.on[k]) continue;
     const k3 = k * 3;
     const px = parts.pos[k3], py = parts.pos[k3 + 1], pz = parts.pos[k3 + 2];
-    if (keep.length) {
+    // A supernova's gas belongs to its cloud, which can be light-years wide —
+    // it stays as long as the cloud does.
+    if (keep.length && parts.src[k] < 0) {
       let near = false;
       for (let j = 0; j < keep.length; j += 4) {
         const dx = px - keep[j], dy = py - keep[j + 1], dz = pz - keep[j + 2];
@@ -12895,6 +12897,10 @@ function updateVisuals(realDt, simDt) {
       p.halo.material.opacity = far;
       p.halo.visible = far > 0.01;
     }
+
+    // ---- a pulsar's lighthouse beams, swept round on the wall clock (the real
+    // 30 turns a second would only strobe)
+    if (p.beams) p.beams.children[0].rotation.y = performance.now() / 1000 * TAU * 0.5;
 
     // ---- black holes
     if (p.disk && !p.disk.isPoints) p.disk.rotation.z += realDt * 0.35;
@@ -15811,6 +15817,100 @@ function stepHomers(before) {
   }
 }
 
+/* ================================================================ the Crab */
+/*
+ * The Crab Nebula, as it is about 970 years after the explosion: a ~10 M☉
+ * star went off in 1054, leaving about 4.6 M☉ of gas now 11 light-years
+ * across and still expanding at about 1,500 km/s, and at its centre the Crab
+ * Pulsar — a 1.4 M☉ neutron star turning once every 33 milliseconds. The
+ * explosion is set off for real and then wound forward: every grain is put
+ * where its own speed would have carried it in 970 years.
+ */
+const CRAB_R = 5.5 * LY_GM;
+const CRAB_V = 1500 * KMS;
+
+function buildCrab() {
+  const star = makeBody('blue_giant', new V3(), new V3(), { name: 'SN 1054', mass: 10 * M_SUN });
+  const plan = Object.assign({}, snPlan(star), {
+    flavour: 'Ia',                 // the cloud drawn as the Crab: blue-white haze in red filaments
+    label: 'Crab Nebula', remnant: 'neutron', remMass: 1.4 * M_SUN, life: 1e12,
+    story: 'Seen from Earth in 1054 as a new star bright enough to read by. The gas is still flying outwards, and the pulsar in the middle keeps it glowing.'
+  });
+  goSupernova(star, plan);
+  const e = supernovae[supernovae.length - 1];
+  const age = 970 * 365.25;
+
+  // Wind every grain forward: out along its own direction, the fastest at the edge.
+  let vmax = 0;
+  for (let k = 0; k < P_MAX; k++) {
+    if (!parts.on[k] || parts.src[k] !== e.id) continue;
+    const k3 = k * 3;
+    vmax = Math.max(vmax, Math.hypot(parts.vel[k3] - e.v.x, parts.vel[k3 + 1] - e.v.y, parts.vel[k3 + 2] - e.v.z));
+  }
+  const vs = CRAB_V / Math.max(vmax, 1e-9);
+  for (let k = 0; k < P_MAX; k++) {
+    if (!parts.on[k] || parts.src[k] !== e.id) continue;
+    const k3 = k * 3;
+    for (let a = 0; a < 3; a++) {
+      const vr = (parts.vel[k3 + a] - e.v.getComponent(a)) * vs;
+      parts.vel[k3 + a] = e.v.getComponent(a) + vr;
+      parts.pos[k3 + a] = e.p.getComponent(a) + vr / CRAB_V * CRAB_R;
+    }
+    parts.hot[k] = 0.15;                           // long cooled, a dim glow
+  }
+  parts.dirty = true;
+  e.age = age;
+  e.t0 = sim.time - age;
+  e.radius = CRAB_R;
+  e.vShock = CRAB_V;
+  e.brakeTau = 1e12;                              // it has not stalled yet
+  e.coreT = 1.1e4; e.held = true;
+  e.vBulk = CRAB_V;
+  e.dim = 0.4;                                    // softer, so the filaments and the pulsar show through
+
+  // The pulsar: held at the centre, spinning 30 times a second.
+  const psr = star;
+  psr.name = 'Crab Pulsar'; usedNames.add('Crab Pulsar');
+  psr.v.copy(e.v);
+  psr.spin = 0.0337 / 86400;
+  addPulsarBeams(psr, CRAB_R * 0.55);
+  sim.running = true;
+  setRate(1);
+  select(e);
+  return e;
+}
+
+/* Two lighthouse beams off a neutron star's magnetic poles, which sit at an
+   angle to its spin axis — so as it turns, they sweep round the sky. */
+const PULSAR_FRAG = `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  varying float vY;
+  varying float vEdge;
+  void main() {
+    #include <logdepthbuf_fragment>
+    float along = pow(1.0 - vY, 1.2) * smoothstep(0.0, 0.02, vY);
+    gl_FragColor = vec4(vec3(0.75, 0.88, 1.0), along * pow(vEdge, 1.2) * 1.6);
+  }`;
+function addPulsarBeams(b, len) {
+  const geo = new THREE.CylinderGeometry(0.11, 0.006, 1, 24, 1, true).translate(0, 0.5, 0);
+  const mat = new THREE.ShaderMaterial({ vertexShader: JET_VERT, fragmentShader: PULSAR_FRAG,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const spin = new THREE.Group();                 // turns about the spin axis
+  for (const d of [1, -1]) {
+    const beam = new THREE.Mesh(geo, mat);
+    beam.frustumCulled = false;
+    beam.renderOrder = 9;
+    beam.rotation.z = d > 0 ? 0.85 : 0.85 + Math.PI;   // the magnetic axis, tipped off the spin axis
+    spin.add(beam);
+  }
+  const holder = new THREE.Group();
+  holder.add(spin);
+  holder.scale.setScalar(len);
+  b.obj.add(holder);
+  b.parts.beams = holder;
+}
+
 const PRESETS = [
   {
     name: 'The Solar System', desc: 'Our own eight planets at their real distances, on real orbital periods — with their major moons, the dwarf planets, the Asteroid and Kuiper Belts, and everything known beyond: Sedna, the Voyagers, the heliopause, the Oort Cloud and Alpha Centauri. Its Sun is born with the map — speed the clock up to watch it grow, swell, and shrink to an Earth-sized white dwarf over 100 billion years.',
@@ -16157,6 +16257,11 @@ const PRESETS = [
     name: 'Project Noctaris', desc: 'The Solar System, with the Noctaris system seven light-years away — and Earth has just launched Pathfinder, a probe flying at a fifth of the speed of light, on a 35-year trip to crash into Thalassa. It is aimed at where Thalassa will be when it arrives, and steers itself the rest of the way. The clock speeds up for the long cruise and slows down again for the crash.',
     dist: 0.12,
     build() { projectNoctaris(); }
+  },
+  {
+    name: 'Crab Nebula', desc: 'What is left of a star that blew up in the year 1054 — astronomers in China saw it shining in daylight for three weeks. Eleven light-years of glowing gas, still racing outwards at 1,500 km/s, with the Crab Pulsar at its heart: a neutron star spinning 30 times a second and sweeping two beams round like a lighthouse.',
+    dist: 5.5 * 9.46073e6 * 2.6,
+    build() { return buildCrab(); }
   },
   {
     name: 'Empty Space', desc: 'A clean slate. Build whatever you like.',
