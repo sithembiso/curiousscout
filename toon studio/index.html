@@ -1106,7 +1106,7 @@
     }
     const pad = 6 * W / stage.clientWidth;
     x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
-    return { turn: { x: x1, y: y0 }, del: { x: x0, y: y0 }, flip: { x: x0, y: y1 }, lift: { x: x1, y: y1 },
+    return { turn: { x: x1, y: y0 }, del: { x: x0, y: y0 }, size: { x: x0, y: y1 }, lift: { x: x1, y: y1 },
       x0: x0, y0: y0, x1: x1, y1: y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
   }
 
@@ -1163,7 +1163,7 @@
       sctx.restore();
       button(h.turn, r, '#3a86ff', 'turn');
       button(h.del, r, '#ff5a5f', 'del');
-      button(h.flip, r, '#2fb5a8', 'flip');
+      button(h.size, r, '#2fb5a8', 'size');
       button(h.lift, r, '#8e5cf7', 'lift');
     }
   }
@@ -1534,11 +1534,16 @@
         if (near(h.del)) {
           pushUndo(); frame().items = frame().items.filter(i => i !== it); sel = null; touched(); return;
         }
-        if (near(h.flip)) { pushUndo(); it.f = !it.f; touched(); return; }
-        if (near(h.turn)) {
+        if (near(h.size)) {
+          // drag away from the middle to grow, towards it to shrink
           pushUndo();
-          drag = { kind: 'turn', it: it, cx: h.cx, cy: h.cy, a0: Math.atan2(p.y - h.cy, p.x - h.cx), r0: it.r || 0,
-            d0: Math.hypot(p.x - h.cx, p.y - h.cy), s0: it.s };
+          drag = { kind: 'size', it: it, cx: h.cx, cy: h.cy, d0: Math.hypot(p.x - h.cx, p.y - h.cy), s0: it.s };
+          return;
+        }
+        if (near(h.turn)) {
+          // drag round the friend to spin it round
+          pushUndo();
+          drag = { kind: 'turn', it: it, cx: h.cx, cy: h.cy, a0: Math.atan2(p.y - h.cy, p.x - h.cx), r0: it.r || 0 };
           return;
         }
         if (near(h.lift)) {
@@ -1606,7 +1611,9 @@
     } else if (drag.kind === 'turn') {
       const it = drag.it;
       it.r = drag.r0 + Math.atan2(p.y - drag.cy, p.x - drag.cx) - drag.a0;
-      it.s = clamp(drag.s0 * Math.hypot(p.x - drag.cx, p.y - drag.cy) / Math.max(drag.d0, 1), 0.3, 4);
+      touched();
+    } else if (drag.kind === 'size') {
+      drag.it.s = clamp(drag.s0 * Math.hypot(p.x - drag.cx, p.y - drag.cy) / Math.max(drag.d0, 1), 0.3, 4);
       touched();
     } else if (drag.kind === 'lift') {
       drag.it.h = clamp(drag.h0 + (drag.y0 - p.y) * drag.k, 0, 8);
