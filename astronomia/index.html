@@ -2991,7 +2991,7 @@ function makeBody(type, pos, vel, overrides) {
 function visRadius(b) {
   if (b.kind === 'bh' || b.kind === 'wh') return b.r * 2.6 * settings.bodyScale * BH_VIS;
   // A remnant cloud is light-days across already; exaggerating it would be absurd.
-  if (b.kind === 'snr' || b.kind === 'uni' || b.kind === 'mark' || b.kind === 'bary') return b.r;
+  if (b.kind === 'snr' || b.kind === 'uni' || b.kind === 'mark' || b.kind === 'bary' || b.kind === 'neb') return b.r;
   // Deliberately NOT a galaxy's drawn size: that is a screen measurement (see
   // updateGalaxies) and letting it into the physics would give a galaxy a
   // capture radius and a Roche limit the width of the visible universe. What
@@ -5450,13 +5450,30 @@ function condenseCloud(e) {
   return true;
 }
 
-function updateSupernovae(simDt) {
+/* Measure the clouds and put each remnant on its cloud's centre of mass. Run
+   straight after the physics step and before the camera is placed, so a
+   remnant being followed round a galaxy at full speed is where the camera
+   looks, not where it was a frame ago. */
+function syncRemnants() {
+  if (!supernovae.length) return;
   refreshClouds();
+  for (const e of supernovae) {
+    const cl = e.cloud;
+    if (cl && cl.mass > 0) { e.p.set(cl.cx, cl.cy, cl.cz); e.v.set(cl.vx, cl.vy, cl.vz); }
+  }
+}
+
+function updateSupernovae(simDt) {
   brakeClouds(simDt);
   for (let i = supernovae.length - 1; i >= 0; i--) {
     const e = supernovae[i];
     e.age += simDt;
-    e.p.addScaledVector(e.v, simDt);
+    /* The remnant goes where its gas goes. Each grain is pulled by the same
+       gravity as everything else, so a cloud thrown off a star in a galaxy's
+       disc carries on round the galaxy with it — and the remnant rides on the
+       cloud's own centre of mass rather than coasting off in a straight line. */
+    // (syncRemnants has already put it on its cloud; with no cloud it coasts)
+    if (!(e.cloud && e.cloud.mass > 0)) e.p.addScaledVector(e.v, simDt);
     e.radius += e.vShock * simDt;
     if (snSet.blast) snSweep(e);
 
@@ -10179,6 +10196,52 @@ function pickNebula(sx, sy) {
   return best;
 }
 
+/*
+ * A supernova remnant out in a galaxy, as something you can select. It is
+ * pinned to a star of the galaxy (its slot `k`), so it goes round the galaxy
+ * with the disc; this wrapper just reads where that is each frame.
+ */
+function nebulaSel(nb) {
+  if (!nb.sel) {
+    nb.sel = { kind: 'neb', nb: nb, alive: true, name: nb.name, r: nb.R,
+      p: new THREE.Vector3(), v: new THREE.Vector3(), gal: null };
+  }
+  updateNebulaSel(nb.sel);
+  return nb.sel;
+}
+
+function updateNebulaSel(s) {
+  const k = s.nb.k;
+  s.alive = galx.own[k] >= 0 && nebulae.indexOf(s.nb) >= 0;
+  if (!s.alive) return;
+  const k3 = k * 3;
+  s.p.set(galx.pos[k3], galx.pos[k3 + 1], galx.pos[k3 + 2]);
+  s.v.set(galx.vel[k3], galx.vel[k3 + 1], galx.vel[k3 + 2]);
+  if (!s.gal || s.gal.id !== s.nb.gal) s.gal = sim.bodies.find(b => b.id === s.nb.gal) || null;
+}
+
+function renderNebInspector(s) {
+  const host = $('an-insp-body');
+  $('an-insp-h').textContent = 'SUPERNOVA REMNANT';
+  const ly = s.nb.R * 2 / LY_GM;
+  host.innerHTML =
+    '<div class="an-name-in" style="cursor:default;pointer-events:none">' + escAttr(s.name) + '</div>' +
+    '<div class="an-type">in ' + escAttr(s.gal ? s.gal.name : 'a galaxy') + '</div>' +
+    '<dl class="an-stats">' +
+    '<dt>Width</dt><dd>' + (ly < 10 ? ly.toFixed(1) : Math.round(ly).toLocaleString()) + ' light-years</dd>' +
+    '<dt>From the centre</dt><dd id="is-nd"></dd>' +
+    '<dt>Once round the galaxy</dt><dd id="is-nv"></dd>' +
+    '</dl>' +
+    '<div class="an-row"><button id="is-nfollow">' + (sim.follow === s ? 'UNFOLLOW' : 'FOLLOW') +
+    '</button><button id="is-nzoom">ZOOM TO</button></div>' +
+    '<p class="an-note" style="margin-top:13px">The still-expanding blast shell of a star that exploded here. ' +
+    'It goes round the galaxy with the stars around it, carried on the same orbit as the star it came from.</p>';
+  inspRefs = { nd: $('is-nd'), nv: $('is-nv') };
+  $('is-nfollow').addEventListener('click', () => { sim.follow = sim.follow === s ? null : s; renderInspector(); });
+  $('is-nzoom').addEventListener('click', () => { frameOn(s, 2.5); sim.follow = s; renderInspector(); });
+  updateInspectorStats();
+}
+
 function focusNebula(nb) {
   galx.focus = nb.k;
   sim.follow = null;
@@ -10994,7 +11057,13 @@ const FX_FRAG = `
   }`;
 
 function initParticles() {
-  parts.pos = new Float32Array(P_MAX * 3);
+  /* Positions in doubles, handed to the GPU relative to the camera (gpos), the
+     way the galaxy stars are: a supernova 26,000 light-years out in a galaxy
+     sits 2.5×10^11 Gm from the origin, where a 32-bit float cannot place a
+     grain to better than sixteen thousand Gm — so every small step it took
+     was rounded away and the cloud could never move, let alone orbit. */
+  parts.pos = new Float64Array(P_MAX * 3);
+  parts.gpos = new Float32Array(P_MAX * 3);
   parts.vel = new Float32Array(P_MAX * 3);      // Gm per day — real physics
   parts.col = new Float32Array(P_MAX * 3);
   parts.warm = new Float32Array(P_MAX * 3);     // freshly ejected, glowing
@@ -11014,7 +11083,7 @@ function initParticles() {
   parts.live = 0;
 
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(parts.pos, 3));
+  geo.setAttribute('position', new THREE.BufferAttribute(parts.gpos, 3));
   geo.setAttribute('aCol', new THREE.BufferAttribute(parts.col, 3));
   geo.setAttribute('aSize', new THREE.BufferAttribute(parts.size, 1));
   parts.geo = geo;
@@ -11569,7 +11638,9 @@ function stepParticles(dt) {
         if (b.emerge && sim.time < b.emerge.until) continue;
         hit = b; break;                                // landed / swallowed
       }
-      const soft = 0.35 * b.r;
+      // A galaxy's mass is spread through its disc, not in a point, so grains
+      // feel the same softened pull its own stars do and orbit it as they do.
+      const soft = b.kind === 'gal' ? Math.max(b.galR, 1) * GAL_SOFT : 0.35 * b.r;
       const dd = d2 + soft * soft;
       const f = gm * b.m / (dd * Math.sqrt(dd)) * (b.kind === 'wh' ? -1 : 1);
       const fx = dx * f, fy = dy * f, fz = dz * f;
@@ -11618,15 +11689,32 @@ function stepParticles(dt) {
 /** Cool the glow, refresh colours, and drop anything that has left the system. */
 function updateParticles(simDt) {
   if (parts.live === 0 && !parts.dirty) return;
-  const anchor = pSources.length ? pSources[0].p : null;
+  /* A grain has left for good once it is far from every heavy body — or, in
+     a galaxy, once it is out past the galaxy itself. (Measured from the
+     heaviest body alone, every grain of a supernova out in a galaxy's disc was
+     thrown away the moment it appeared: the heaviest body is the galaxy's
+     core, tens of thousands of light-years off.) */
+  const keep = [];
+  for (const b of pSources) {
+    if (!b.alive) continue;
+    const R = b.kind === 'gal' ? Math.max(b.galR, 1) * 3 : P_CULL;
+    keep.push(b.p.x, b.p.y, b.p.z, R * R);
+  }
+  const o = camera.position, gp = parts.gpos;
 
   for (let k = 0; k < P_MAX; k++) {
     if (!parts.on[k]) continue;
     const k3 = k * 3;
-    if (anchor) {
-      const dx = parts.pos[k3] - anchor.x, dy = parts.pos[k3 + 1] - anchor.y, dz = parts.pos[k3 + 2] - anchor.z;
-      if (dx * dx + dy * dy + dz * dz > P_CULL * P_CULL) { killParticle(k); continue; }
+    const px = parts.pos[k3], py = parts.pos[k3 + 1], pz = parts.pos[k3 + 2];
+    if (keep.length) {
+      let near = false;
+      for (let j = 0; j < keep.length; j += 4) {
+        const dx = px - keep[j], dy = py - keep[j + 1], dz = pz - keep[j + 2];
+        if (dx * dx + dy * dy + dz * dz <= keep[j + 3]) { near = true; break; }
+      }
+      if (!near) { killParticle(k); continue; }
     }
+    gp[k3] = px - o.x; gp[k3 + 1] = py - o.y; gp[k3 + 2] = pz - o.z;
     const h = parts.hot[k] > 0 ? Math.max(0, parts.hot[k] - simDt * parts.crate[k]) : 0;
     parts.hot[k] = h;
     const g = Math.pow(h, 0.55);
@@ -11639,6 +11727,7 @@ function updateParticles(simDt) {
   parts.geo.attributes.position.needsUpdate = true;
   parts.geo.attributes.aCol.needsUpdate = true;
   parts.geo.attributes.aSize.needsUpdate = true;
+  parts.pts.position.copy(o);
   parts.pts.material.uniforms.uDpr.value = VIEW.dpr;
   parts.dirty = parts.live > 0;
 
@@ -12419,6 +12508,7 @@ function updateLabels() {
   for (const u of universes) cands.push([3e9, u, 14]);
   for (const m of marks) if (!shyFar(m)) cands.push([m.sub === 'probe' ? 1.2e9 : 1.1e9, m, 6]);
   for (const B of barys) cands.push([1.3e9, B, 9]);
+  if (sim.selected && sim.selected.kind === 'neb') cands.push([4e9, sim.selected, 12]);
   cands.sort((a, b) => b[0] - a[0]);
 
   // Bodies that sit on top of each other at this zoom (Earth and its Moon, a
@@ -12909,7 +12999,7 @@ function pickBody(sx, sy) {
   // neutron star sitting in the middle of it.
   let bestD = Infinity;
   for (const e of supernovae) {
-    if (!e.alive || !e.cloud || e.cloud.mass <= 0) continue;
+    if (!e.alive) continue;                 // every supernova can be picked, flash and all
     _lp.copy(e.p).project(camera);
     if (_lp.z < -1 || _lp.z > 1) continue;
     const x = (_lp.x + 1) * 0.5 * VIEW.w, y = (1 - _lp.y) * 0.5 * VIEW.h;
@@ -13274,7 +13364,7 @@ function bindInput() {
       const hit = pickBody(e.clientX, e.clientY);
       const neb = hit ? null : pickNebula(e.clientX, e.clientY);
       const star = hit || neb ? -1 : pickGalaxyStar(e.clientX, e.clientY);
-      select(hit);
+      select(hit || (neb && neb.kind === 'remnant' ? nebulaSel(neb) : null));
       if (neb) focusNebula(neb);
       else if (star >= 0) focusGalaxyStar(star);
     }
@@ -13469,7 +13559,7 @@ function onKey(e) {
     case 'Delete': case 'Backspace':
       if (sim.selected && sim.selected.kind === 'bary') {
         disposeBary(sim.selected);
-      } else if (sim.selected && sim.selected.kind === 'mark') {
+      } else if (sim.selected && (sim.selected.kind === 'mark' || sim.selected.kind === 'neb')) {
         // landmarks are part of the scenery, not something to delete
       } else if (sim.selected && sim.selected.kind === 'uni') {
         removeUniverse(sim.selected);
@@ -14339,6 +14429,7 @@ function renderInspector() {
   if (b.kind === 'snr') { renderCloudInspector(b); return; }
   if (b.kind === 'uni') { renderUniverseInspector(b); return; }
   if (b.kind === 'mark') { renderMarkInspector(b); return; }
+  if (b.kind === 'neb') { renderNebInspector(b); return; }
   if (b.kind === 'bary') { renderBaryInspector(b); return; }
   if (b.kind === 'gal') { renderGalaxyInspector(b); return; }
   if (b.kind === 'gas') { renderClumpInspector(b); return; }
@@ -14464,6 +14555,15 @@ function updateInspectorStats() {
   const b = sim.selected;
   if (!b || !b.alive || !inspRefs) return;
 
+  if (b.kind === 'neb') {
+    const g = b.gal;
+    inspRefs.nd.textContent = g && g.alive ? fmtDist(b.p.distanceTo(g.p)) : '—';
+    // How long one lap takes — the speed itself is galaxy-time compressed and
+    // comes out as a silly multiple of light speed.
+    const r = g && g.alive ? b.p.distanceTo(g.p) : 0, v = g && g.alive ? b.v.distanceTo(g.v) : 0;
+    inspRefs.nv.textContent = r > 0 && v > 0 ? fmtYears(TAU * r / v) : '—';
+    return;
+  }
   if (b.kind === 'mark') {
     const d = b.p.distanceTo(b.host.p);
     inspRefs.md.textContent = (d / AU).toFixed(d < 1000 * AU ? 1 : 0) + ' AU';
@@ -16386,6 +16486,9 @@ function loop(now) {
   updateGasDisks();
   updateKiloJets();
 
+  syncRemnants();
+  if (sim.selected && sim.selected.kind === 'neb') updateNebulaSel(sim.selected);
+  if (sim.follow && sim.follow.kind === 'neb') updateNebulaSel(sim.follow);
   if (sim.follow) {
     galx.focus = -1;
     if (sim.follow.alive) view.target.copy(sim.follow.p);
