@@ -3356,6 +3356,9 @@ function carryVelocities() {
 function step(dt) {
   const bs = sim.bodies;
   const h = dt * 0.5;
+  // where each probe and its target stood before this step (see stepHomers)
+  const before = homers.length ? new Map(homers.filter(p => p.alive && p.homing && p.homing.target.alive)
+    .map(p => [p, [p.p.clone(), p.homing.target.p.clone()]])) : null;
   lastStepDt = dt;
   /* A carried pair heavy on both sides — a binary — cannot treat the host as
      fixed: the host swings round the barycentre too. So for the step the host
@@ -3394,9 +3397,11 @@ function step(dt) {
     b.v.x += b.a.x * h; b.v.y += b.a.y * h; b.v.z += b.a.z * h;
   }
   carryVelocities();
+  if (before) stepHomers(before);
   for (const b of bs) if (b.trail) trailSample(b);
   sim.time += dt;
   resolveCollisions();
+  if (homers.length) stepHomers(new Map());     // report a crash the moment it happens
   if (settings.tidal) updateTides(dt);
   updateSpin(dt);
 }
@@ -15653,6 +15658,159 @@ function buildSolarSystem(c, v) {
   return sun;
 }
 
+/** The Noctaris system — a brown dwarf with three worlds and their moons —
+  centred on `c` and drifting at `v`. Returns its star and Thalassa. */
+function buildNoctaris(c, v) {
+  /* A newborn brown dwarf, still hot from forming: about 3,000 K and two
+     and a half times Jupiter's width. A cold old one is so faint that a living world
+     would have to hug it too tightly to keep anything in orbit round itself. */
+  const bd = makeBody('brown_dwarf', c.clone(), v.clone(), { name: 'Noctaris', r: rE(28) });
+  bd.temp = 3000;
+  updateLuminosity(bd);
+  refreshVisual(bd);
+
+  // Mercury's size and mass, molten all the way through.
+  const ignis = orbitBody('lava_world', bd, 7.5, { ang: 0.5, inc: 0.01,
+    over: { name: 'Ignis', mass: 0.0553, r: rE(0.3829) } });
+  // Venus's size and mass, in the warm band where the seas stay liquid.
+  const thalassa = orbitBody('terrestrial', bd, 10, { ang: 2.4, inc: -0.01,
+    over: { name: 'Thalassa', mass: 0.815, r: rE(0.9499) } });
+  // Neptune's mass, far enough out to hold a family of moons.
+  const taris = orbitBody('ice_giant', bd, 40, { ang: 4.3, inc: 0.02,
+    over: { name: 'Taris', mass: 17.147 } });
+
+  /* Moons, each kept clear of its planet's drawn size and of the moon
+     inside it, the way the Solar System's are. */
+  const moon = (type, host, a, name, over, ang) => {
+    const r = over && over.r != null ? over.r : TYPES[type].rad * R_EARTH;
+    const clear = (host.r + r) * settings.bodyScale * 1.6;
+    return orbitBody(type, host, Math.max(a, clear), { ang: ang,
+      over: Object.assign({ name: name }, over || {}) });
+  };
+  // A lava moon with Pluto's size and mass.
+  // Outside Ignis's Roche limit, but well inside the reach of its gravity.
+  moon('lava_world', ignis, 0.024, 'Cinis', { mass: 0.00218, r: rE(0.1868) }, 1.1);
+  moon('sol_io', taris, 0.14, 'Aris', null, 0.3);         // volcanic, like Io
+  moon('sol_miranda', taris, 0.21, 'Tar', null, 1.9);     // patchwork, like Miranda
+  moon('sol_titan', taris, 0.32, 'Ris', null, 3.4);       // hazy, like Titan
+  moon('sol_europa', taris, 0.48, 'Tris', null, 5.0);     // ice over an ocean, like Europa
+  return { bd, thalassa };
+}
+
+/* =========================================================== Project Noctaris */
+/*
+ * Earth sends a probe to another star. Noctaris is put seven light-years out;
+ * the probe leaves Earth's surface at a fifth of the speed of light (what the
+ * Breakthrough Starshot sails are designed for), so the trip takes about 35
+ * years.
+ *
+ * Thalassa will not be where it is now when the probe arrives — it goes round
+ * Noctaris every few days — so the launch is aimed at where it WILL be. That
+ * is worked out by iteration: guess the trip time from the distance, find
+ * where Thalassa is on its orbit after that long, re-measure the distance to
+ * that point, and repeat until the answer stops changing. On the way the probe
+ * makes course corrections (as real probes do), so the gravity of every star
+ * and planet it passes cannot push it off course.
+ */
+const PROBE_SPEED = 0.2 * C_LIGHT;            // Gm per day
+const homers = [];                            // probes steering for a target
+
+function projectNoctaris() {
+  const sun = buildSolarSystem(new V3(), new V3());
+  const at = new V3().copy(eclipticDir(52, 18)).multiplyScalar(7 * LY_GM);
+  const { bd, thalassa } = buildNoctaris(at, new V3());
+  const earth = sim.bodies.find(b => b.type === 'sol_earth');
+
+  // Where Thalassa will be `t` days from now, on its (circular) orbit.
+  const rel0 = thalassa.p.clone().sub(bd.p), vrel = thalassa.v.clone().sub(bd.v);
+  const axis = rel0.clone().cross(vrel), w = axis.length() / rel0.lengthSq();
+  axis.normalize();
+  const thalassaAt = (t) => bd.p.clone().addScaledVector(bd.v, t)
+    .add(rel0.clone().applyAxisAngle(axis, w * t));
+
+  // Launch point: just above Earth's surface, on the side facing the target.
+  let aim = thalassa.p.clone(), launch = null, t = 0;
+  for (let i = 0; i < 12; i++) {
+    const dir = aim.clone().sub(earth.p).normalize();
+    launch = earth.p.clone().addScaledVector(dir, visRadius(earth) * 1.6);
+    t = aim.distanceTo(launch) / PROBE_SPEED;
+    aim = thalassaAt(t);
+  }
+  const dir = aim.clone().sub(launch).normalize();
+  const probe = makeBody('satellite', launch, dir.clone().multiplyScalar(PROBE_SPEED), { name: 'Pathfinder' });
+  probe.homing = { target: thalassa, speed: PROBE_SPEED, launched: sim.time, dist: aim.distanceTo(launch), t: t };
+  homers.push(probe);
+
+  sim.running = true;
+  setRate(RATE_MIN_PROBE);                  // real time at launch (see probeClock)
+  probe.homing.clock = sim.rate;
+  select(probe);
+  sim.follow = probe;
+  setTimeout(() => toast('Pathfinder is off! Thalassa is ' + fmtDist(probe.homing.dist) + ' away — ' +
+    Math.round(probe.homing.dist / 1e6).toLocaleString() + ' trillion km. At a fifth of light speed that is ' +
+    (t / 365.25).toFixed(1) + ' years.'), 900);
+}
+
+/*
+ * The map runs its own clock, so the whole trip can be watched: real time at
+ * launch, so you see Pathfinder leave Earth; speeding up smoothly to two years
+ * a second for the long cruise; and slowing down again on the way in, so the
+ * crash plays out in front of you. The rate is the shorter of the time since
+ * launch and the time still to go, over 0.8 of a second — which is what
+ * makes it grow and shrink smoothly. Touch the speed yourself and it lets go.
+ */
+const RATE_MIN_PROBE = 1 / 86400;           // one second a second
+const RATE_MAX_PROBE = 730.5;               // two years a second
+function probeClock() {
+  const h = homers.find(p => p.alive && p.homing && p.homing.clock != null);
+  if (!h || !sim.running) return;
+  const g = h.homing;
+  if (Math.abs(sim.rate / g.clock - 1) > 1e-6) { g.clock = null; return; }   // the player took over
+  const tgo = h.p.distanceTo(g.target.p) / g.speed;
+  const want = clamp(Math.min(sim.time - g.launched, tgo) / 0.8, RATE_MIN_PROBE, RATE_MAX_PROBE);
+  setRate(want);
+  g.clock = sim.rate;
+}
+
+/* Every step: keep each probe on a collision course with its target, and
+   catch the hit even when the probe crosses the whole planet in one step. */
+function stepHomers(before) {
+  for (let i = homers.length - 1; i >= 0; i--) {
+    const h = homers[i], g = h.homing, T = g && g.target;
+    if (!h.alive || !T || !T.alive) {
+      if (!h.alive && g && T && T.alive && g.hit) {
+        const yrs = (sim.time - g.launched) / 365.25;
+        toast(h.name + ' crashed into ' + T.name + ' after ' + yrs.toFixed(1) + ' years and ' + fmtDist(g.dist) + '!');
+        sim.follow = T;
+        select(T);
+        view.dist = Math.max(visRadius(T) * 9, view.dist > visRadius(T) * 40 ? visRadius(T) * 9 : view.dist);
+      }
+      homers.splice(i, 1);
+      continue;
+    }
+    // Swept test, in the target's frame: did the line the probe just travelled
+    // pass through the target?
+    const b0 = before.get(h);
+    if (b0) {
+      const r0 = b0[0].clone().sub(b0[1]), r1 = h.p.clone().sub(T.p);
+      const seg = r1.clone().sub(r0), L2 = seg.lengthSq();
+      const u = L2 > 0 ? clamp(-r0.dot(seg) / L2, 0, 1) : 0;
+      const close = r0.clone().addScaledVector(seg, u);
+      const R = captureRadius(T) + captureRadius(h);
+      if (close.length() < R) {
+        const n = r0.lengthSq() > 0 ? r0.clone().normalize() : new V3(1, 0, 0);
+        h.p.copy(T.p).addScaledVector(n, R * 0.98);           // at the point of impact
+        g.hit = true;
+        collisionPairs.push(T, h);
+        continue;
+      }
+    }
+    // Course correction: straight at the target, in the target's own frame.
+    const rel = T.p.clone().sub(h.p);
+    h.v.copy(T.v).addScaledVector(rel.normalize(), g.speed);
+  }
+}
+
 const PRESETS = [
   {
     name: 'The Solar System', desc: 'Our own eight planets at their real distances, on real orbital periods — with their major moons, the dwarf planets, the Asteroid and Kuiper Belts, and everything known beyond: Sedna, the Voyagers, the heliopause, the Oort Cloud and Alpha Centauri. Its Sun is born with the map — speed the clock up to watch it grow, swell, and shrink to an Earth-sized white dwarf over 100 billion years.',
@@ -15990,42 +16148,15 @@ const PRESETS = [
     name: 'Noctaris System', desc: 'Three worlds round a single brown dwarf: Ignis, a molten Mercury with a lava moon of its own; Thalassa, a living world the size of Venus; and Taris, an ice giant as heavy as Neptune with four moons.',
     dist: 100,
     build() {
-      /* A newborn brown dwarf, still hot from forming: about 3,000 K and two
-         and a half times Jupiter's width. A cold old one is so faint that a living world
-         would have to hug it too tightly to keep anything in orbit round itself. */
-      const bd = makeBody('brown_dwarf', new V3(), new V3(), { name: 'Noctaris', r: rE(28) });
-      bd.temp = 3000;
-      updateLuminosity(bd);
-      refreshVisual(bd);
-
-      // Mercury's size and mass, molten all the way through.
-      const ignis = orbitBody('lava_world', bd, 7.5, { ang: 0.5, inc: 0.01,
-        over: { name: 'Ignis', mass: 0.0553, r: rE(0.3829) } });
-      // Venus's size and mass, in the warm band where the seas stay liquid.
-      orbitBody('terrestrial', bd, 10, { ang: 2.4, inc: -0.01,
-        over: { name: 'Thalassa', mass: 0.815, r: rE(0.9499) } });
-      // Neptune's mass, far enough out to hold a family of moons.
-      const taris = orbitBody('ice_giant', bd, 40, { ang: 4.3, inc: 0.02,
-        over: { name: 'Taris', mass: 17.147 } });
-
-      /* Moons, each kept clear of its planet's drawn size and of the moon
-         inside it, the way the Solar System's are. */
-      const moon = (type, host, a, name, over, ang) => {
-        const r = over && over.r != null ? over.r : TYPES[type].rad * R_EARTH;
-        const clear = (host.r + r) * settings.bodyScale * 1.6;
-        return orbitBody(type, host, Math.max(a, clear), { ang: ang,
-          over: Object.assign({ name: name }, over || {}) });
-      };
-      // A lava moon with Pluto's size and mass.
-      // Outside Ignis's Roche limit, but well inside the reach of its gravity.
-      moon('lava_world', ignis, 0.024, 'Cinis', { mass: 0.00218, r: rE(0.1868) }, 1.1);
-      moon('sol_io', taris, 0.14, 'Aris', null, 0.3);         // volcanic, like Io
-      moon('sol_miranda', taris, 0.21, 'Tar', null, 1.9);     // patchwork, like Miranda
-      moon('sol_titan', taris, 0.32, 'Ris', null, 3.4);       // hazy, like Titan
-      moon('sol_europa', taris, 0.48, 'Tris', null, 5.0);     // ice over an ocean, like Europa
+      const bd = buildNoctaris(new V3(), new V3()).bd;
       sim.running = true;
       return bd;
     }
+  },
+  {
+    name: 'Project Noctaris', desc: 'The Solar System, with the Noctaris system seven light-years away — and Earth has just launched Pathfinder, a probe flying at a fifth of the speed of light, on a 35-year trip to crash into Thalassa. It is aimed at where Thalassa will be when it arrives, and steers itself the rest of the way. The clock speeds up for the long cruise and slows down again for the crash.',
+    dist: 0.12,
+    build() { projectNoctaris(); }
   },
   {
     name: 'Empty Space', desc: 'A clean slate. Build whatever you like.',
@@ -16049,6 +16180,7 @@ function openSystems() {
 }
 
 function clearAll() {
+  homers.length = 0;
   for (const b of sim.bodies) { disposeVisual(b); }
   sim.bodies.length = 0;
   clearParticles();
@@ -16567,6 +16699,7 @@ function loop(now) {
     if (slowmoLeft < 1.2 && sim.bodies.some(b => b.sink)) slowmoLeft = 1.2;
   }
   const t0 = sim.time;
+  if (homers.length) probeClock();
   advance(realDt);
   const simDt = sim.time - t0;
   if (universes.length) updateUniverses(realDt, simDt);
