@@ -7566,39 +7566,86 @@ function buildWhiteHole(b, grp) {
 const MAX_SCARS = 7;
 const _ZAXIS = new THREE.Vector3(0, 0, 1);
 
-/** An impact mark: a plain soft round spot, white so the material can colour it. */
-function spotTexture(size) {
-  const cv = newCanvas(size, size);
-  const ctx = cv.getContext('2d');
-  const c = size / 2;
-  const g = ctx.createRadialGradient(c, c, 0, c, c, c * 0.6);
-  g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.65, 'rgba(255,255,255,0.9)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(c, c, c * 0.6, 0, TAU); ctx.fill();
+/*
+ * An impact mark is a splash of molten rock, not a painted disc: a ragged
+ * outline, a network of brighter veins where the melt is still running between
+ * darker crusted plates, a raised lip just inside the edge, and a few droplets
+ * thrown clear of it. Both textures below are built from the same noise, so the
+ * glow sits exactly on the melt it is coming from. Four variants, picked per
+ * scar, so no two marks are the same shape.
+ */
+const SCAR_VARIANTS = 4;
+function scarField(seed) {
+  const rim = fbm(seed, 7, 2, 3);                    // wobble of the outline, by angle
+  const vein = ridged(fbm(seed + 17, 6, 6, 4));      // the cracks
+  const mott = fbm(seed + 31, 10, 10, 3);
+  const r = mulberry32(seed + 5), drops = [];
+  for (let i = 0; i < 6; i++) {
+    const a = r() * TAU, d = 0.64 + r() * 0.16;
+    drops.push([Math.cos(a) * d, Math.sin(a) * d, 0.012 + r() * 0.022, r() * TAU]);
+  }
+  /* For a point in the square (-1..1), how far inside the splash it is (1 in
+     the middle, 0 at the ragged edge, below 0 outside), and its crack value. */
+  return (x, y) => {
+    const d = Math.hypot(x, y), th = (Math.atan2(y, x) / TAU + 1) % 1;
+    const R = 0.56 * (0.8 + 0.42 * rim(th, 0.5));
+    let inside = 1 - d / R;
+    for (const [dx, dy, dr, sp] of drops) {
+      // smeared outward along the way it was thrown, not a neat round dot
+      const ox = x - dx, oy = y - dy, c = Math.cos(sp), sn = Math.sin(sp);
+      const q = 1 - Math.hypot((ox * c + oy * sn) / 2.2, -ox * sn + oy * c) / dr;
+      if (q * 0.6 > inside) inside = q * 0.6;
+    }
+    const u = (x + 1) / 2, v = (y + 1) / 2;
+    return { inside, d, R, vein: vein(u, v), mott: mott(u, v) };
+  };
+}
+
+/** The melt itself, white so the material can colour it as it cools. */
+function spotTexture(seed, size) {
+  const cv = newCanvas(size, size), ctx = cv.getContext('2d');
+  const img = ctx.createImageData(size, size), px = img.data, f = scarField(seed);
+  for (let j = 0, i = 0; j < size; j++) {
+    for (let k = 0; k < size; k++, i += 4) {
+      const s = f((k + 0.5) / size * 2 - 1, (j + 0.5) / size * 2 - 1);
+      const a = smoothstep(clamp(s.inside / 0.14, 0, 1));
+      // dark crust between bright veins, a little lighter towards the middle
+      let L = 0.5 + 0.25 * s.mott + 0.45 * Math.pow(s.vein, 5) + 0.12 * clamp(s.inside, 0, 1);
+      // the lip just inside the edge is crusted over first
+      L *= 1 - 0.22 * Math.exp(-Math.pow((s.inside - 0.12) / 0.07, 2));
+      const c = clamp(L, 0, 1) * 255;
+      px[i] = px[i + 1] = px[i + 2] = c;
+      px[i + 3] = a * 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
   return cv;
 }
 
 /**
- * The same wound while it is still open: a ring of glowing melt. White-hot in
- * the middle where the impactor's energy went, orange through the melt sheet,
- * and cracks radiating out where the crust tore and the heat is showing
- * through. Drawn additively, so this is pure light laid over the crater.
+ * The light of a fresh mark, laid over it additively: white-hot along the
+ * veins and in the middle, yellow and orange through the melt, and a soft red
+ * glow that bleeds out over the ground round it and fades well inside the
+ * texture's edge, so there is never a hard line where it stops.
  */
 function scarFireTexture(seed, size) {
-  /* The glow of a fresh spot: a round disc of light the spot's size. */
-  const cv = newCanvas(size, size);
-  const ctx = cv.getContext('2d');
-  const c = size / 2;
-  const g = ctx.createRadialGradient(c, c, 0, c, c, c * 0.62);
-  g.addColorStop(0, 'rgba(255,248,228,1)');
-  g.addColorStop(0.35, 'rgba(255,206,100,0.9)');
-  g.addColorStop(0.7, 'rgba(255,118,24,0.55)');
-  g.addColorStop(0.9, 'rgba(200,44,8,0.18)');
-  g.addColorStop(1, 'rgba(120,16,4,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(c, c, c * 0.62, 0, TAU); ctx.fill();
+  const cv = newCanvas(size, size), ctx = cv.getContext('2d');
+  const img = ctx.createImageData(size, size), px = img.data, f = scarField(seed);
+  const HOT = [[0, [150, 26, 6]], [0.35, [255, 96, 18]], [0.65, [255, 196, 70]], [1, [255, 250, 226]]];
+  for (let j = 0, i = 0; j < size; j++) {
+    for (let k = 0; k < size; k++, i += 4) {
+      const s = f((k + 0.5) / size * 2 - 1, (j + 0.5) / size * 2 - 1);
+      const inMelt = smoothstep(clamp(s.inside / 0.14, 0, 1));
+      const heat = clamp(0.35 + 0.4 * clamp(s.inside, 0, 1) + 0.5 * Math.pow(s.vein, 4) * inMelt, 0, 1);
+      // the halo: strongest at the rim, gone by 0.9 of the way to the edge
+      const halo = Math.exp(-Math.max(s.d - s.R, 0) / 0.11) * (1 - smoothstep(clamp((s.d - 0.7) / 0.2, 0, 1)));
+      const glow = Math.max(inMelt * (0.25 + 0.6 * Math.pow(heat, 2)), halo * 0.5);
+      const c = ramp(HOT, inMelt > 0.02 ? heat : 0.25 * halo);
+      px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2];
+      px[i + 3] = clamp(glow, 0, 1) * 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
   return cv;
 }
 
@@ -7819,11 +7866,18 @@ function scarCapGeometry(b, sc, lift, list) {
       ww = new THREE.Vector3().crossVectors(n, uu).normalize();
     }
   }
-  const along = 1 + e, across = 1 / (1 + e * 0.3), shift = e * 0.55;
-
   const ang = scarAngle(sc);
+  /* The cap can only reach so far round the world, so a big mark is stretched
+     no further than it can hold — the whole splash and its glow, wherever it
+     slid to. Cutting it off at the cap's edge is what left the hard, straight
+     ends of a bright block instead of a splash. */
+  const CAP_MAX = 1.32, REACH = 3.3;                  // the glow fades out by 0.45 of the texture
+  let along = 1 + e, shift = e * 0.55;
+  const fit = CAP_MAX / (ang * along * (REACH + shift));
+  if (fit < 1) { along = Math.max(1, along * fit); shift *= fit; }
+  const across = 1 / (1 + (along - 1) * 0.3);
   // Far enough out to hold the whole stretched spot, wherever it slid to.
-  const amax = Math.min(ang * Math.max(SCAR_TEX_SPAN, along * (2.35 + shift)), 1.32);
+  const amax = Math.min(ang * Math.max(SCAR_TEX_SPAN, along * (REACH + shift)), CAP_MAX);
 
   const pos = [], uvs = [], idx = [];
   const dir = new THREE.Vector3();
@@ -7879,9 +7933,11 @@ function buildScars(b) {
      little dark flakes. */
   const clear = 0.002 + reliefOf(b.type) * 0.020;
 
-  const tex = cachedTexture('spot', () => spotTexture(128));
-  const hot = cachedTexture('scarfire', () => scarFireTexture(4711, 256));
   for (const sc of b.scars) {
+    // each mark one of a few splash shapes, the same one every time it is rebuilt
+    const vi = Math.floor(hash01(sc.roll * 1000, 3) * SCAR_VARIANTS);
+    const tex = cachedTexture('spot:' + vi, () => spotTexture(4711 + vi * 97, 256));
+    const hot = cachedTexture('scarfire:' + vi, () => scarFireTexture(4711 + vi * 97, 256));
     // The spot itself, coloured by its age in paintScars.
     const mat = new THREE.MeshBasicMaterial({
       map: tex, transparent: true, depthWrite: false, opacity: 0, side: THREE.DoubleSide,
@@ -7936,7 +7992,7 @@ function paintScars(b) {
     sk.pit.visible = true;
     // A yellow glow on top while it is fresh, fading away as it cools.
     const lit = Math.pow(1 - t, 1.7);
-    sk.fire.material.color.setRGB(1, 0.86, 0.35);
+    sk.fire.material.color.setRGB(1, 1, 1);            // the texture carries the colour
     sk.fire.material.opacity = lit * 0.8;
     sk.fire.visible = lit > 0.004;
   }
@@ -11576,7 +11632,8 @@ function updateTrails() {
     const t = b.trail;
     if (!t) continue;
     const host = b.rotHost || b.domHost;
-    if (host && sim.running && trailRing(b, host)) continue;
+    const moon = host && isMoonOf(host);
+    if (host && (sim.running || moon) && trailRing(b, host, moon)) continue;
     if (b.trailRing) {                   // back to ordinary speed: start the trail afresh
       b.trailRing = false;
       t.n = 0; t.q = null; t.lx = undefined; t.o.copy(b.p); t.line.position.copy(b.p);
@@ -11596,15 +11653,23 @@ function updateTrails() {
  * redrawn every frame from where the body is and how it is moving.
  */
 const RING_PTS = 128;
+/* A moon is drawn with its whole orbit from the start, at any speed: traced
+   point by point, a trail laid down while its planet sweeps on round the Sun
+   smears into a long wavy ribbon, not the loop the moon really makes. Anything
+   going round a planet counts, including one dropped round a lone planet. */
+function isMoonOf(host) {
+  const def = TYPES[host.type];
+  return host.kind === 'body' && !(def && def.star);
+}
 const _re = new THREE.Vector3(), _rh = new THREE.Vector3(), _rP = new THREE.Vector3(), _rQ = new THREE.Vector3(), _rr = new THREE.Vector3(), _rv = new THREE.Vector3();
-function trailRing(b, host) {
+function trailRing(b, host, always) {
   const mu = G * settings.gravity * (host.m + b.m);
   _rr.subVectors(b.p, host.p); _rv.subVectors(b.v, host.v);
   const r = _rr.length(), E = _rv.lengthSq() / 2 - mu / r;
   if (!(E < 0) || !(r > 0)) return false;               // not bound: an ordinary trail
   const a = -mu / (2 * E);
   const period = TAU * Math.sqrt(a * a * a / mu);
-  if (!(sim.frameSpan > period / 4)) return false;      // slow enough to trace properly
+  if (!always && !(sim.frameSpan > period / 4)) return false;   // slow enough to trace properly
   _rh.crossVectors(_rr, _rv);
   _re.crossVectors(_rv, _rh).divideScalar(mu).addScaledVector(_rr, -1 / r);   // eccentricity vector
   const e = Math.min(_re.length(), 0.99);
