@@ -11599,10 +11599,11 @@ function updateTrails() {
 const RING_PTS = 128;
 /* A moon is drawn with its whole orbit from the start, at any speed: traced
    point by point, a trail laid down while its planet sweeps on round the Sun
-   smears into a long wavy ribbon, not the loop the moon really makes. */
+   smears into a long wavy ribbon, not the loop the moon really makes. Anything
+   going round a planet counts, including one dropped round a lone planet. */
 function isMoonOf(host) {
   const def = TYPES[host.type];
-  return host.kind === 'body' && !(def && def.star) && !!host.domHost;
+  return host.kind === 'body' && !(def && def.star);
 }
 const _re = new THREE.Vector3(), _rh = new THREE.Vector3(), _rP = new THREE.Vector3(), _rQ = new THREE.Vector3(), _rr = new THREE.Vector3(), _rv = new THREE.Vector3();
 function trailRing(b, host, always) {
