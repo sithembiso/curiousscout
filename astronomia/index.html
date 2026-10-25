@@ -7302,7 +7302,7 @@ function buildHole(b, grp) {
   grp.add(shadow);
   b.parts.surf = shadow;
 
-  const photon = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_PHOTON, color: new THREE.Color(0x8fb8ff), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  const photon = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_PHOTON, color: new THREE.Color(0xffe6c0), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
   grp.add(photon);
   b.parts.photon = photon;
 
@@ -7315,122 +7315,144 @@ function buildHole(b, grp) {
 
 /* ------------------------------------------------------------ accretion discs */
 /*
- * An accretion disc is gas: a few thousand wisps of it, each on its own
- * circular orbit, so the inner edge whips round far faster than the rim
- * (Kepler: angular speed falls as r^-1.5) and the disc shears into streaks.
- * The motion is done in the vertex shader from one clock, so it costs nothing.
- * Hot blue-white at the inner edge, deep blue at the rim, a little thicker the
- * further out, and brighter on the side swinging towards you — relativistic
- * beaming, the reason real images of these discs are lopsided.
+ * The disc round a black hole is drawn the way the best renderings show it: a
+ * fat, glowing ring of gas — a doughnut, not a sheet — churning round so fast
+ * that its streaks shear past one another, blazing white on the inner wall
+ * where it is closest to the hole and coolest, cream to tan, out at the rim.
+ * Out of the hole in the middle comes a light too bright to look at, and two
+ * broad beams of plasma leave along the spin axis.
  *
- * Laid out in the XY plane with radius 1, like the ring it replaces, so the
- * same scale and tilt apply. One geometry and one material are shared by
- * every disc in the scene; disposeVisual knows to leave them alone.
+ * Laid out round the Z axis with an outer radius of about 1, so the same
+ * scale and tilt apply as before. The swirl is worked out in the shader from
+ * one clock (inner gas laps faster, Kepler's r^-1.5), so it costs nothing.
+ * One geometry and one set of materials serve every disc in the scene;
+ * disposeVisual knows to leave them alone.
  */
-const GAS_DISK_N = 2600;
-let gasDiskGeo = null, gasDiskMat = null, gasAtlas = null;
+let gasDiskGeo = null, gasDiskMat = null, gasDiskGlowMat = null;
 
-const GAS_DISK_VERT = `
+const DISK_VERT = `
   #include <common>
   #include <logdepthbuf_pars_vertex>
-  attribute float aR;
-  attribute float aPhase;
-  attribute float aH;
-  attribute float aSize;
-  attribute vec3 aCol;
-  attribute float aArm;
-  uniform float uTime;
-  uniform float uScale;
-  varying vec3 vCol;
-  varying float vA;
-  varying float vRot;
-  varying float vTile;
+  varying vec3 vP;
+  varying vec3 vON;
+  varying vec3 vVN;
+  varying vec3 vV;
   void main() {
-    float om = 1.4 * pow(aR / 0.3, -1.5);
-    // Gas in the arms turns with the spiral pattern, not on its own orbit, so
-    // the arms keep their shape instead of winding up into rings.
-    float a = aPhase + uTime * mix(om, 0.55, aArm)
-            + aArm * 0.06 * sin(uTime * om * 0.5 + aPhase * 13.0);
-    vec3 p = vec3(cos(a) * aR, sin(a) * aR, aH);
-    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    vP = position;
+    vON = normal;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vVN = normalize(normalMatrix * normal);
+    vV = -mv.xyz;
     gl_Position = projectionMatrix * mv;
     #include <logdepthbuf_vertex>
-    float sc = length((modelMatrix * vec4(1.0, 0.0, 0.0, 0.0)).xyz);
-    float px = aSize * sc * uScale / max(-mv.z, 1e-9);
-    // gas coming towards you is brighter and bluer
-    vec3 vt = normalize(mat3(modelViewMatrix) * vec3(-sin(a), cos(a), 0.0));
-    float beam = 1.0 + 0.55 * vt.z;
-    vCol = aCol * beam * vec3(0.9 - 0.1 * vt.z, 1.0, 1.0 + 0.15 * vt.z);
-    vA = min(1.0, px * px / 16.0);
-    vRot = a + aPhase;
-    vTile = mod(floor(aPhase * 7.0), 4.0);
-    gl_PointSize = clamp(px, 1.5, 420.0);
   }`;
-const GAS_DISK_FRAG = `
+
+/* Shared by the disc and its glowing skin: the swirling gas, coloured. */
+const DISK_GAS = `
+  uniform float uTime;
+  float h3(vec3 p) {
+    p = fract(p * 0.3183099 + 0.1); p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+  }
+  float n3(vec3 x) {
+    vec3 i = floor(x), f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
+               mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+  }
+  // The gas at a point: streaks stretched round the ring, the inside lapping
+  // the outside, so they wind up into the sheared swirl of the real thing.
+  float gas(vec3 p) {
+    float r = length(p.xy), a = atan(p.y, p.x);
+    a -= uTime * 0.55 * pow(max(r, 0.2) / 0.35, -1.5);
+    vec3 q = vec3(cos(a) * 2.2, sin(a) * 2.2, r * 11.0 + p.z * 7.0);
+    float n = 0.0, amp = 0.55;
+    for (int i = 0; i < 4; i++) { n += amp * n3(q); q = q * 2.03 + vec3(1.7, 9.2, 3.1); amp *= 0.5; }
+    return n;
+  }
+  vec3 gasColour(float r, float n) {
+    float t = clamp((r - 0.26) / 0.72, 0.0, 1.0);          // 0 at the inner wall, 1 at the rim
+    vec3 cream = mix(vec3(1.0, 0.93, 0.80), vec3(0.93, 0.70, 0.48), t);
+    vec3 groove = mix(vec3(0.80, 0.55, 0.36), vec3(0.42, 0.26, 0.18), t);
+    vec3 c = mix(groove, cream, smoothstep(0.28, 0.72, n));
+    return mix(c, vec3(1.0, 0.98, 0.94), pow(1.0 - t, 3.0) * 0.8);   // white-hot near the hole
+  }`;
+
+const DISK_FRAG = `
   #include <common>
   #include <logdepthbuf_pars_fragment>
-  uniform sampler2D uMap;
-  varying vec3 vCol;
-  varying float vA;
-  varying float vRot;
-  varying float vTile;
+  varying vec3 vP;
+  varying vec3 vON;
+  varying vec3 vVN;
+  varying vec3 vV;
+  ` + DISK_GAS + `
   void main() {
     #include <logdepthbuf_fragment>
-    vec2 q = gl_PointCoord - 0.5;
-    float c = cos(vRot), s = sin(vRot);
-    q = vec2(c * q.x - s * q.y, s * q.x + c * q.y) + 0.5;
-    if (q.x < 0.0 || q.x > 1.0 || q.y < 0.0 || q.y > 1.0) discard;
-    vec2 tile = vec2(mod(vTile, 2.0), floor(vTile / 2.0)) * 0.5;
-    float wisp = texture2D(uMap, tile + q * 0.5).a;
-    float soft = exp(-dot(q - 0.5, q - 0.5) * 7.0);
-    gl_FragColor = vec4(vCol, (wisp * 0.6 + soft * 0.55) * vA);
+    float r = length(vP.xy);
+    float n = gas(vP);
+    vec3 c = gasColour(r, n);
+    // lit from the blaze in the middle: the inner wall faces it
+    vec3 toCore = normalize(vec3(-vP.xy, -vP.z * 0.4));
+    float lit = max(dot(normalize(vON), toCore), 0.0);
+    float face = abs(dot(normalize(vVN), normalize(vV)));
+    float shade = 0.62 + 0.55 * lit + 0.18 * (1.0 - face);
+    gl_FragColor = vec4(c * shade, 1.0);
+  }`;
+
+/* A soft additive skin just outside it, so the edges are hazy, not cut out. */
+const DISK_GLOW_FRAG = `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  varying vec3 vP;
+  varying vec3 vON;
+  varying vec3 vVN;
+  varying vec3 vV;
+  ` + DISK_GAS + `
+  void main() {
+    #include <logdepthbuf_fragment>
+    float r = length(vP.xy);
+    float rim = 1.0 - abs(dot(normalize(vVN), normalize(vV)));
+    vec3 c = gasColour(r, gas(vP * 1.01));
+    gl_FragColor = vec4(c, pow(rim, 3.0) * 0.35);
   }`;
 
 function makeGasDisk() {
   if (!gasDiskGeo) {
-    const n = GAS_DISK_N, rng = mulberry32(0x9a5d15c);
-    const aR = new Float32Array(n), aPh = new Float32Array(n), aH = new Float32Array(n);
-    const aS = new Float32Array(n), aC = new Float32Array(n * 3), pos = new Float32Array(n * 3);
-    const aArm = new Float32Array(n);
-    const HOT = [0.85, 0.95, 1.0], MID = [0.30, 0.58, 1.0], RIM = [0.10, 0.22, 0.85];
-    for (let i = 0; i < n; i++) {
-      // crowded towards the inner edge, where the gas is densest and hottest
-      const r = 0.26 + Math.pow(rng(), 1.8) * 0.74;
-      aR[i] = r;
-      /* Two thirds of it is gathered into two trailing spiral arms; the rest
-         is the smooth sheared haze between them. */
-      if (rng() < 0.66) {
-        aArm[i] = 1;
-        const arm = rng() < 0.5 ? 0 : Math.PI;
-        aPh[i] = arm - 2.6 * Math.log(r / 0.26) + (rng() + rng() - 1) * 0.32;
-      } else aPh[i] = rng() * TAU;
-      // Puffed up, and each wisp a big soft cloud, so the disc reads as one
-      // thick body of gas rather than a scatter of specks.
-      aH[i] = (rng() + rng() + rng() - 1.5) * 0.085 * r;
-      aS[i] = (0.07 + rng() * 0.12) * (0.6 + r);
-      const t = (r - 0.26) / 0.74;
-      const c = t < 0.25 ? mix(HOT, MID, t / 0.25) : mix(MID, RIM, (t - 0.25) / 0.75);
-      const glow = (1.25 - t * 0.85) * (0.75 + rng() * 0.5) * 0.12;
-      aC[i * 3] = c[0] * glow; aC[i * 3 + 1] = c[1] * glow; aC[i * 3 + 2] = c[2] * glow;
+    /* A doughnut, puffed out and lumpy: each vertex pushed along its normal by
+       a little fixed noise, so the silhouette billows instead of being a
+       machined ring. */
+    const g = new THREE.TorusGeometry(0.6, 0.33, 48, 200);
+    const pos = g.attributes.position, nor = g.attributes.normal;
+    const lump = fbm(0x7a5, 9, 4, 3);
+    const v = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      const a = (Math.atan2(v.y, v.x) / TAU + 1) % 1;
+      const tube = Math.atan2(v.z, Math.hypot(v.x, v.y) - 0.6) / TAU + 0.5;
+      const k = (lump(a, tube) - 0.5) * 0.07;
+      pos.setXYZ(i, v.x + nor.getX(i) * k, v.y + nor.getY(i) * k, (v.z + nor.getZ(i) * k) * 0.82);
     }
-    gasDiskGeo = new THREE.BufferGeometry();
-    gasDiskGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    gasDiskGeo.setAttribute('aR', new THREE.BufferAttribute(aR, 1));
-    gasDiskGeo.setAttribute('aPhase', new THREE.BufferAttribute(aPh, 1));
-    gasDiskGeo.setAttribute('aH', new THREE.BufferAttribute(aH, 1));
-    gasDiskGeo.setAttribute('aSize', new THREE.BufferAttribute(aS, 1));
-    gasDiskGeo.setAttribute('aCol', new THREE.BufferAttribute(aC, 3));
-    gasDiskGeo.setAttribute('aArm', new THREE.BufferAttribute(aArm, 1));
-    if (!gasAtlas) gasAtlas = sharedNebAtlas();
+    g.computeVertexNormals();
+    gasDiskGeo = g;
     gasDiskMat = new THREE.ShaderMaterial({
-      uniforms: { uMap: { value: gasAtlas }, uTime: { value: 0 }, uScale: { value: 1 } },
-      vertexShader: GAS_DISK_VERT, fragmentShader: GAS_DISK_FRAG,
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+      uniforms: { uTime: { value: 0 } },
+      vertexShader: DISK_VERT, fragmentShader: DISK_FRAG
     });
     gasDiskMat.userData.shared = true;
+    gasDiskGlowMat = new THREE.ShaderMaterial({
+      uniforms: gasDiskMat.uniforms,
+      vertexShader: DISK_VERT, fragmentShader: DISK_GLOW_FRAG,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    gasDiskGlowMat.userData.shared = true;
   }
-  const disk = new THREE.Points(gasDiskGeo, gasDiskMat);
+  const disk = new THREE.Mesh(gasDiskGeo, gasDiskMat);
   disk.frustumCulled = false;
+  const skin = new THREE.Mesh(gasDiskGeo, gasDiskGlowMat);
+  skin.scale.setScalar(1.03);
+  skin.frustumCulled = false;
+  skin.renderOrder = 3;
+  disk.add(skin);
   addJets(disk);
   return disk;
 }
@@ -7438,17 +7460,16 @@ function makeGasDisk() {
 /* ------------------------------------------------------- jets and core glare */
 /*
  * Gas spiralling in this fast is wound up in magnetic field, and some of it is
- * flung out along the spin axis instead of falling in: two beams of plasma
- * leaving at nearly the speed of light, one from each pole. Drawn as two open
- * cones of additive light, brightest at the root and soft at the edges, with
- * knots streaming outwards along them. Plus the glare of the innermost disc,
- * too bright to look at.
+ * flung out along the spin axis instead of falling in: two broad beams of
+ * plasma, one from each pole, like searchlights. They leave the hole in a
+ * blinding white and soften to cream as they spread and fade. Plus the glare
+ * of the innermost disc, pouring out of the hole in the middle.
  *
  * Children of the disc, so they share its size, tilt and visibility. Like the
  * disc, one geometry and one material serve every hole in the scene.
  */
-const JET_LEN = 2.8;          // in disc radii
-let jetGeo = null, jetMat = null;
+const JET_LEN = 3.4;          // in disc radii
+let jetGeo = null, jetMat = null, plateGeo = null;
 
 const JET_VERT = `
   #include <common>
@@ -7471,17 +7492,17 @@ const JET_FRAG = `
   varying float vEdge;
   void main() {
     #include <logdepthbuf_fragment>
-    float along = pow(1.0 - vY, 1.7) * smoothstep(0.0, 0.03, vY);
-    float core = pow(vEdge, 2.2);
-    float knots = 0.72 + 0.28 * sin(vY * 38.0 - uTime * 5.0);
-    vec3 col = mix(vec3(0.9, 0.96, 1.0), vec3(0.25, 0.5, 1.0), smoothstep(0.0, 0.35, vY));
-    gl_FragColor = vec4(col, along * core * knots);
+    float along = pow(1.0 - vY, 1.4) * smoothstep(0.0, 0.03, vY);
+    float core = pow(vEdge, 1.6);
+    float knots = 0.82 + 0.18 * sin(vY * 30.0 - uTime * 5.0);
+    vec3 col = mix(vec3(1.0, 0.98, 0.92), vec3(1.0, 0.84, 0.62), smoothstep(0.0, 0.5, vY));
+    gl_FragColor = vec4(col, along * core * knots * 0.85);
   }`;
 
 function addJets(disk) {
   if (!jetGeo) {
-    // Narrow at the pole, flaring as it goes; its root at the origin, along +z.
-    jetGeo = new THREE.CylinderGeometry(0.2, 0.012, JET_LEN, 28, 1, true);
+    // A broad cone: narrow where it leaves the hole, flaring wide as it goes.
+    jetGeo = new THREE.CylinderGeometry(0.85, 0.07, JET_LEN, 40, 1, true);
     jetGeo.translate(0, JET_LEN / 2, 0);
     jetGeo.rotateX(Math.PI / 2);
     jetMat = new THREE.ShaderMaterial({
@@ -7494,33 +7515,46 @@ function addJets(disk) {
   for (const dir of [1, -1]) {
     const jet = new THREE.Mesh(jetGeo, jetMat);
     jet.frustumCulled = false;
+    jet.renderOrder = 4;
     if (dir < 0) jet.rotation.x = Math.PI;
     disk.add(jet);
   }
-  // The inner disc's glare: a broad blue haze and a small white-hot heart.
+  // A faint violet haze round the whole thing, and the blaze from the hole.
   const haze = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: TEX_HALO, color: new THREE.Color(0x5f8fff), opacity: 0.8,
+    map: TEX_HALO, color: new THREE.Color(0x9a86ff), opacity: 0.32,
     blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
   }));
-  haze.scale.setScalar(1.1);
+  haze.scale.setScalar(3.2);
+  const glare = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: TEX_HALO, color: new THREE.Color(0xfff1dc), opacity: 1,
+    blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+  }));
+  glare.scale.setScalar(2.4);
   const heart = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: TEX_GLOW, color: new THREE.Color(0xe8f2ff), opacity: 1,
+    map: TEX_GLOW, color: new THREE.Color(0xffffff), opacity: 1,
     blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
-    // Drawn over the horizon: the light of the far side of the disc is bent
-    // round the hole and floods the middle, so it shines through the shadow.
+    // Drawn over the near side of the ring: the light pouring out of the hole
+    // floods past it, the way it does in every picture of one.
     depthTest: false
   }));
   heart.renderOrder = 6;
-  heart.scale.setScalar(0.6);
-  disk.add(haze); disk.add(heart);
+  heart.scale.setScalar(1.6);
+  // The hole itself is full of light: seen from above or below, you look
+  // straight down into the blaze, never out through it at empty space.
+  if (!plateGeo) plateGeo = new THREE.CircleGeometry(0.36, 48);
+  const plate = new THREE.Mesh(plateGeo, new THREE.MeshBasicMaterial({
+    map: TEX_GLOW, color: new THREE.Color(0xfff4e4), side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+  }));
+  plate.renderOrder = 5;
+  disk.add(haze); disk.add(glare); disk.add(plate); disk.add(heart);
 }
 
-/** Once a frame: the shared disc clock and pixel scale. */
+/** Once a frame: the shared disc clock. */
 function updateGasDisks() {
   if (!gasDiskMat) return;
   gasDiskMat.uniforms.uTime.value = performance.now() / 1000;
   if (jetMat) jetMat.uniforms.uTime.value = gasDiskMat.uniforms.uTime.value;
-  gasDiskMat.uniforms.uScale.value = VIEW.h * VIEW.dpr / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
 }
 
 /* No horizon, no disc: just the point itself, blazing, shifting through every
@@ -11749,7 +11783,6 @@ const LENS_FRAG = `
   varying vec2 vUv;
   void main() {
     vec2 uv = vUv;
-    float dark = 0.0;
     for (int i = 0; i < 4; i++) {
       if (i >= uCount) break;
       vec3 h = uHoles[i];
@@ -11762,11 +11795,10 @@ const LENS_FRAG = `
       float defl = (rs * rs) / max(r, rs * 0.4) * 1.5;
       defl *= exp(-r / (rs * 8.0));
       uv -= (d / r) / vec2(uAspect, 1.0) * defl;
-      dark = max(dark, smoothstep(rs * 1.04, rs * 0.92, r));
     }
     vec4 c = texture2D(tDiffuse, clamp(uv, vec2(0.001), vec2(0.999)));
-    // Not quite black: the glare of the inner disc is smeared over the shadow.
-    gl_FragColor = vec4(c.rgb * (1.0 - dark * 0.8), 1.0);
+    // No dark disc painted on: the blaze pouring out of the hole floods it.
+    gl_FragColor = vec4(c.rgb, 1.0);
   }`;
 
 const LENS_VERT = `
