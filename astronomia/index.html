@@ -11576,7 +11576,8 @@ function updateTrails() {
     const t = b.trail;
     if (!t) continue;
     const host = b.rotHost || b.domHost;
-    if (host && sim.running && trailRing(b, host)) continue;
+    const moon = host && isMoonOf(host);
+    if (host && (sim.running || moon) && trailRing(b, host, moon)) continue;
     if (b.trailRing) {                   // back to ordinary speed: start the trail afresh
       b.trailRing = false;
       t.n = 0; t.q = null; t.lx = undefined; t.o.copy(b.p); t.line.position.copy(b.p);
@@ -11596,15 +11597,22 @@ function updateTrails() {
  * redrawn every frame from where the body is and how it is moving.
  */
 const RING_PTS = 128;
+/* A moon is drawn with its whole orbit from the start, at any speed: traced
+   point by point, a trail laid down while its planet sweeps on round the Sun
+   smears into a long wavy ribbon, not the loop the moon really makes. */
+function isMoonOf(host) {
+  const def = TYPES[host.type];
+  return host.kind === 'body' && !(def && def.star) && !!host.domHost;
+}
 const _re = new THREE.Vector3(), _rh = new THREE.Vector3(), _rP = new THREE.Vector3(), _rQ = new THREE.Vector3(), _rr = new THREE.Vector3(), _rv = new THREE.Vector3();
-function trailRing(b, host) {
+function trailRing(b, host, always) {
   const mu = G * settings.gravity * (host.m + b.m);
   _rr.subVectors(b.p, host.p); _rv.subVectors(b.v, host.v);
   const r = _rr.length(), E = _rv.lengthSq() / 2 - mu / r;
   if (!(E < 0) || !(r > 0)) return false;               // not bound: an ordinary trail
   const a = -mu / (2 * E);
   const period = TAU * Math.sqrt(a * a * a / mu);
-  if (!(sim.frameSpan > period / 4)) return false;      // slow enough to trace properly
+  if (!always && !(sim.frameSpan > period / 4)) return false;   // slow enough to trace properly
   _rh.crossVectors(_rr, _rv);
   _re.crossVectors(_rv, _rh).divideScalar(mu).addScaledVector(_rr, -1 / r);   // eccentricity vector
   const e = Math.min(_re.length(), 0.99);
