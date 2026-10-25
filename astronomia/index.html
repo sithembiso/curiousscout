@@ -7328,7 +7328,7 @@ function buildHole(b, grp) {
  * One geometry and one set of materials serve every disc in the scene;
  * disposeVisual knows to leave them alone.
  */
-let gasDiskGeo = null, gasDiskMat = null, gasDiskGlowMat = null;
+let gasDiskGeo = null, gasDiskMat = null, gasDiskGlowMat = null, puffGeo = null, puffMat = null;
 
 const DISK_VERT = `
   #include <common>
@@ -7371,7 +7371,7 @@ const DISK_GAS = `
     return n;
   }
   vec3 gasColour(float r, float n) {
-    float t = clamp((r - 0.26) / 0.72, 0.0, 1.0);          // 0 at the inner wall, 1 at the rim
+    float t = clamp((r - 0.22) / 0.78, 0.0, 1.0);          // 0 at the inner wall, 1 at the rim
     vec3 cream = mix(vec3(1.0, 0.93, 0.80), vec3(0.93, 0.70, 0.48), t);
     vec3 groove = mix(vec3(0.80, 0.55, 0.36), vec3(0.42, 0.26, 0.18), t);
     vec3 c = mix(groove, cream, smoothstep(0.28, 0.72, n));
@@ -7421,16 +7421,18 @@ function makeGasDisk() {
     /* A doughnut, puffed out and lumpy: each vertex pushed along its normal by
        a little fixed noise, so the silhouette billows instead of being a
        machined ring. */
-    const g = new THREE.TorusGeometry(0.6, 0.33, 48, 200);
+    const g = new THREE.TorusGeometry(0.58, 0.36, 64, 240);
     const pos = g.attributes.position, nor = g.attributes.normal;
-    const lump = fbm(0x7a5, 9, 4, 3);
+    // Billows on billows: big rounded swells with smaller ones on top, the
+    // cauliflower look of a thick cloud rather than a smooth tyre.
+    const big = fbm(0x7a5, 7, 3, 3), small = fbm(0x3c1, 22, 9, 3);
     const v = new THREE.Vector3();
     for (let i = 0; i < pos.count; i++) {
       v.fromBufferAttribute(pos, i);
       const a = (Math.atan2(v.y, v.x) / TAU + 1) % 1;
-      const tube = Math.atan2(v.z, Math.hypot(v.x, v.y) - 0.6) / TAU + 0.5;
-      const k = (lump(a, tube) - 0.5) * 0.07;
-      pos.setXYZ(i, v.x + nor.getX(i) * k, v.y + nor.getY(i) * k, (v.z + nor.getZ(i) * k) * 0.82);
+      const tube = Math.atan2(v.z, Math.hypot(v.x, v.y) - 0.58) / TAU + 0.5;
+      const k = Math.pow(big(a, tube), 1.5) * 0.16 + Math.abs(small(a, tube) - 0.5) * 0.08 - 0.06;
+      pos.setXYZ(i, v.x + nor.getX(i) * k, v.y + nor.getY(i) * k, (v.z + nor.getZ(i) * k) * 0.92);
     }
     g.computeVertexNormals();
     gasDiskGeo = g;
@@ -7453,8 +7455,99 @@ function makeGasDisk() {
   skin.frustumCulled = false;
   skin.renderOrder = 3;
   disk.add(skin);
+  disk.add(makeDiskPuffs());
   addJets(disk);
   return disk;
+}
+
+/*
+ * The thick of it: thousands of big soft puffs of gas packed through and
+ * over the ring, each going round at its own Kepler speed, so the disc reads
+ * as a fat churning cloud with a fuzzy edge rather than a solid surface.
+ */
+const PUFF_N = 1800;
+const PUFF_VERT = `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  attribute float aSize;
+  attribute vec3 aCol;
+  attribute float aRot;
+  uniform float uTime;
+  uniform float uScale;
+  varying vec3 vCol;
+  varying float vRot;
+  varying float vA;
+  void main() {
+    float r = length(position.xy);
+    float a = -uTime * 0.55 * pow(max(r, 0.2) / 0.35, -1.5);
+    float c = cos(a), s = sin(a);
+    vec3 p = vec3(c * position.x - s * position.y, s * position.x + c * position.y, position.z);
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * mv;
+    #include <logdepthbuf_vertex>
+    float sc = length((modelMatrix * vec4(1.0, 0.0, 0.0, 0.0)).xyz);
+    float px = aSize * sc * uScale / max(-mv.z, 1e-9);
+    gl_PointSize = clamp(px, 1.0, 600.0);
+    vA = min(1.0, px * px / 30.0);
+    vCol = aCol;
+    vRot = aRot + a * 0.5;
+  }`;
+const PUFF_FRAG = `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  uniform sampler2D uMap;
+  varying vec3 vCol;
+  varying float vRot;
+  varying float vA;
+  void main() {
+    #include <logdepthbuf_fragment>
+    vec2 q = gl_PointCoord - 0.5;
+    float c = cos(vRot), s = sin(vRot);
+    q = vec2(c * q.x - s * q.y, s * q.x + c * q.y) + 0.5;
+    float a = texture2D(uMap, q).a;
+    if (a < 0.02) discard;
+    gl_FragColor = vec4(vCol, a * 0.4 * vA);
+  }`;
+
+function makeDiskPuffs() {
+  if (!puffGeo) {
+    const rng = mulberry32(0xd15c), n = PUFF_N;
+    const pos = new Float32Array(n * 3), col = new Float32Array(n * 3), siz = new Float32Array(n), rot = new Float32Array(n);
+    const CORE = [1.0, 0.97, 0.9], CREAM = [1.0, 0.86, 0.66], TAN = [0.86, 0.6, 0.42], SHADE = [0.5, 0.32, 0.24];
+    for (let i = 0; i < n; i++) {
+      const a = rng() * TAU, tb = rng() * TAU;
+      // mostly on and just outside the ring's surface, some buried in it
+      const d = 0.36 * (0.45 + Math.pow(rng(), 0.7) * 0.65);
+      const R = 0.58 + Math.cos(tb) * d;
+      const z = Math.sin(tb) * d * 0.92;
+      pos[i * 3] = Math.cos(a) * R; pos[i * 3 + 1] = Math.sin(a) * R; pos[i * 3 + 2] = z;
+      const t = clamp((R - 0.2) / 0.85, 0, 1);
+      let c = t < 0.35 ? mix(CORE, CREAM, t / 0.35) : mix(CREAM, TAN, (t - 0.35) / 0.65);
+      // the side facing the blaze in the middle is lit; the far side of each
+      // swell falls into its own shadow
+      const lit = clamp(0.5 - Math.cos(tb) * 0.5 + 0.25, 0, 1);
+      c = mix(mix(SHADE, c, 0.55 + 0.45 * lit), c, rng() * 0.3);
+      const j = 0.85 + rng() * 0.3;
+      col[i * 3] = c[0] * j; col[i * 3 + 1] = c[1] * j; col[i * 3 + 2] = c[2] * j;
+      siz[i] = 0.13 + Math.pow(rng(), 1.6) * 0.22;
+      rot[i] = rng() * TAU;
+    }
+    puffGeo = new THREE.BufferGeometry();
+    puffGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    puffGeo.setAttribute('aCol', new THREE.BufferAttribute(col, 3));
+    puffGeo.setAttribute('aSize', new THREE.BufferAttribute(siz, 1));
+    puffGeo.setAttribute('aRot', new THREE.BufferAttribute(rot, 1));
+    puffMat = new THREE.ShaderMaterial({
+      uniforms: { uTime: gasDiskMat.uniforms.uTime, uScale: { value: 1 }, uMap: { value: TEX_PUFF } },
+      vertexShader: PUFF_VERT, fragmentShader: PUFF_FRAG,
+      transparent: true, depthWrite: false
+    });
+    puffMat.userData.shared = true;
+  }
+  const pts = new THREE.Points(puffGeo, puffMat);
+  pts.frustumCulled = false;
+  pts.renderOrder = 2;
+  return pts;
 }
 
 /* ------------------------------------------------------- jets and core glare */
@@ -7555,6 +7648,7 @@ function updateGasDisks() {
   if (!gasDiskMat) return;
   gasDiskMat.uniforms.uTime.value = performance.now() / 1000;
   if (jetMat) jetMat.uniforms.uTime.value = gasDiskMat.uniforms.uTime.value;
+  if (puffMat) puffMat.uniforms.uScale.value = VIEW.h * VIEW.dpr / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
 }
 
 /* No horizon, no disc: just the point itself, blazing, shifting through every
