@@ -5521,7 +5521,7 @@ function updateSupernovae(simDt) {
     // how much matter is still there to build something out of.
     e.name = e.lum > 100
       ? e.label + ' · ' + fmtLum(e.lum)
-      : e.label + ' remnant · ' + fmtMass(e.m);
+      : e.label + (e.noun != null ? e.noun : ' remnant') + ' · ' + fmtMass(e.m);
 
     updateSNVisual(e);
     // The light fades in months; the cloud itself lasts as long as it has grains,
@@ -6061,9 +6061,13 @@ function updateSNVisual(e) {
     // few strong ones — otherwise the colour is lost exactly where it matters.
     // wisps have more gap than glow, so they are drawn stronger than plain puffs were
       // blazing: as bright as a sun, and it stays bright as it spreads
-    u.uOp.value = puff * Math.max(fade, 0.65) * 1.15 * SN_GLOW * (e.dim || 1);
+    // From inside the cloud every sightline crosses half of it and the screen
+    // goes flat white — thin it as the camera goes in, so whatever sits in the
+    // middle (the Trapezium in Orion, a pulsar) can still be seen.
+    const inside = clamp(camera.position.distanceTo(e.p) / R, 0.2, 1);
+    u.uOp.value = puff * Math.max(fade, 0.65) * 1.15 * SN_GLOW * (e.dim || 1) * inside;
     e.neb.visible = puff > 0.01 && big;
-    if (e.heart) e.heart.material.opacity = Math.min(1, puff * Math.max(fade, 0.65) * 1.2 * SN_GLOW * (e.dim || 1));
+    if (e.heart) e.heart.material.opacity = Math.min(1, puff * Math.max(fade, 0.65) * 1.2 * SN_GLOW * (e.dim || 1) * inside);
   }
 
   // The glowing photosphere, as bright as the light curve says — with a pixel
@@ -13914,10 +13918,10 @@ function renderUniverseInspector(u) {
 function renderCloudInspector(e) {
   const host = $('an-insp-body');
   const c = e.cloud || { mass: 0, n: 0, radius: 0 };
-  $('an-insp-h').textContent = 'REMNANT CLOUD';
+  $('an-insp-h').textContent = e.header || 'REMNANT CLOUD';
 
   host.innerHTML =
-    '<div class="an-name-in" style="cursor:default;pointer-events:none">' + escAttr(e.label + ' remnant') + '</div>' +
+    '<div class="an-name-in" style="cursor:default;pointer-events:none">' + escAttr(e.label + (e.noun != null ? e.noun : ' remnant')) + '</div>' +
     '<div class="an-type">from ' + escAttr(e.origin) + '</div>' +
     '<dl class="an-stats">' +
     '<dt>Gas &amp; dust</dt><dd id="is-cmass"></dd>' +
@@ -14696,7 +14700,7 @@ function updateInspectorStats() {
     inspRefs.cage.textContent = b.age < 730
       ? Math.round(b.age).toLocaleString() + ' days'
       : (b.age / 365.25).toPrecision(3) + ' years';
-    inspRefs.clum.textContent = b.lum > 0.01 ? fmtLum(b.lum) : 'gone dark';
+    inspRefs.clum.textContent = b.lum > 0.01 ? fmtLum(b.lum) : (b.glowText || 'gone dark');
     inspRefs.ctv.textContent = b.coreT >= 1e6
       ? (b.coreT / 1e6).toPrecision(3) + ' million K'
       : Math.round(b.coreT).toLocaleString() + ' K';
@@ -15817,6 +15821,89 @@ function stepHomers(before) {
   }
 }
 
+/* ================================================================ Orion */
+/*
+ * The Orion Nebula (M42): about 24 light-years of glowing hydrogen, lit by
+ * the Trapezium — the young cluster at its heart. The five brightest stars,
+ * at their measured masses, are put on orbits round one barycentre, built
+ * the way the hand-placed Barycentre tool builds a system: the two heaviest
+ * (θ¹ C and D) as a binary circling the point, and A, B and E each going
+ * round everything inside them. Each is about four times further out than
+ * the one before — the spacing a family of heavy stars needs to keep their
+ * orbits for good rather than flinging one another out.
+ */
+const ORION_R = 12 * LY_GM;
+
+function buildOrion() {
+  // The cloud: the game's Orion-shaped nebula, made the same way a remnant
+  // is, then spread through the whole volume at its real size.
+  const seed = makeBody('blue_giant', new V3(), new V3(), { name: 'Orion Molecular Cloud', mass: 300 * M_SUN });
+  const plan = Object.assign({}, snPlan(seed), {
+    ok: true, flavour: 'PISN', label: 'Orion Nebula', remnant: 'none', remMass: 0, life: 1e12,
+    foe: 0.001, ni: 0, plateau: 0, breakout: 0,
+    story: 'Not an explosion but a nursery: new stars are still being born inside it, and the hottest of them — the Trapezium — light the whole cloud up.'
+  });
+  goSupernova(seed, plan);
+  for (const f of flashes) f.life = 0;           // no explosion here: it is a nursery, not a blast
+  const e = supernovae[supernovae.length - 1];
+  const rng = mulberry32(1342);
+  for (let k = 0; k < P_MAX; k++) {
+    if (!parts.on[k] || parts.src[k] !== e.id) continue;
+    const k3 = k * 3;
+    // through the whole volume, thinning towards the edge, never in the middle
+    const z = rng() * 2 - 1, ph = rng() * TAU, q = Math.sqrt(1 - z * z);
+    const r = ORION_R * (0.12 + 0.88 * Math.pow(rng(), 0.7));
+    const d = [q * Math.cos(ph), q * Math.sin(ph), z];
+    for (let a = 0; a < 3; a++) {
+      parts.pos[k3 + a] = e.p.getComponent(a) + d[a] * r;
+      parts.vel[k3 + a] = e.v.getComponent(a) + d[a] * 10 * KMS;   // the hot gas pushing out at ~10 km/s
+    }
+    parts.hot[k] = 0.15;
+  }
+  parts.dirty = true;
+  e.age = 3e5 * 365.25; e.t0 = sim.time - e.age;
+  e.radius = ORION_R; e.vShock = 10 * KMS; e.vBulk = 10 * KMS; e.brakeTau = 1e12;
+  e.coreT = 1e4; e.held = true; e.dim = 0.45;
+  e.noun = ''; e.header = 'NEBULA'; e.origin = 'the Orion Molecular Cloud'; e.glowText = 'lit by the Trapezium';
+
+  /* The Trapezium, round one barycentre — built from the inside out. The
+     heaviest pair (C and D) circle each other first; then each star further
+     out is set going round everything inside it, and the inner group is moved
+     the other way by just enough that the centre of mass of the whole family
+     never leaves the barycentre. So all five swing round that one point. */
+  const B = makeBary(new V3(), new V3());
+  B.name = 'Trapezium barycentre';
+  const gm = G * settings.gravity;
+  const up = new V3(0, 1, 0);
+  const inner = [];
+  let Mi = 0;
+  const add = (type, name, mSun, r, ang, tilt) => {
+    const b = makeBody(type, new V3(), new V3(), { name: name, mass: mSun * M_SUN });
+    if (!inner.length) { inner.push(b); Mi = b.m; return b; }
+    // where it sits, and which way it goes round, relative to the inner group
+    const dir = new V3(Math.cos(ang), 0, Math.sin(ang)).applyAxisAngle(new V3(Math.cos(ang + 1.57), 0, Math.sin(ang + 1.57)), tilt);
+    const t = up.clone().cross(dir).normalize().applyAxisAngle(dir, tilt);
+    const M = Mi + b.m, vrel = Math.sqrt(gm * M / r);
+    b.p.copy(dir).multiplyScalar(r * Mi / M);
+    b.v.copy(t).multiplyScalar(vrel * Mi / M);
+    for (const m of inner) { m.p.addScaledVector(dir, -r * b.m / M); m.v.addScaledVector(t, -vrel * b.m / M); }
+    inner.push(b); Mi = M;
+    return b;
+  };
+  add('blue_giant', 'θ¹ Orionis C', 33);
+  add('blue_giant', 'θ¹ Orionis D', 17, 400 * AU, 0, 0);       // a binary 400 AU apart
+  add('blue_giant', 'θ¹ Orionis A', 14, 2000 * AU, 1.9, 0.20);
+  add('blue_giant', 'θ¹ Orionis B', 7, 8000 * AU, 3.8, -0.15);
+  add('sun_like', 'θ¹ Orionis E', 3, 32000 * AU, 5.4, 0.10);
+  for (const m of inner) { B.members.push(m); trailRestart(m); }
+
+  computeAccel();
+  sim.running = true;
+  setRate(365.25 * 200);                         // 200 years a second: the inner pair laps in ~6 s
+  select(B);
+  return e;
+}
+
 /* ================================================================ the Crab */
 /*
  * The Crab Nebula, as it is about 970 years after the explosion: a ~10 M☉
@@ -15867,6 +15954,9 @@ function buildCrab() {
   e.coreT = 1.1e4; e.held = true;
   e.vBulk = CRAB_V;
   e.dim = 0.4;                                    // softer, so the filaments and the pulsar show through
+  e.noun = '';
+  e.header = 'SUPERNOVA REMNANT';
+  e.glowText = 'lit by the pulsar';
 
   // The pulsar: held at the centre, spinning 30 times a second.
   const psr = star;
@@ -16257,6 +16347,11 @@ const PRESETS = [
     name: 'Project Noctaris', desc: 'The Solar System, with the Noctaris system seven light-years away — and Earth has just launched Pathfinder, a probe flying at a fifth of the speed of light, on a 35-year trip to crash into Thalassa. It is aimed at where Thalassa will be when it arrives, and steers itself the rest of the way. The clock speeds up for the long cruise and slows down again for the crash.',
     dist: 0.12,
     build() { projectNoctaris(); }
+  },
+  {
+    name: 'Orion Nebula', desc: 'The nearest place where big stars are being born: a glowing cloud of hydrogen 24 light-years across, 1,340 light-years away — you can see it with your own eyes as the fuzzy middle star of Orion\'s Sword. At its heart is the Trapezium, the five young stars lighting it up, all swinging round one shared barycentre.',
+    dist: 12 * 9.46073e6 * 2.4,
+    build() { return buildOrion(); }
   },
   {
     name: 'Crab Nebula', desc: 'What is left of a star that blew up in the year 1054 — astronomers in China saw it shining in daylight for three weeks. Eleven light-years of glowing gas, still racing outwards at 1,500 km/s, with the Crab Pulsar at its heart: a neutron star spinning 30 times a second and sweeping two beams round like a lighthouse.',
