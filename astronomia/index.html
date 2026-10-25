@@ -12654,8 +12654,10 @@ function updateLabels() {
    cloud) it has no label, no marker and no more glare than any other star. */
 const SHY_RANGE = 2e5;
 function shyFar(b) {
+  // a named star in the galaxy carries its own range, so it shows up as you
+  // close in on its part of the sky rather than only from inside its system
   return !!b.shy && b !== sim.selected && b !== sim.follow &&
-    camera.position.distanceTo(b.p) > SHY_RANGE;
+    camera.position.distanceTo(b.p) > (b.shy === true ? SHY_RANGE : b.shy);
 }
 
 function apparentPx(b) {
@@ -15821,6 +15823,197 @@ function stepHomers(before) {
   }
 }
 
+/* ====================================================== the known stars */
+/*
+ * The Milky Way map's catalogue: the stars people know by name, each where it
+ * really is — its right ascension, declination and distance from the Sun,
+ * turned into the galaxy's own frame (centre, direction of rotation, north
+ * pole) so that Sagittarius really is towards the middle and Cygnus really is
+ * along the way we are going. The nearest neighbours, the brightest stars in
+ * the sky, the giants, the famous systems with planets, and the dead ones —
+ * white dwarfs, pulsars and black holes. (Telescopes have catalogued nearly
+ * two billion stars; these are the ones with names.)
+ *
+ * The game has no separate kind for an A-type or a K giant, so each is drawn
+ * as the nearest kind it has (blue-white as a blue giant, orange and red
+ * giants as red supergiants) with its real mass and real width.
+ *
+ * Row: name, RA (hours), Dec (°), distance (ly), kind, mass (M☉), radius (R☉),
+ * and optionally a companion: [name, kind, mass, separation (AU), eccentricity].
+ */
+const KNOWN_STARS = [
+  // ---- the neighbours
+  ["Barnard's Star", 17.963, 4.69, 5.96, 'red_dwarf', 0.16, 0.19],
+  ['Luhman 16', 10.821, -53.32, 6.5, 'brown_dwarf', 0.034, 0.09],
+  ['WISE 0855−0714', 8.917, -7.24, 7.4, 'brown_dwarf', 0.006, 0.09],
+  ['Wolf 359', 10.944, 7.01, 7.86, 'red_dwarf', 0.11, 0.14],
+  ['Lalande 21185', 11.055, 35.97, 8.31, 'red_dwarf', 0.39, 0.39],
+  ['Sirius', 6.752, -16.72, 8.60, 'blue_giant', 2.06, 1.71, ['Sirius B', 'white_dwarf', 1.02, 20, 0.59]],
+  ['Luyten 726-8', 1.648, -17.95, 8.7, 'red_dwarf', 0.10, 0.14],
+  ['Ross 154', 18.828, -23.84, 9.7, 'red_dwarf', 0.17, 0.20],
+  ['Ross 248', 23.698, 44.17, 10.3, 'red_dwarf', 0.14, 0.16],
+  ['Epsilon Eridani', 3.549, -9.46, 10.5, 'red_dwarf', 0.82, 0.74],
+  ['Lacaille 9352', 23.097, -35.85, 10.7, 'red_dwarf', 0.48, 0.47],
+  ['Ross 128', 11.795, 0.80, 11.0, 'red_dwarf', 0.17, 0.20],
+  ['61 Cygni A', 21.115, 38.75, 11.4, 'red_dwarf', 0.70, 0.67, ['61 Cygni B', 'red_dwarf', 0.63, 84, 0.40]],
+  ['Procyon', 7.655, 5.22, 11.46, 'sun_like', 1.50, 2.05, ['Procyon B', 'white_dwarf', 0.60, 15, 0.41]],
+  ['Struve 2398', 18.713, 59.63, 11.5, 'red_dwarf', 0.33, 0.35],
+  ['Groombridge 34', 0.305, 44.02, 11.6, 'red_dwarf', 0.38, 0.38],
+  ['Epsilon Indi', 22.055, -56.79, 11.9, 'red_dwarf', 0.76, 0.71],
+  ['Tau Ceti', 1.734, -15.94, 11.9, 'sun_like', 0.78, 0.79],
+  ['Gliese 1061', 3.599, -44.51, 12.0, 'red_dwarf', 0.12, 0.16],
+  ["Luyten's Star", 7.457, 5.23, 12.4, 'red_dwarf', 0.26, 0.35],
+  ["Teegarden's Star", 2.890, 16.88, 12.5, 'red_dwarf', 0.097, 0.11],
+  ["Kapteyn's Star", 5.194, -45.02, 12.8, 'red_dwarf', 0.27, 0.29],
+  ['Wolf 1061', 16.505, -12.66, 14.0, 'red_dwarf', 0.29, 0.31],
+  ["Van Maanen's Star", 0.818, 5.39, 14.1, 'white_dwarf', 0.68],
+  ['40 Eridani A', 4.254, -7.65, 16.3, 'red_dwarf', 0.78, 0.81, ['40 Eridani B', 'white_dwarf', 0.57, 400, 0.41]],
+  ['Altair', 19.846, 8.87, 16.7, 'blue_giant', 1.86, 1.79],
+  ['Gliese 581', 15.323, -7.72, 20.5, 'red_dwarf', 0.31, 0.30],
+  ['Gliese 667 C', 17.315, -34.99, 23.6, 'red_dwarf', 0.33, 0.42],
+  ['Vega', 18.616, 38.78, 25.0, 'blue_giant', 2.14, 2.36],
+  ['Fomalhaut', 22.961, -29.62, 25.1, 'blue_giant', 1.92, 1.84],
+  ['Pollux', 7.755, 28.03, 33.8, 'red_supergiant', 1.9, 9.1],
+  ['Arcturus', 14.261, 19.18, 36.7, 'red_supergiant', 1.08, 25.4],
+  ['TRAPPIST-1', 23.107, -5.04, 40.7, 'red_dwarf', 0.09, 0.12],
+  ['55 Cancri', 8.886, 28.33, 41.0, 'red_dwarf', 0.91, 0.94],
+  ['Capella', 5.278, 46.00, 42.9, 'sun_like', 2.57, 11.98],
+  ['51 Pegasi', 22.958, 20.77, 50.6, 'sun_like', 1.09, 1.15],
+  ['Castor', 7.577, 31.89, 51, 'blue_giant', 2.76, 2.4],
+  ['Aldebaran', 4.599, 16.51, 65.3, 'red_supergiant', 1.16, 44],
+  ['Regulus', 10.140, 11.97, 79.3, 'blue_giant', 3.8, 4.35],
+  ['Alcor', 13.420, 54.99, 81.7, 'sun_like', 1.8, 1.8],
+  ['Mizar', 13.399, 54.93, 82.9, 'blue_giant', 2.2, 2.4],
+  ['Gacrux', 12.519, -57.11, 88.6, 'red_supergiant', 1.5, 84],
+  ['Algol', 3.136, 40.96, 90, 'blue_giant', 3.17, 2.73],
+  ['Dubhe', 11.062, 61.75, 123, 'red_supergiant', 4.25, 30],
+  ['Achernar', 1.629, -57.24, 139, 'blue_giant', 6.7, 9.2],
+  ['Bellatrix', 5.419, 6.35, 250, 'blue_giant', 7.7, 5.75],
+  ['Spica', 13.420, -11.16, 250, 'blue_giant', 11.4, 7.5],
+  ['Mimosa', 12.795, -59.69, 280, 'blue_giant', 16, 8.4],
+  ['Mira', 2.322, -2.98, 300, 'red_supergiant', 1.2, 332],
+  ['Thuban', 14.073, 64.38, 303, 'blue_giant', 4.0, 3.4],
+  ['Canopus', 6.399, -52.70, 310, 'sun_like', 8, 71],
+  ['Acrux', 12.443, -63.10, 320, 'blue_giant', 17.8, 7.8],
+  ['Zeta Ophiuchi', 16.619, -10.57, 366, 'blue_giant', 20, 8],
+  ['Hadar', 14.064, -60.37, 390, 'blue_giant', 12, 8.6],
+  ['Adhara', 6.977, -28.97, 430, 'blue_giant', 12.6, 13.9],
+  ['Albireo', 19.512, 27.96, 430, 'red_supergiant', 5, 69],
+  ['Polaris', 2.530, 89.26, 433, 'sun_like', 5.4, 37.5],
+  ['Alcyone', 3.791, 24.11, 440, 'blue_giant', 6, 9.3],
+  ['Atlas', 3.820, 24.05, 440, 'blue_giant', 5, 5],
+  ['Electra', 3.749, 24.11, 440, 'blue_giant', 4.2, 5.8],
+  ['Maia', 3.764, 24.37, 440, 'blue_giant', 4.0, 5.5],
+  ['Merope', 3.772, 23.95, 440, 'blue_giant', 4.2, 4.3],
+  ['Taygeta', 3.754, 24.47, 440, 'blue_giant', 4.0, 4],
+  ['Pleione', 3.819, 24.14, 440, 'blue_giant', 3.4, 3.2],
+  ['Betelgeuse', 5.919, 7.41, 548, 'red_supergiant', 16.5, 764],
+  ['Antares', 16.490, -26.43, 550, 'red_supergiant', 12, 680],
+  ['Shaula', 17.560, -37.10, 570, 'blue_giant', 14.5, 8.8],
+  ['Kepler-186', 19.910, 43.95, 579, 'red_dwarf', 0.54, 0.52],
+  ['Saiph', 5.796, -9.67, 650, 'blue_giant', 15.5, 22],
+  ['Rigel', 5.242, -8.20, 860, 'blue_giant', 21, 78.9],
+  ['Zeta Puppis', 8.060, -40.00, 1080, 'blue_giant', 56, 14],
+  ['Gamma Velorum', 8.159, -47.34, 1100, 'wolf_rayet', 9, 6],
+  ['Mintaka', 5.533, -0.30, 1200, 'blue_giant', 24, 16.5],
+  ['Alnitak', 5.679, -1.94, 1260, 'blue_giant', 33, 20],
+  ['θ¹ Orionis C', 5.588, -5.39, 1340, 'blue_giant', 33, 10.6],
+  ["Tabby's Star", 20.104, 44.46, 1470, 'sun_like', 1.43, 1.58],
+  ['Kepler-452', 19.738, 44.28, 1800, 'sun_like', 1.04, 1.11],
+  ['Alnilam', 5.603, -1.20, 2000, 'blue_giant', 40, 42],
+  ['Deneb', 20.690, 45.28, 2600, 'blue_giant', 19, 203],
+  ['Mu Cephei', 21.725, 58.78, 3060, 'red_supergiant', 19, 1260],
+  ['Rho Cassiopeiae', 23.906, 57.50, 3400, 'sun_like', 40, 450],
+  ['VY Canis Majoris', 7.383, -25.77, 3900, 'red_supergiant', 17, 1420],
+  ['UY Scuti', 18.459, -12.46, 5900, 'red_supergiant', 7, 909],
+  ['Eta Carinae', 10.751, -59.68, 7500, 'blue_giant', 100, 240],
+  ['WR 104', 18.034, -23.64, 8000, 'wolf_rayet', 10, 3],
+  ['WR 124', 19.189, 16.86, 21000, 'wolf_rayet', 20, 3],
+  ['Pistol Star', 17.770, -28.84, 26000, 'blue_giant', 27.5, 306],
+  // ---- the dead: white dwarfs are above with their partners; pulsars and black holes
+  ['RX J1856.5−3754', 18.943, -37.91, 400, 'neutron_star', 1.4],
+  ['Geminga', 6.567, 17.77, 815, 'neutron_star', 1.4],
+  ['Vela Pulsar', 8.590, -45.18, 950, 'neutron_star', 1.4],
+  ['PSR B1919+21', 19.360, 21.88, 2280, 'neutron_star', 1.4],
+  ['Crab Pulsar', 5.575, 22.01, 6500, 'neutron_star', 1.4],
+  ['SGR 1806−20', 18.140, -20.41, 28000, 'neutron_star', 1.4],
+  ['Gaia BH1', 17.470, -0.58, 1560, 'black_hole', 9.6, 0, ['Gaia BH1 companion', 'sun_like', 0.93, 1.4, 0.45]],
+  ['Gaia BH3', 19.650, 14.93, 1926, 'black_hole', 33],
+  ['Cygnus X-1', 19.972, 35.20, 7200, 'black_hole', 21.2],
+  ['V404 Cygni', 20.403, 33.87, 7800, 'black_hole', 9]
+];
+
+// equatorial (J2000) to galactic: x towards the centre, y the way the Sun is
+// going round, z the galaxy's north pole
+const EQ_TO_GAL = [
+  [-0.0548755604, -0.8734370902, -0.4838350155],
+  [0.4941094279, -0.4448296300, 0.7469822445],
+  [-0.8676661490, -0.1980763734, 0.4559837762]
+];
+
+/** Puts every star in KNOWN_STARS into the galaxy `g`, around the Sun. */
+function buildKnownStars(g, sun) {
+  const toC = g.p.clone().sub(sun.p).normalize();
+  const fwd = sun.v.clone().sub(g.v).normalize();
+  fwd.addScaledVector(toC, -fwd.dot(toC)).normalize();
+  const north = toC.clone().cross(fwd).normalize();
+  const where = (raH, dec, ly) => {
+    const a = raH * 15 * Math.PI / 180, d = dec * Math.PI / 180;
+    const e = [Math.cos(d) * Math.cos(a), Math.cos(d) * Math.sin(a), Math.sin(d)];
+    const q = EQ_TO_GAL.map(row => row[0] * e[0] + row[1] * e[1] + row[2] * e[2]);
+    return toC.clone().multiplyScalar(q[0]).addScaledVector(fwd, q[1]).addScaledVector(north, q[2]).normalize();
+  };
+  // going round the centre with the disc, as the Sun does
+  const soft = g.galR * GAL_SOFT;
+  const circular = (p) => {
+    const rel = p.clone().sub(g.p);
+    rel.addScaledVector(north, -rel.dot(north));
+    const r = rel.length();
+    return g.v.clone().addScaledVector(rel.normalize().cross(north), galVCirc(g.m, r, soft));
+  };
+  const lyR = (ly) => clamp(ly * 1.2, 25, 8000) * LY_GM;
+  const out = [];
+  for (const row of KNOWN_STARS) {
+    const [name, raH, dec, ly, type, mS, rS, comp] = row;
+    const p = sun.p.clone().addScaledVector(where(raH, dec, ly), ly * LY_GM);
+    const over = { name: name, mass: mS * M_SUN };
+    if (rS) over.r = rS * R_SUN * R_EARTH;
+    const b = makeBody(type, p, circular(p), over);
+    b.shy = lyR(ly);
+    out.push(b);
+    if (comp) {
+      // the pair go round their shared centre of mass, starting at its widest
+      const m2 = comp[2] * M_SUN, M = b.m + m2, sep = comp[3] * AU * (1 + comp[4]);
+      const vrel = Math.sqrt(G * settings.gravity * M * (1 - comp[4]) / sep);
+      const d = toC.clone().applyAxisAngle(north, 1.1 + out.length);
+      const t = north.clone().cross(d).normalize();
+      const c = makeBody(comp[1], p.clone().addScaledVector(d, sep * b.m / M), b.v.clone().addScaledVector(t, vrel * b.m / M),
+        { name: comp[0], mass: m2 });
+      b.p.addScaledVector(d, -sep * m2 / M);
+      b.v.addScaledVector(t, -vrel * m2 / M);
+      c.shy = b.shy;
+    }
+  }
+
+  /* Alpha Centauri comes with the Solar System, placed in its ecliptic sky.
+     Move it (with Proxima and its planet) to its real spot in the galaxy and
+     give it its real drift past us. */
+  const acA = sim.bodies.find(b => b.name === 'Alpha Centauri A');
+  if (acA) {
+    const group = sim.bodies.filter(b => /^(Alpha Centauri|Proxima)/.test(b.name));
+    const oldDir = acA.p.clone().sub(sun.p).normalize();
+    const newDir = where(14.660, -60.83, 4.37);
+    const drift = (dir) => {
+      const side = north.clone().cross(dir).normalize();
+      return dir.clone().multiplyScalar(-22.4 * KMS).addScaledVector(side, 23.5 * KMS);
+    };
+    const dp = sun.p.clone().addScaledVector(newDir, 4.37 * LY_GM).sub(acA.p);
+    const dv = drift(newDir).sub(drift(oldDir));
+    for (const b of group) { b.p.add(dp); b.v.add(dv); b.shy = lyR(4.37); trailRestart(b); }
+  }
+  return out;
+}
+
 /* ================================================================ Orion */
 /*
  * The Orion Nebula (M42): about 24 light-years of glowing hydrogen, lit by
@@ -16254,7 +16447,7 @@ const PRESETS = [
     }
   },
   {
-    name: 'Milky Way', desc: 'The Milky Way. Find the Sun, if you dare',
+    name: 'Milky Way', desc: 'The Milky Way, with the hundred-odd stars we know by name where they really are — the neighbours, the brightest in the sky, the giants, the Pleiades, pulsars and black holes. Their names appear as you close in. Find the Sun, if you dare.',
     dist: GAL_R_MW * 2.8,
     build() {
       const R = GAL_R_MW;
@@ -16273,8 +16466,9 @@ const PRESETS = [
       const vc = galVCirc(g.m, r, R * GAL_SOFT);
       const along = new V3(-Math.sin(th), 0, -Math.cos(th)).multiplyScalar(vc * g.galSpin);
       const before = sim.bodies.length;
-      buildSolarSystem(at, along);
+      const sun = buildSolarSystem(at, along);
       for (let i = before; i < sim.bodies.length; i++) sim.bodies[i].shy = true;
+      buildKnownStars(g, sun);
       return g;
     }
   },
@@ -16442,7 +16636,7 @@ function saveUniverse() {
           ? { R: b.galR, arms: b.galArms, spin: b.galSpin, merged: b.galMerged || 0, P: b.galPeriod || 0, N: b.galN || 0,
               ax: b.galAxis ? b.galAxis.toArray() : null }
           : null,
-        st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount, sy: b.shy ? 1 : 0, ai: b.air,
+        st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount, sy: b.shy === true ? 1 : (b.shy || 0), ai: b.air,
         tf: b.terra, tfo: b.terraOn, wa: b.water,
         cl: b.kind === 'gas' ? { age: b.clumpAge, life: b.clumpLife, t: b.temp } : null,
         // A protoplanetary disc is saved with its star, not on its own.
@@ -16497,7 +16691,7 @@ function loadUniverse() {
       seedGalaxyStars(b);
     }
     if (s.st != null) b.stripped = s.st;
-    if (s.sy) b.shy = true;
+    if (s.sy) b.shy = s.sy === 1 ? true : s.sy;
     if (s.ai != null) b.air = s.ai;
     if (s.m0 != null) b.m0 = s.m0;
     if (s.tn) {
