@@ -2822,6 +2822,7 @@ const settings = {
   slowmo: true,          // drop into slow motion whenever two real bodies collide
   slowmoFactor: 10,      // …this many times slower
   slowmoSecs: 4,         // …for this many seconds of wall clock
+  swipeClear: false,     // Tools menu (Ctrl+R): a swipe across the screen sweeps away every particle
   decay: true,           // orbits lose energy to gravitational waves and shrink
   decayBoost: 1e9        // …this many times faster than in reality
 };
@@ -13078,6 +13079,8 @@ function bindInput() {
     if (input.armed && e.button === 0 && !e.shiftKey) {
       input.mode = 'place';
       input.placePos = snapToGrid(screenToWorld(e.clientX, e.clientY));
+    } else if (settings.swipeClear && !land.b && e.button === 0 && !e.shiftKey) {
+      input.mode = 'sweep';
     } else if (e.button === 2 || e.button === 1 || e.shiftKey) {
       input.mode = 'pan';
     } else {
@@ -13120,6 +13123,8 @@ function bindInput() {
       galx.focus = -1;
     } else if (input.mode === 'place') {
       drawAim();
+    } else if (input.mode === 'sweep') {
+      drawSweep();
     }
   });
 
@@ -13130,7 +13135,14 @@ function bindInput() {
     if (input.mode === 'place') {
       dropArmed();
       hideAim();
-    } else if (input.mode === 'orbit' && !input.moved) {
+    } else if (input.mode === 'sweep' && input.moved) {
+      hideAim();
+      // A swipe is a stroke across a good part of the screen; anything shorter
+      // is let go, so a nudge does not wipe the sky. (No time limit: on a slow
+      // device a perfectly good swipe can take a second.)
+      const len = Math.hypot(e.clientX - input.x0, e.clientY - input.y0);
+      if (len > Math.min(VIEW.w, VIEW.h) * 0.25) sweepParticles();
+    } else if ((input.mode === 'orbit' || input.mode === 'sweep') && !input.moved) {
       const hit = pickBody(e.clientX, e.clientY);
       const neb = hit ? null : pickNebula(e.clientX, e.clientY);
       const star = hit || neb ? -1 : pickGalaxyStar(e.clientX, e.clientY);
@@ -13209,6 +13221,56 @@ function drawAim() {
 
 function hideAim() { $('an-aim').style.display = 'none'; }
 
+/* ------------------------------------------------------------------ tools */
+/*
+ * Ctrl+R opens a small Tools menu. Its one switch turns a swipe across the
+ * screen into a broom: a quick stroke clears out every loose particle at once —
+ * debris, vapour and plasma sparks. Objects are never touched: every planet,
+ * star, moon, asteroid, knot of gas and supernova cloud stays where it is.
+ */
+function openTools() {
+  $('an-modal-title').textContent = 'Tools';
+  $('an-modal-body').innerHTML =
+    tgl('tl-swipe', 'Swipe to clear particles',
+      'While this is on, a quick swipe across the screen sweeps away every particle — debris, vapour and sparks. Objects are never touched: planets, stars, moons, asteroids, gas knots and supernova clouds all stay. Dragging to turn the view is paused until you switch it off; two fingers still zoom and pan.') +
+    '<p class="an-note" id="tl-count" style="margin-top:12px"></p>' +
+    '<p class="an-note">Press <b>Ctrl+R</b> again, or <b>Esc</b>, to close this menu.</p>';
+  const loose = looseParticles();
+  const count = () => $('tl-count').textContent = loose
+    ? loose.toLocaleString() + ' particles in the sky right now.' : 'No particles in the sky right now.';
+  count();
+  bindTgl('tl-swipe', 'swipeClear', () => {
+    updateHint();
+    if (settings.swipeClear) { closeModal(); toast('Swipe across the screen to sweep the particles away'); }
+  });
+  openModal();
+}
+
+/** The stroke of the broom, drawn while the finger is down. */
+function drawSweep() {
+  $('an-aim').style.display = 'block';
+  const l = $('an-aim-line'), d = $('an-aim-dot');
+  l.setAttribute('x1', input.x0); l.setAttribute('y1', input.y0);
+  l.setAttribute('x2', input.x); l.setAttribute('y2', input.y);
+  d.setAttribute('cx', input.x); d.setAttribute('cy', input.y);
+  $('an-aim-txt').textContent = '';
+}
+
+/** Loose particles only. Grains belonging to a supernova cloud are part of an
+    object you can select, so they stay. */
+function looseParticles() {
+  let n = 0;
+  for (let k = 0; k < P_MAX; k++) if (parts.on[k] && parts.src[k] < 0) n++;
+  return n;
+}
+
+function sweepParticles() {
+  let n = 0;
+  for (let k = 0; k < P_MAX; k++) if (parts.on[k] && parts.src[k] < 0) { killParticle(k); n++; }
+  if (!n) { toast('Nothing to sweep — there are no particles'); return; }
+  toast('Swept away ' + n.toLocaleString() + ' particle' + (n === 1 ? '' : 's') + ' 🧹');
+}
+
 function dropArmed() {
   if (!input.armed || !input.placePos) return;
   if (sim.bodies.length >= MAX_BODIES) { toast('Universe is full — clear some bodies'); return; }
@@ -13249,6 +13311,13 @@ function dropArmed() {
 
 function onKey(e) {
   if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+  // Ctrl+R opens the Tools menu instead of reloading the page
+  if (e.ctrlKey && !e.altKey && (e.key === 'r' || e.key === 'R')) {
+    e.preventDefault();
+    if ($('an-modal').classList.contains('show') && $('an-modal-title').textContent === 'Tools') closeModal();
+    else openTools();
+    return;
+  }
   if (land.b) {
     const k = e.key.toLowerCase();
     if (k === 'escape') { leaveSurface(); return; }
@@ -13338,6 +13407,8 @@ function updateHint() {
     s = landedHUD();
   } else if (input.armed && sim.selected && sim.selected.kind === 'bary') {
     s = 'Click near <b>' + sim.selected.name + '</b> to add a <b>' + TYPES[input.armed].label + '</b> to its system';
+  } else if (settings.swipeClear && !input.armed) {
+    s = '<b>Swipe</b> across the screen to sweep away every particle &middot; <kbd>Ctrl</kbd>+<kbd>R</kbd> for Tools';
   } else if (input.armed) {
     s = 'Click empty space to drop <b>' + TYPES[input.armed].label + '</b> &middot; <b>drag</b> to aim its speed';
     if (settings.grid) s += ' &middot; grid square <b class="an-cell">—</b>';
@@ -15894,6 +15965,7 @@ function openHelp() {
     '<div><kbd>F</kbd></div><span>Lock the camera onto the selected body</span>' +
     '<div><kbd>Del</kbd></div><span>Remove the selected body</span>' +
     '<div><kbd>T</kbd> <kbd>L</kbd></div><span>Toggle trails / labels</span>' +
+    '<div><kbd>Ctrl</kbd>+<kbd>R</kbd></div><span>Tools — switch on <b>Swipe to clear particles</b>, then swipe across the screen to sweep away every particle</span>' +
     '<div><kbd>M</kbd></div><span>Music on / off (or the &#9835; button)</span>' +
     '</div>' +
     '<p style="margin-top:8px">On a touch screen: one finger rotates, two fingers pinch to zoom and drag to pan.</p>' +
