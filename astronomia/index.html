@@ -1219,7 +1219,8 @@ const SURFACE = {
       // Bare rock then snow on the high ground, wherever it is.
       if (high > 0) c = mix(c, [124, 116, 106], Math.min(high * 1.5, 1));
       if (e > 0.78) c = mix(c, [236, 240, 246], clamp((e - 0.78) * 6, 0, 1));
-      return c;
+      // Silvered over, so the land reads pale against that blue sea.
+      return mix(c, [150, 158, 174], 0.72);
     }, hf);
     iceCaps(ctx, W, H, rng, 0.10, [240, 246, 252]);
     return hgtE;
@@ -3015,7 +3016,7 @@ function makeBody(type, pos, vel, overrides) {
 
 /** Displayed / colliding radius, exaggerated so bodies stay findable. */
 function visRadius(b) {
-  if (b.kind === 'bh' || b.kind === 'wh') return b.r * 2.6 * settings.bodyScale * BH_VIS;
+  if (b.kind === 'bh' || b.kind === 'wh') return b.r * 2.6 * settings.bodyScale * BH_VIS * (b.look || 1);
   // A remnant cloud is light-days across already; exaggerating it would be absurd.
   if (b.kind === 'snr' || b.kind === 'uni' || b.kind === 'mark' || b.kind === 'bary' || b.kind === 'neb') return b.r;
   // Deliberately NOT a galaxy's drawn size: that is a screen measurement (see
@@ -3621,6 +3622,9 @@ function waterDelivered(a, b) {
 
 const WATER_LIQUID = new THREE.Color(0.015, 0.075, 0.26);  // deep navy ocean, as seen from orbit
 const WATER_ICE = new THREE.Color(0.84, 0.91, 0.97);
+// Earth's own: the bright marble blue it is drawn in
+const WATER_EARTH = new THREE.Color(0.06, 0.22, 0.86);
+const waterColour = (b) => b.type === 'sol_earth' ? WATER_EARTH : WATER_LIQUID;
 
 /**
  * The radius the sea sits at, as a multiple of the body's mean radius: from the
@@ -3653,7 +3657,7 @@ function setWater(b, w) {
   }
   if (!p.sea) {
     const sea = new THREE.Mesh(SPHERE, new THREE.MeshStandardMaterial({
-      color: WATER_LIQUID.clone(), roughness: 0.42, metalness: 0.04,   // a soft sheen, not a hard spot
+      color: waterColour(b).clone(), roughness: 0.42, metalness: 0.04,   // a soft sheen, not a hard spot
       // Shallow water lets a little of the seabed through, and it must not write
       // depth or it would hide the land standing out of it.
       transparent: true, opacity: 0.92, depthWrite: false
@@ -5305,6 +5309,9 @@ function contractCloud(e, factor) {
   e.r = Math.max(e.radius, c.radius);
   parts.dirty = true;
 }
+
+/** How far out a cloud's gas reaches. */
+function cloudR(e) { return Math.max(e.cloud ? e.cloud.radius : 0, e.radius, 1e-6); }
 
 /** Set the core temperature, contracting to match. Ignites at ten million K. */
 function setCloudTemp(e, T) {
@@ -10334,12 +10341,23 @@ function renderNebInspector(s) {
     '<dt>From the centre</dt><dd id="is-nd"></dd>' +
     '<dt>Once round the galaxy</dt><dd id="is-nv"></dd>' +
     '</dl>' +
+    '<div class="an-field"><label>Size</label>' +
+    '<input type="range" id="is-nsize" min="' + (Math.log10(s.nb.R) - 2).toFixed(3) + '" max="' +
+    (Math.log10(s.nb.R) + 2).toFixed(3) + '" step="0.001" value="' + Math.log10(s.nb.R).toFixed(3) + '"></div>' +
     '<div class="an-row"><button id="is-nfollow">' + (sim.follow === s ? 'UNFOLLOW' : 'FOLLOW') +
     '</button><button id="is-nzoom">ZOOM TO</button></div>' +
     '<p class="an-note" style="margin-top:13px">The still-expanding blast shell of a star that exploded here. ' +
     'It goes round the galaxy with the stars around it, carried on the same orbit as the star it came from.</p>';
   inspRefs = { nd: $('is-nd'), nv: $('is-nv') };
   nameField(() => s.name, (n) => { s.nb.name = s.name = n || s.name; });
+  const ns = $('is-nsize');
+  ns.addEventListener('input', () => {
+    const f = Math.pow(10, parseFloat(ns.value)) / s.nb.R;
+    for (const pf of s.nb.puffs) { pf.o.multiplyScalar(f); pf.size *= f; }
+    s.nb.R *= f; s.r = s.nb.R;
+    updateInspectorStats();
+  });
+  ns.addEventListener('change', () => renderNebInspector(s));
   $('is-nfollow').addEventListener('click', () => { sim.follow = sim.follow === s ? null : s; renderInspector(); });
   $('is-nzoom').addEventListener('click', () => { frameOn(s, 2.5); sim.follow = s; renderInspector(); });
   updateInspectorStats();
@@ -11093,7 +11111,13 @@ function initLights() {
 
 function updateLights() {
   const stars = sim.starCache;
-  const ranked = stars.slice().sort((a, b) => b.lum - a.lum);
+  /* The three that shine brightest where you are looking — brightness falls
+     off with distance squared — not the three most luminous in the whole
+     scene. Otherwise, out in the Milky Way, Rigel and Eta Carinae thousands
+     of light-years away light the Earth instead of the Sun next door. */
+  const at = camera.position;
+  const flux = (s) => s.lum / Math.max(at.distanceToSquared(s.p), 1e-6);
+  const ranked = stars.slice().sort((a, b) => flux(b) - flux(a));
   for (let i = 0; i < LIGHT_POOL; i++) {
     const l = starLights[i], s = ranked[i];
     if (!s) { l.intensity = 0; continue; }
@@ -11102,6 +11126,10 @@ function updateLights() {
     // Distance falloff is deliberately off: with real inverse-square light,
     // anything past a few AU would be pitch black and unusable.
     l.intensity = clamp(1.15 + Math.log10(Math.max(s.lum, 1e-4)) * 0.17, 0.4, 2.2);
+    // ...but a second or third star only as bright, here, as it really is next
+    // to the first, gently: the other sun of a binary still lights the night
+    // side, while Sirius, light-years away, does not light the Earth at all.
+    if (i > 0) l.intensity *= Math.pow(clamp(flux(s) / Math.max(flux(ranked[0]), 1e-300), 0, 1), 0.2);
   }
 }
 
@@ -12792,7 +12820,7 @@ function updateVisuals(realDt, simDt) {
        than at a hard line, because a world is not all one temperature. */
     if (p.sea) {
       const frozen = clamp((273 - b.temp) / 40, 0, 1);
-      p.sea.material.color.copy(WATER_LIQUID).lerp(WATER_ICE, frozen);
+      p.sea.material.color.copy(waterColour(b)).lerp(WATER_ICE, frozen);
       p.sea.material.roughness = lerp(0.22, 0.78, frozen);
       p.sea.rotation.y = b.rot;
     }
@@ -13950,6 +13978,9 @@ function renderCloudInspector(e) {
     '<dt>Age</dt><dd id="is-cage"></dd>' +
     '<dt>Still glowing</dt><dd id="is-clum"></dd>' +
     '</dl>' +
+    '<div class="an-field"><label>Size <b id="is-csz"></b></label>' +
+    '<input type="range" id="is-csize" min="' + (Math.log10(cloudR(e)) - 2).toFixed(3) + '" max="' +
+    (Math.log10(cloudR(e)) + 2).toFixed(3) + '" step="0.001" value="' + Math.log10(cloudR(e)).toFixed(3) + '"></div>' +
     '<div class="an-field"><label>Core temperature <b id="is-ctv"></b></label>' +
     '<input type="range" id="is-ctemp" min="1" max="7" step="0.01" value="' +
     Math.log10(clamp(e.coreT, 10, IGNITE_T)).toFixed(3) + '"></div>' +
@@ -13972,6 +14003,24 @@ function renderCloudInspector(e) {
     cmass: $('is-cmass'), cn: $('is-cn'), crad: $('is-crad'), cvel: $('is-cvel'),
     cage: $('is-cage'), clum: $('is-clum'), ctv: $('is-ctv'), cfore: $('is-cfore')
   };
+
+  const size = $('is-csize');
+  const showSize = () => $('is-csz').textContent = fmtDist(cloudR(e) * 2) + ' across';
+  showSize();
+  size.addEventListener('input', () => {
+    if (!e.alive) return;
+    // Spread out or pulled in, every grain alike. A bigger cloud is a cooler
+    // one (the same rule the temperature slider uses), but resizing alone
+    // never squeezes it hard enough to light a star.
+    const f = Math.pow(10, parseFloat(size.value)) / cloudR(e);
+    contractCloud(e, f);
+    e.held = true;
+    e.coreT = clamp(e.coreT / f, 10, IGNITE_T * 0.95);
+    temp.value = Math.log10(clamp(e.coreT, 10, IGNITE_T)).toFixed(3);
+    showSize();
+    updateInspectorStats();
+  });
+  size.addEventListener('change', () => { frameOn(e, 2.6); renderInspector(); });
 
   const temp = $('is-ctemp');
   temp.addEventListener('input', () => {
@@ -14112,6 +14161,13 @@ function customiseHTML(b) {
 
   let h = '<details class="an-more"><summary>CUSTOMISE</summary>';
 
+  if (hole) {
+    // Its horizon is set by its mass; this only draws the whole thing — hole,
+    // disc and jets — bigger or smaller, and what it swallows goes with it.
+    h += '<div class="an-field"><label>Size <b id="is-lookv"></b></label>' +
+      '<input type="range" id="is-look-s" step="0.001" min="-1" max="2.5" value="' +
+      Math.log10(b.look || 1).toFixed(3) + '"></div>';
+  }
   if (!hole) {
     h += '<div class="an-field"><label>Radius <b id="is-rv"></b></label>' +
       '<input type="range" id="is-rad-s" step="0.001" min="' +
@@ -14198,6 +14254,18 @@ function bodyTintHex(b) {
 function bindCustomise(b) {
   const show = {};
   const on = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
+
+  /* ---- a hole's drawn size ---- */
+  const ls = $('is-look-s');
+  if (ls) {
+    const showLook = () => $('is-lookv').textContent = '×' + (b.look || 1).toPrecision(2);
+    showLook();
+    ls.addEventListener('input', () => {
+      b.look = Math.pow(10, parseFloat(ls.value));
+      scaleVisual(b);
+      showLook();
+    });
+  }
 
   /* ---- radius ---- */
   const rs = $('is-rad-s');
@@ -16654,7 +16722,7 @@ function saveUniverse() {
           ? { R: b.galR, arms: b.galArms, spin: b.galSpin, merged: b.galMerged || 0, P: b.galPeriod || 0, N: b.galN || 0,
               ax: b.galAxis ? b.galAxis.toArray() : null }
           : null,
-        st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount, sy: b.shy === true ? 1 : (b.shy || 0), ai: b.air,
+        st: b.stripped, m0: b.m0, sc: b.scars, sn: b.scarCount, sy: b.shy === true ? 1 : (b.shy || 0), lk: b.look || 1, ai: b.air,
         tf: b.terra, tfo: b.terraOn, wa: b.water,
         cl: b.kind === 'gas' ? { age: b.clumpAge, life: b.clumpLife, t: b.temp } : null,
         // A protoplanetary disc is saved with its star, not on its own.
@@ -16710,6 +16778,7 @@ function loadUniverse() {
     }
     if (s.st != null) b.stripped = s.st;
     if (s.sy) b.shy = s.sy === 1 ? true : s.sy;
+    if (s.lk && s.lk !== 1) b.look = s.lk;
     if (s.ai != null) b.air = s.ai;
     if (s.m0 != null) b.m0 = s.m0;
     if (s.tn) {
