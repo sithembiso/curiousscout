@@ -5519,8 +5519,9 @@ function updateSupernovae(simDt) {
 
     // Past its bright weeks the interesting number is not how much it shines but
     // how much matter is still there to build something out of.
-    e.name = e.lum > 100
-      ? e.label + ' · ' + fmtLum(e.lum)
+    // a name the player gave it is kept as it is
+    e.name = e.custom ? e.custom
+      : e.lum > 100 ? e.label + ' · ' + fmtLum(e.lum)
       : e.label + (e.noun != null ? e.noun : ' remnant') + ' · ' + fmtMass(e.m);
 
     updateSNVisual(e);
@@ -10326,7 +10327,7 @@ function renderNebInspector(s) {
   $('an-insp-h').textContent = 'SUPERNOVA REMNANT';
   const ly = s.nb.R * 2 / LY_GM;
   host.innerHTML =
-    '<div class="an-name-in" style="cursor:default;pointer-events:none">' + escAttr(s.name) + '</div>' +
+    '<input class="an-name-in" id="is-name" maxlength="32" spellcheck="false" value="' + escAttr(s.name) + '">' +
     '<div class="an-type">in ' + escAttr(s.gal ? s.gal.name : 'a galaxy') + '</div>' +
     '<dl class="an-stats">' +
     '<dt>Width</dt><dd>' + (ly < 10 ? ly.toFixed(1) : Math.round(ly).toLocaleString()) + ' light-years</dd>' +
@@ -10338,6 +10339,7 @@ function renderNebInspector(s) {
     '<p class="an-note" style="margin-top:13px">The still-expanding blast shell of a star that exploded here. ' +
     'It goes round the galaxy with the stars around it, carried on the same orbit as the star it came from.</p>';
   inspRefs = { nd: $('is-nd'), nv: $('is-nv') };
+  nameField(() => s.name, (n) => { s.nb.name = s.name = n || s.name; });
   $('is-nfollow').addEventListener('click', () => { sim.follow = sim.follow === s ? null : s; renderInspector(); });
   $('is-nzoom').addEventListener('click', () => { frameOn(s, 2.5); sim.follow = s; renderInspector(); });
   updateInspectorStats();
@@ -13917,13 +13919,28 @@ function renderUniverseInspector(u) {
   updateInspectorStats();
 }
 
+/** Wires the inspector's name box: Enter or leaving it renames, an empty
+    box goes back to the name it had. For things that are not bodies. */
+function nameField(get, set) {
+  const nameIn = $('is-name');
+  if (!nameIn) return;
+  const def = nameIn.value;
+  nameIn.addEventListener('change', () => {
+    const want = nameIn.value.replace(/\s+/g, ' ').trim().slice(0, 32);
+    set(want);
+    nameIn.value = want || get() || def;
+  });
+  nameIn.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') nameIn.blur(); ev.stopPropagation(); });
+}
+
 function renderCloudInspector(e) {
   const host = $('an-insp-body');
   const c = e.cloud || { mass: 0, n: 0, radius: 0 };
   $('an-insp-h').textContent = e.header || 'REMNANT CLOUD';
 
   host.innerHTML =
-    '<div class="an-name-in" style="cursor:default;pointer-events:none">' + escAttr(e.label + (e.noun != null ? e.noun : ' remnant')) + '</div>' +
+    '<input class="an-name-in" id="is-name" maxlength="32" spellcheck="false" value="' +
+      escAttr(e.custom || e.label + (e.noun != null ? e.noun : ' remnant')) + '">' +
     '<div class="an-type">from ' + escAttr(e.origin) + '</div>' +
     '<dl class="an-stats">' +
     '<dt>Gas &amp; dust</dt><dd id="is-cmass"></dd>' +
@@ -13950,6 +13967,7 @@ function renderCloudInspector(e) {
     '<b>newborn</b> star and nothing else yet — just the disc it came out of. Let it run: the ' +
     'planets condense out of that disc one at a time, which is how it really happened.</p>';
 
+  nameField(() => e.custom || e.label + (e.noun != null ? e.noun : ' remnant'), (n) => { e.custom = n; if (n) e.name = n; });
   inspRefs = {
     cmass: $('is-cmass'), cn: $('is-cn'), crad: $('is-crad'), cvel: $('is-cvel'),
     cage: $('is-cage'), clum: $('is-clum'), ctv: $('is-ctv'), cfore: $('is-cfore')
