@@ -1694,7 +1694,7 @@ const SURFACE = {
     const n = fbm(seed, 12, 6, 3);
     pixelPass(ctx, W, H, (u, v, lat) => {
       const pole = Math.pow(Math.abs(Math.sin(lat)), 3);
-      let c = mix([120, 150, 210], [210, 232, 255], n(u, v));
+      let c = mix([206, 210, 220], [255, 255, 255], n(u, v));     // white, faintly mottled
       return mix(c, [255, 255, 255], pole * 0.9);
     });
   },
@@ -2177,8 +2177,26 @@ function starColourTemp(b) {
   if (!b.life && def.mass > 0) T *= Math.sqrt(clamp(b.m / def.mass, 1e-3, 1e3));
   return clamp(T, 2000, 50000);
 }
+/*
+ * Each kind of star has its own colour, whatever it is doing — the same set a
+ * child would reach for: red for the supergiant and the brown dwarf, orange
+ * for the red dwarf, yellow for a Sun, blue for a blue giant and greenish
+ * blue for a Wolf–Rayet. (The dead ones keep their own looks: white dwarfs
+ * and neutron stars are white, a black dwarf is black.) Any other star — the
+ * Solar System's Sun, a protostar — is still coloured by its temperature.
+ */
+const STAR_PAINT = {
+  red_supergiant: { name: 'red', rgb: [222, 32, 52] },
+  brown_dwarf:    { name: 'red', rgb: [222, 32, 52] },
+  red_dwarf:      { name: 'orange', rgb: [255, 122, 24] },
+  sun_like:       { name: 'yellow', rgb: [255, 216, 40] },
+  blue_giant:     { name: 'blue', rgb: [64, 84, 255] },
+  wolf_rayet:     { name: 'greenish blue', rgb: [36, 204, 196] }
+};
+
 function starBand(b) {
   const def = TYPES[b.type];
+  if (b.kind === 'body' && def.surf === 'star' && STAR_PAINT[b.type]) return STAR_PAINT[b.type];
   if (!def.star || def.surf !== 'star' || def.dead || def.brown || b.kind !== 'body') return null;
   const T = starColourTemp(b);
   // A painted ember (red dwarf) keeps its own colour while it is small and cool.
@@ -2237,18 +2255,18 @@ const TYPES = {
   },
   white_dwarf: {
     label: 'White Dwarf', group: 'STARS', mass: 0.6 * M_SUN, rad: 0.9,
-    surf: 'dwarfstar', temp: 12000, star: true, spin: 0.6,
+    surf: 'dwarfstar', temp: 12000, star: true, spin: 0.6, opts: { pale: 0.9, hot: [255, 255, 255] },
     blurb: 'A dead star\'s ember: the mass of the Sun packed into the size of Earth. Feed it past 1.44 solar masses and it detonates as a Type Ia supernova.'
   },
   neutron_star: {
     label: 'Neutron Star', group: 'STARS', mass: 1.4 * M_SUN, rad: 10 / 6371,
-    surf: 'neutron', temp: 600000, star: true, spin: 1 / 86400, lumCap: 0.02,
+    surf: 'neutron', temp: 600000, star: true, spin: 1 / 86400, lumCap: 0.02, opts: { hot: [255, 255, 255] },
     blurb: 'A city-sized stellar corpse spinning hundreds of times a second. One teaspoon weighs a billion tonnes.'
   },
   black_dwarf: {
     label: 'Black Dwarf', group: 'STARS', mass: M_SUN, rad: 1.2,
     surf: 'dwarfstar', temp: 320, star: true, dead: true, spin: 1.4, lumCap: 0,
-    opts: { temp: 2200, pale: 0.10, dim: 0.19 },
+    opts: { temp: 2200, pale: 0.10, dim: 0.07 },
     blurb: 'A star that has burnt out completely — no fusion, no light, just a cooling ember about the size of Earth. Real ones take far longer to make than the universe has existed, so not one exists yet anywhere. Here, any star swollen past 20 times the Sun\'s width collapses into one.'
   },
   brown_dwarf: {
@@ -2705,8 +2723,8 @@ const SWATCH = {
   singularity: '#ffffff', universe: '#c9a6ff', barycentre: '#7fe6ff',
   barred_galaxy: '#cfe0ff', elliptical_galaxy: '#ffd39a', irregular_galaxy: '#9fc4ff',
   ring_galaxy: '#a9c8ff', dwarf_galaxy: '#d9d0ff',
-  red_dwarf: '#ff7a52', sun_like: '#ffe9a8', blue_giant: '#b9d4ff', red_supergiant: '#ff8a5c',
-  wolf_rayet: '#dff0ff', white_dwarf: '#e8f2ff', neutron_star: '#cfe4ff', brown_dwarf: '#a03a2c',
+  red_dwarf: '#ff7a18', sun_like: '#ffd828', blue_giant: '#4054ff', red_supergiant: '#de2034',
+  wolf_rayet: '#24ccc4', white_dwarf: '#ffffff', neutron_star: '#ffffff', brown_dwarf: '#de2034',
   terrestrial: '#4d96ff', super_earth: '#5aa870', ocean_world: '#2bb4d6', desert_world: '#c98a52',
   ice_world: '#dbeaf7', lava_world: '#ff6a2a', gas_giant: '#d9b183', ice_giant: '#5aa8de',
   ringed_giant: '#e8d3a0',
@@ -2716,7 +2734,7 @@ const SWATCH = {
   chthonian: '#a35434', carbon_world: '#8fa8c8', iron_world: '#b08a6e',
   super_puff: '#f2c8d8', eyeball_world: '#7fb8d8', hycean_world: '#3f9fd8',
   theia: '#9a8f84', planet_nine: '#3a5a92',
-  black_dwarf: '#6b6165',
+  black_dwarf: '#1a1a1e',
   protostar: '#ffb46a', galaxy: '#c8a2ff',
   sol_sun: '#ffe08a', sol_mercury: '#9c948c', sol_venus: '#e8c98a', sol_earth: '#3f7fd6',
   sol_luna: '#c9c4bc', sol_mars: '#c1502a', sol_jupiter: '#d6a870', sol_saturn: '#e8d3a0',
@@ -14009,7 +14027,7 @@ function customiseHTML(b) {
       '<input type="range" id="is-core-s" min="1" max="7.3" step="0.01" value="' +
       Math.log10(clamp(def.star ? b.temp : (b.coreT || 300), 10, 2e7)).toFixed(3) + '"></div>' +
       '<p class="an-note">' + (def.star
-        ? 'The colour of a star is its temperature and nothing else — cool is red, hot is blue.'
+        ? (STAR_PAINT[b.type] ? 'A ' + def.label + ' keeps its own colour (' + STAR_PAINT[b.type].name + ') whatever its temperature — but the heat it gives its planets still follows this number.' : 'The colour of this star is its temperature — cool is red, hot is blue.')
         : 'How hot it is deep down. Earth\'s core is about 5,700 K. Push it far enough and the surface glows.') +
       '</p>';
   }
@@ -14141,7 +14159,9 @@ function bindCustomise(b) {
         b.temp = t;
         updateLuminosity(b);
         // A star's colour *is* its temperature, so recolour its light and glare
-        // to match rather than leaving them on the type's original value.
+        // to match rather than leaving them on the type's original value —
+        // unless it is one of the kinds with a colour of its own (STAR_PAINT).
+        if (STAR_PAINT[b.type]) { showT(); updateInspectorStats(); return; }
         const c = kelvinToRGB(t);
         if (b.lightColor) b.lightColor.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
         const p = b.parts;
@@ -16254,34 +16274,26 @@ function openHelp() {
     '<li>So the full circle is: gas &rarr; star &rarr; supernova &rarr; gas &rarr; star. Each turn seeds the next one with heavier elements. Every atom of iron in your blood came through that loop.</li>' +
     '</ul>' +
     '<h3>WHAT COLOUR A STAR IS</h3>' +
-    '<p>In here, <b>how big a star is decides what colour it is</b> — its width, not its weight. ' +
-    'Open <b>CUSTOMISE</b> and drag the <b>Radius</b> slider: the star repaints the moment it ' +
-    'crosses into the next band, and its mass never moves. The panel always tells you which band ' +
-    'it is in. Sizes are in <b>R☉</b>, times the width of the Sun.</p>' +
+    '<p>Every kind of star has its own colour, and keeps it:</p>' +
     '<ul>' +
-    '<li><b>Swell one past 20 R☉</b> and it burns out. What is left is a <b>black dwarf</b>: a ' +
-    'dead ember about the size of Earth, with no fusion and no light at all. Anything it was ' +
-    'keeping warm goes cold, and there is nothing you can do to it afterwards — it cannot even ' +
-    'be made to explode. A star that was <i>already</i> bigger than that when you placed it, like ' +
-    'the Red Supergiant at 760 R☉, is a giant rather than a corpse and goes on burning.</li>' +
-    '<li><b>10 to 19.9 R☉</b> — blood red</li>' +
-    '<li><b>5.99 to 9.99 R☉</b> — orange</li>' +
-    '<li><b>3 to 5.99 R☉</b> — dark yellow</li>' +
-    '<li><b>1 to 2.99 R☉</b> — yellow-white (the Sun is 1 R☉)</li>' +
-    '<li><b>Under 1 R☉</b> — white</li>' +
-    '<li><b>Hotter than 10,000 K, at any size</b> — blue. That is why the <b>Blue Giant</b> and the <b>Wolf–Rayet</b> star are blue.</li>' +
+    '<li><b>Red Supergiant</b> and <b>Brown Dwarf</b> — red</li>' +
+    '<li><b>Red Dwarf</b> — orange</li>' +
+    '<li><b>Sun-like Star</b> — yellow</li>' +
+    '<li><b>Blue Giant</b> — blue</li>' +
+    '<li><b>Wolf–Rayet</b> — greenish blue</li>' +
+    '<li><b>White Dwarf</b> and <b>Neutron Star</b> — white</li>' +
+    '<li><b>Black Dwarf</b> — black</li>' +
     '</ul>' +
-    '<p>Making a star heavier does make it wider, if it keeps its density — so mass can push it ' +
-    'into the next band that way. But mass is never what is read: it is always the width.</p>' +
-    '<p>Only the burning stars are painted this way. A white dwarf, a neutron star, a brown dwarf ' +
-    'and a black dwarf each keep their own look.</p>' +
-
+    '<p>Any other star — the Solar System\'s own Sun, a protostar — is coloured by how hot it is, from red to blue.</p>' +
+    '<p><b>Swell a star past 20 R☉</b> (CUSTOMISE ▸ Radius) and it burns out into a <b>black dwarf</b>: a ' +
+    'dead ember with no fusion and no light at all. A star that was <i>already</i> bigger than that when you placed it, like ' +
+    'the Red Supergiant at 760 R☉, is a giant rather than a corpse and goes on burning.</p>' +
     '<h3>TWO HONEST FUDGES</h3>' +
     '<ul>' +
     '<li>Planets are drawn <b>larger than life</b> (see Settings) because at true scale they would be invisible specks. They collide at the size you see.</li>' +
     '<li>Black holes are drawn far bigger than their real event horizons — a ten-solar-mass hole is only about 30 km across — and starlight does not dim with distance, or half your worlds would be pitch black.</li>' +
     '<li>Debris grains feel gravity from the heaviest bodies but not from <i>each other</i>. That is what makes thousands of them possible at once; it means a debris ring will not clump into moons on its own.</li>' +
-    '<li>A star\'s colour here comes from its <b>size</b>. In real life it comes from its surface <b>temperature</b>, and among ordinary stars the two run opposite ways round: the big ones are blue-white and blazing, and the small ones are dim red. So the paint is a house rule — but nothing else is. Each star\'s temperature, its brightness, the heat it gives its planets and where its snow line falls are all still the real numbers, which is why a 15 R☉ star painted blood red is still fierce enough to roast everything near it.</li>' +
+    '<li>A star\'s colour here comes from its <b>kind</b>. In real life it comes from its surface <b>temperature</b> — a Wolf–Rayet is really blue-white and a brown dwarf a dull infrared glow. So the paint is a house rule, but nothing else is: each star\'s temperature, its brightness, the heat it gives its planets and where its snow line falls are all still the real numbers.</li>' +
     '</ul>' +
     '</div>';
   openModal();
