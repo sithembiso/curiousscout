@@ -2327,6 +2327,13 @@ const TYPES = {
     rings: { inner: 1.35, outer: 2.4, pal: [[228, 210, 176], [166, 142, 112]], tilt: 0.47 },
     blurb: 'A Saturn, wearing a billion tumbling ice moonlets as rings.'
   },
+  satellite: {
+    // The weight of the International Space Station. It is drawn far bigger
+    // than its real hundred metres, or it would never be more than a dot.
+    label: 'Satellite', group: 'PLANETS', mass: 420000 / KG_PER_ME, rad: 0.008,
+    craft: true, spin: 0.07,
+    blurb: 'A spacecraft of our own: solar panels, a gold-foil body and a dish to talk home with. Click next to a planet or moon and it goes straight into orbit round it.'
+  },
 
   /* ---- moons & debris --------------------------------------------------- */
   moon: {
@@ -2727,7 +2734,7 @@ const SWATCH = {
   wolf_rayet: '#24ccc4', white_dwarf: '#ffffff', neutron_star: '#ffffff', brown_dwarf: '#de2034',
   terrestrial: '#4d96ff', super_earth: '#5aa870', ocean_world: '#2bb4d6', desert_world: '#c98a52',
   ice_world: '#dbeaf7', lava_world: '#ff6a2a', gas_giant: '#d9b183', ice_giant: '#5aa8de',
-  ringed_giant: '#e8d3a0',
+  ringed_giant: '#e8d3a0', satellite: '#cfd8e6',
   moon: '#b0aca6', dwarf_planet: '#cfe0ea', asteroid: '#7d746c', comet: '#9fd8ff',
   gas_clump: '#ff9a4a', plasma: '#cfe8ff',
   black_hole: '#b388ff', smbh: '#ff6fd8', white_hole: '#fff3b0', rogue_planet: '#54627e',
@@ -2781,6 +2788,7 @@ function makeName(type) {
   // they keep their own names — "Jupiter II" only if you place a second one.
   if (def.pname) return unique(def.pname);
   if (type === 'theia') return unique('Theia');
+  if (type === 'satellite') return unique(pick(SAT_NAMES));
   if (type === 'planet_nine') return unique('Planet Nine');
   for (let i = 0; i < 24; i++) {
     const n = pool[(Math.random() * pool.length) | 0];
@@ -3588,7 +3596,7 @@ const WATER_OF = {
 /** Can this thing hold an ocean at all? */
 function canHoldWater(b) {
   const def = TYPES[b.type];
-  return b.kind === 'body' && !def.star && !GASSY_SURF.has(def.surf);
+  return b.kind === 'body' && !def.star && !def.craft && !GASSY_SURF.has(def.surf);
 }
 
 /** How much water arrives when `b` lands on `a`, as a share of a full ocean. */
@@ -6342,9 +6350,13 @@ function updateTides(dt) {
     const s = bs[i];
     if (!s.alive || s.kind !== 'body') continue;
     const sdef = TYPES[s.type];
+    // A spacecraft is bolted together and has no hot middle to knead: tides
+    // neither strip it nor warm it.
+    if (sdef.craft) { s.tideX = 0; s.tidePrimary = null; continue; }
     // Stars and anything genuinely massive hold themselves together by their
     // own gravity far better than a moon does; rubble has already been shredded.
-    const immune = sdef.star || s.m > 40 || s.disrupted || !!s.sink || (s.emerge && sim.time < s.emerge.until);
+    // (a spacecraft is bolted together, not held by its own gravity)
+    const immune = sdef.star || sdef.craft || s.m > 40 || s.disrupted || !!s.sink || (s.emerge && sim.time < s.emerge.until);
 
     // Find the primary raising the biggest tide on this body.
     let best = null, bestX = 0, bestD = 0;
@@ -6495,7 +6507,7 @@ function updateSpin(dt) {
   const bs = sim.bodies;
   for (let i = 0; i < bs.length; i++) {
     const b = bs[i];
-    if (!b.alive || b.kind !== 'body') continue;
+    if (!b.alive || b.kind !== 'body' || TYPES[b.type].craft) continue;   // bolts hold a spacecraft together
     const period = Math.abs(b.spin);
 
     /* It also has to beat its own break-up spin, 2π√(r³/GM): the 72 s line is
@@ -7079,6 +7091,7 @@ function buildVisual(b) {
   else if (b.kind === 'wh') buildWhiteHole(b, grp);
   else if (b.kind === 'gal') buildGalaxy(b, grp);
   else if (b.kind === 'gas') buildClump(b, grp);
+  else if (def.craft) buildCraft(b, grp);
   else buildWorld(b, def, grp);
 
   // A pixel-floor marker so distant bodies never vanish entirely.
@@ -7127,6 +7140,67 @@ function applyStarBand(b) {
   if (p.glow) p.glow.material.color.copy(c);
   if (p.halo) p.halo.material.color.copy(c);
   if (b.lightColor) b.lightColor.copy(c);
+}
+
+/* ---------------------------------------------------------------- satellites */
+
+const SAT_NAMES = ['Sputnik', 'Hubble', 'Explorer', 'Telstar', 'Kepler', 'Gaia', 'Landsat', 'Echo',
+  'Vanguard', 'Pioneer', 'Juno', 'Cassini', 'Rosetta', 'Galileo', 'Mariner', 'Skylab'];
+
+/** Solar cells: deep blue squares in a fine silver grid. */
+function solarCellTexture() {
+  const cv = newCanvas(128, 64), ctx = cv.getContext('2d');
+  ctx.fillStyle = '#c8ccd6'; ctx.fillRect(0, 0, 128, 64);
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 8; x++) {
+    const g = ctx.createLinearGradient(x * 16, y * 16, x * 16 + 16, y * 16 + 16);
+    g.addColorStop(0, '#1d3f9a'); g.addColorStop(1, '#0d2264');
+    ctx.fillStyle = g; ctx.fillRect(x * 16 + 1, y * 16 + 1, 14, 14);
+  }
+  return cv;
+}
+
+/* One set of parts and materials shared by every satellite in the scene. */
+let craftKit = null;
+function getCraftKit() {
+  if (craftKit) return craftKit;
+  const shared = (m) => { m.userData.shared = true; return m; };
+  craftKit = {
+    bus: new THREE.BoxGeometry(0.5, 0.5, 0.75),
+    panel: new THREE.BoxGeometry(1.25, 0.02, 0.5),
+    strut: new THREE.CylinderGeometry(0.025, 0.025, 0.35, 6).rotateZ(Math.PI / 2),
+    dish: new THREE.SphereGeometry(0.26, 18, 8, 0, TAU, 0, Math.PI / 2.6),
+    mast: new THREE.CylinderGeometry(0.012, 0.012, 0.32, 5),
+    foil: shared(new THREE.MeshStandardMaterial({ color: 0xd9a63a, metalness: 0.85, roughness: 0.32 })),
+    cells: shared(new THREE.MeshStandardMaterial({ map: cachedTexture('solarcells', solarCellTexture),
+      metalness: 0.35, roughness: 0.38, emissive: new THREE.Color(0x061238) })),
+    white: shared(new THREE.MeshStandardMaterial({ color: 0xe8ecf2, metalness: 0.2, roughness: 0.5, side: THREE.DoubleSide })),
+    metal: shared(new THREE.MeshStandardMaterial({ color: 0x9aa2ae, metalness: 0.7, roughness: 0.4 }))
+  };
+  return craftKit;
+}
+
+/** A satellite: a gold-foil body, two solar wings and a dish pointing home. */
+function buildCraft(b, grp) {
+  const k = getCraftKit();
+  const craft = new THREE.Group();
+  craft.add(new THREE.Mesh(k.bus, k.foil));
+  for (const side of [-1, 1]) {
+    const strut = new THREE.Mesh(k.strut, k.metal);
+    strut.position.x = side * 0.42;
+    craft.add(strut);
+    const wing = new THREE.Mesh(k.panel, k.cells);
+    wing.position.x = side * 1.2;
+    craft.add(wing);
+  }
+  const dish = new THREE.Mesh(k.dish, k.white);
+  dish.rotation.x = Math.PI;                       // the bowl opens upward
+  dish.position.y = 0.52;
+  craft.add(dish);
+  const mast = new THREE.Mesh(k.mast, k.metal);
+  mast.position.y = 0.42;
+  craft.add(mast);
+  grp.add(craft);
+  b.parts.surf = craft;
 }
 
 function buildWorld(b, def, grp) {
@@ -7834,7 +7908,7 @@ function addScar(b, worldDir, size, vRel) {
   const def = TYPES[b.type];
   // Nothing that has no surface to scar: a star's photosphere heals in minutes
   // and a gas giant has no ground for a crater to be in.
-  if (def.star || GASSY_SURF.has(def.surf)) return null;
+  if (def.star || def.craft || GASSY_SURF.has(def.surf)) return null;
   const n = localOnBody(b, worldDir);
   b.scars = b.scars || [];
   // age 0: bright yellow. Over SCAR_COOL days it fades to maroon.
@@ -12166,6 +12240,7 @@ function landBlock(b) {
     return b.name + ' is a ' + def.label.toLowerCase() + ' — at ' + Math.round(b.temp).toLocaleString() +
       ' K you would be vaporised long before you touched down.';
   }
+  if (def.craft) return b.name + ' is a spacecraft, far too small to land on.';
   return null;
 }
 
@@ -13903,7 +13978,7 @@ function renderCloudInspector(e) {
 /** The TERRAFORM section: what is stopping it, or how far along it is. */
 function terraHTML(b) {
   const def = TYPES[b.type];
-  if (def.star || GASSY_SURF.has(def.surf) || b.kind !== 'body') return '';
+  if (def.star || def.craft || GASSY_SURF.has(def.surf) || b.kind !== 'body') return '';
   const chk = terraCheck(b);
   const pct = Math.round(b.terra * 100);
   const born = isLivingSurf(def);
@@ -14032,7 +14107,7 @@ function customiseHTML(b) {
       '</p>';
   }
 
-  if (!hole && !def.star) {
+  if (!hole && !def.star && !def.craft) {
     h += '<div class="an-sub">Colour tint</div><div class="an-swatches">' +
       '<input type="color" id="is-tint" value="' + bodyTintHex(b) + '"></div>' +
       '<p class="an-note">Washes a colour over the whole surface. White leaves it exactly as it was.</p>';
@@ -16136,6 +16211,7 @@ function openHelp() {
     '<li><b>Click any value</b> in that panel (the ones with a dotted line under them) to <b>type it in</b> instead of dragging. Units are optional: <b>2.5 M☉</b>, <b>3 Jupiters</b>, <b>6e24 kg</b>, <b>5000 km</b>, <b>10 hours</b>, <b>300 °C</b> — leave one off and it uses the unit already shown. Press Enter to set it, Esc to cancel.</li>' +
     '<li><b>Click its name</b> in that panel to rename it — type anything and press Enter.</li>' +
     '<li>While something is armed a <b>measuring grid</b> appears on the plane you are dropping onto. The hint at the bottom says how wide one square is, so you can space a system out on purpose. Turn on <b>Snap to the grid</b> in Settings and drops land exactly on the crossings.</li>' +
+    '<li>The <b>Satellite</b> in the Planets list is a spacecraft of our own. Click right next to a planet or moon and it drops straight into orbit round it.</li>' +
     '<li>The <b>Solar System</b> group at the bottom of the list holds all eight real planets — plus the Sun, the Moon and Pluto — with their real masses, widths, spin periods and axial tilts. Uranus really is tipped over on its side, and Venus really does spin backwards.</li>' +
     '</ul>' +
     '<h3>CUSTOMISE — CHANGING ANYTHING YOU LIKE</h3>' +
