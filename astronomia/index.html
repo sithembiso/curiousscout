@@ -614,9 +614,16 @@ const TAU = Math.PI * 2;
 
 /* -------------------------------------------------------- number formatting */
 
+/** Like toPrecision, but a big number is written out in full — 13,100
+    rather than 1.31e+4. */
+function prec(x, n) {
+  const s = x.toPrecision(n);
+  return s.indexOf('e+') > 0 && Math.abs(x) < 1e21 ? Math.round(Number(s)).toLocaleString() : s;
+}
+
 function fmtMass(me) {
-  if (me >= M_SUN * 0.05) return (me / M_SUN).toPrecision(3) + ' M☉';
-  if (me >= 0.05) return me.toPrecision(3) + ' M⊕';
+  if (me >= M_SUN * 0.05) return prec((me / M_SUN), 3) + ' M☉';
+  if (me >= 0.05) return prec(me, 3) + ' M⊕';
   const kg = me * KG_PER_ME;
   const e = Math.floor(Math.log10(kg));
   return (kg / Math.pow(10, e)).toFixed(2) + '×10' + sup(e) + ' kg';
@@ -624,16 +631,16 @@ function fmtMass(me) {
 
 function fmtRadius(gm) {
   const km = gm * 1e6;
-  if (gm >= R_SUN * R_EARTH * 0.3) return (gm / (R_SUN * R_EARTH)).toPrecision(3) + ' R☉';
-  if (km >= 1000) return (gm / R_EARTH).toPrecision(3) + ' R⊕';
+  if (gm >= R_SUN * R_EARTH * 0.3) return prec((gm / (R_SUN * R_EARTH)), 3) + ' R☉';
+  if (km >= 1000) return prec((gm / R_EARTH), 3) + ' R⊕';
   if (km >= 1) return Math.round(km).toLocaleString() + ' km';
-  return (km * 1000).toPrecision(3) + ' m';
+  return prec((km * 1000), 3) + ' m';
 }
 
 function fmtDist(gm) {
-  if (gm >= LY_GM * 0.5) return (gm / LY_GM).toPrecision(3) + ' ly';
-  if (gm >= AU * 0.05) return (gm / AU).toPrecision(3) + ' AU';
-  if (gm >= 0.5) return (gm * 1e6).toPrecision(3) + ' km';
+  if (gm >= LY_GM * 0.5) return prec((gm / LY_GM), 3) + ' ly';
+  if (gm >= AU * 0.05) return prec((gm / AU), 3) + ' AU';
+  if (gm >= 0.5) return prec((gm * 1e6), 3) + ' km';
   return Math.round(gm * 1e6).toLocaleString() + ' km';
 }
 
@@ -649,8 +656,8 @@ const LY_GM = 9.46073e6;           // one light-year in Gm
 
 function fmtSpeed(gmPerDay) {
   const kms = gmPerDay * 1e9 / 86400 / 1000;
-  if (kms >= 1000) return (kms / 299792.458 * 100).toPrecision(3) + '% c';
-  return kms.toPrecision(3) + ' km/s';
+  if (kms >= 1000) return prec((kms / 299792.458 * 100), 3) + '% c';
+  return prec(kms, 3) + ' km/s';
 }
 
 function fmtDensity(me, gm) {
@@ -661,7 +668,7 @@ function fmtDensity(me, gm) {
   // just report every one of them as zero.
   const s = d >= 100000 ? d.toExponential(2)
     : d >= 10 ? Math.round(d).toLocaleString()
-    : d >= 0.01 ? d.toPrecision(2)
+    : d >= 0.01 ? prec(d, 2)
     : d > 0 ? d.toExponential(1) : '0';
   return s + ' kg/m³';
 }
@@ -4579,7 +4586,7 @@ function msLifetime(mSun) {
 
 function fmtLum(l) {
   if (!(l > 0)) return '0 L☉';
-  if (l < 1000) return l.toPrecision(3) + ' L☉';
+  if (l < 1000) return prec(l, 3) + ' L☉';
   const e = Math.floor(Math.log10(l));
   return (l / Math.pow(10, e)).toFixed(1) + '×10' + sup(e) + ' L☉';
 }
@@ -4614,7 +4621,7 @@ function snPlan(b) {
   /* ---- thermonuclear: a white dwarf pushed over the edge ------------------ */
   if (def.surf === 'dwarfstar') {
     if (mSun < snSet.chandra) {
-      return no(b.name + ' is ' + mSun.toPrecision(3) + ' M☉. A white dwarf only detonates once it ' +
+      return no(b.name + ' is ' + prec(mSun, 3) + ' M☉. A white dwarf only detonates once it ' +
         'accretes past the Chandrasekhar limit of ' + snSet.chandra.toFixed(2) + ' M☉ — drag the mass ' +
         'slider up and it will go by itself.');
     }
@@ -4631,7 +4638,7 @@ function snPlan(b) {
 
   /* ---- core collapse ----------------------------------------------------- */
   if (mSun < snSet.ccMass) {
-    return no(b.name + ' is ' + mSun.toPrecision(3) + ' M☉ — too light. Below about ' + snSet.ccMass +
+    return no(b.name + ' is ' + prec(mSun, 3) + ' M☉ — too light. Below about ' + snSet.ccMass +
       ' M☉ a star can never build an iron core. It swells up, puffs its outer layers off as a ' +
       'planetary nebula, and settles down as a white dwarf.');
   }
@@ -10549,7 +10556,7 @@ function focusGalaxyStar(k) {
   const ty = GAL_TYPES[galx.kind[k]];
   const rs = galx.rad[k] / (R_SUN * R_EARTH);
   const size = rs < 0.05 ? Math.round(galx.rad[k] * 1e6).toLocaleString() + ' km across'
-    : (rs >= 100 ? Math.round(rs).toLocaleString() : rs.toPrecision(2)) + ' R☉';
+    : (rs >= 100 ? Math.round(rs).toLocaleString() : prec(rs, 2)) + ' R☉';
   const hot = galx.temp[k] > 0 ? ', ' + Math.round(galx.temp[k]).toLocaleString() + ' K' : '';
   const np = planetsOf(k).list.length;
   toast('Locked on to ' + (/^[aeiou]/i.test(ty.name) ? 'an ' : 'a ') + ty.name + ' — ' + size + hot +
@@ -14257,7 +14264,7 @@ function bindCustomise(b) {
   /* ---- a hole's drawn size ---- */
   const ls = $('is-look-s');
   if (ls) {
-    const showLook = () => $('is-lookv').textContent = '×' + (b.look || 1).toPrecision(2);
+    const showLook = () => $('is-lookv').textContent = '×' + prec((b.look || 1), 2);
     showLook();
     ls.addEventListener('input', () => {
       b.look = Math.pow(10, parseFloat(ls.value));
@@ -14288,7 +14295,7 @@ function bindCustomise(b) {
   const sp = $('is-spin-s');
   const showSpin = () => {
     const p = Math.abs(b.spin);
-    $('is-spv').textContent = (p >= 1 ? p.toPrecision(3) + ' days' : (p * 24).toPrecision(3) + ' hours') +
+    $('is-spv').textContent = (p >= 1 ? prec(p, 3) + ' days' : prec((p * 24), 3) + ' hours') +
       (b.spin < 0 ? ' ↺' : '');
   };
   if (sp) {
@@ -14326,7 +14333,7 @@ function bindCustomise(b) {
     const star = TYPES[b.type].star;
     const showT = () => {
       const t = star ? b.temp : b.coreT;
-      $('is-ctv2').textContent = t >= 1e6 ? (t / 1e6).toPrecision(3) + ' million K'
+      $('is-ctv2').textContent = t >= 1e6 ? prec((t / 1e6), 3) + ' million K'
         : Math.round(t).toLocaleString() + ' K';
     };
     showT();
@@ -14512,7 +14519,7 @@ function renderGalaxyInspector(b) {
     view.dist = schwarzschild(b.smbhM) * 2.6 * 40;
     const ms = b.smbhM / M_SUN;
     toast('The supermassive black hole at the heart of ' + b.name + ': ' +
-      (ms >= 1e9 ? (ms / 1e9).toPrecision(2) + ' billion' : (ms / 1e6).toPrecision(2) + ' million') +
+      (ms >= 1e9 ? prec((ms / 1e9), 2) + ' billion' : prec((ms / 1e6), 2) + ' million') +
       ' times the mass of the Sun, squeezed into a ball smaller than our Solar System.');
   });
   $('is-follow').addEventListener('click', () => { sim.follow = sim.follow === b ? null : b; renderInspector(); });
@@ -14775,7 +14782,7 @@ function updateInspectorStats() {
     inspRefs.ug.textContent = b.members.length;
     inspRefs.ur.textContent = fmtDist(b.R);
     inspRefs.ua.textContent = b.ages ? fmtCosmicAge(b.age) : b.age < 730 ? Math.round(b.age).toLocaleString() + ' days'
-      : (b.age / 365.25).toPrecision(3) + ' years';
+      : prec((b.age / 365.25), 3) + ' years';
     return;
   }
   if (b.kind === 'snr') {
@@ -14786,10 +14793,10 @@ function updateInspectorStats() {
     inspRefs.cvel.textContent = fmtKms(b.vBulk);
     inspRefs.cage.textContent = b.age < 730
       ? Math.round(b.age).toLocaleString() + ' days'
-      : (b.age / 365.25).toPrecision(3) + ' years';
+      : prec((b.age / 365.25), 3) + ' years';
     inspRefs.clum.textContent = b.lum > 0.01 ? fmtLum(b.lum) : (b.glowText || 'gone dark');
     inspRefs.ctv.textContent = b.coreT >= 1e6
-      ? (b.coreT / 1e6).toPrecision(3) + ' million K'
+      ? prec((b.coreT / 1e6), 3) + ' million K'
       : Math.round(b.coreT).toLocaleString() + ' K';
     inspRefs.cfore.textContent = cloudForecast(c.mass);
     return;
@@ -14828,7 +14835,7 @@ function updateInspectorStats() {
     // Flagged when the tide is actively kneading it, because that is the moment
     // the number means something.
     const hot = b.tideX > 0.02 ? ' ▲' : '';
-    inspRefs.core.textContent = (t >= 1e6 ? (t / 1e6).toPrecision(3) + ' M' : Math.round(t).toLocaleString() + ' ') + 'K' + hot;
+    inspRefs.core.textContent = (t >= 1e6 ? prec((t / 1e6), 3) + ' M' : Math.round(t).toLocaleString() + ' ') + 'K' + hot;
   }
   if (inspRefs.strip) {
     inspRefs.strip.textContent = Math.round(clamp(b.stripped / Math.max(b.m0, 1e-12), 0, 1) * 100) + '% of it';
@@ -14861,7 +14868,7 @@ function updateInspectorStats() {
   if (inspRefs.dm && b.disc) {
     inspRefs.dm.textContent = fmtMass(b.disc.mass);
     inspRefs.dn.textContent = b.disc.made;
-    inspRefs.dr.textContent = (b.disc.rOut / AU).toPrecision(3) + ' AU';
+    inspRefs.dr.textContent = prec((b.disc.rOut / AU), 3) + ' AU';
   }
   if (inspRefs.lum) inspRefs.lum.textContent = fmtLum(b.lum);
   if (inspRefs.age) {
@@ -14896,8 +14903,8 @@ const PHYS_MAX = 1e12;
 
 /** 3000000 → "3 million" */
 function fmtBoost(x) {
-  if (x >= 1e9) return (x / 1e9).toPrecision(2).replace(/\.0$/, '') + ' billion';
-  if (x >= 1e6) return (x / 1e6).toPrecision(2).replace(/\.0$/, '') + ' million';
+  if (x >= 1e9) return prec((x / 1e9), 2).replace(/\.0$/, '') + ' billion';
+  if (x >= 1e6) return prec((x / 1e6), 2).replace(/\.0$/, '') + ' million';
   return Math.round(x).toLocaleString();
 }
 
@@ -14935,7 +14942,7 @@ function rateParts(r) {
   const v = r / u[0];
   const txt = v >= 1e6 || v < 0.01
     ? v.toExponential(2).replace(/\.?0+e/, 'e').replace('e+', 'e')
-    : v.toPrecision(3).replace(/\.0+$|(\.\d*?)0+$/, '$1');
+    : prec(v, 3).replace(/\.0+$|(\.\d*?)0+$/, '$1');
   return [txt, u[1]];
 }
 
@@ -15324,15 +15331,15 @@ function fmtCosmicAge(days) {
   if (days < 1) return (sec / 3600).toFixed(1) + ' hours';
   if (y < 1) return Math.round(days) + ' days';
   const big = [[1e18, 'quintillion'], [1e15, 'quadrillion'], [1e12, 'trillion'], [1e9, 'billion'], [1e6, 'million']];
-  for (const [v, w] of big) if (y >= v) return (y / v).toPrecision(3) + ' ' + w + ' years';
-  return y < 1000 ? y.toPrecision(3) + ' years' : Math.round(y).toLocaleString() + ' years';
+  for (const [v, w] of big) if (y >= v) return prec((y / v), 3) + ' ' + w + ' years';
+  return y < 1000 ? prec(y, 3) + ' years' : Math.round(y).toLocaleString() + ' years';
 }
 
 function fmtYears(days) {
   const y = days / 365.25;
-  if (y >= 1e6) return (y / 1e6).toPrecision(3) + ' million years';
+  if (y >= 1e6) return prec((y / 1e6), 3) + ' million years';
   if (y >= 1000) return Math.round(y).toLocaleString() + ' years';
-  if (y >= 1) return y.toPrecision(3) + ' years';
+  if (y >= 1) return prec(y, 3) + ' years';
   return Math.max(Math.round(days), 0).toLocaleString() + ' days';
 }
 
