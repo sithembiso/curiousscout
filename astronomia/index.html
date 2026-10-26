@@ -1169,17 +1169,23 @@ const SURFACE = {
     const fold = ridged(fbm(seed + 37, 7, 4, 5));   // the swirls, bent by the warp
     const fold2 = ridged(fbm(seed + 61, 14, 7, 4)); // and finer swirls inside them
     const fine = fbm(seed + 51, 26, 13, 3);
+    // Mountain ranges: sharp ridge lines, standing up only where the range
+    // mask says, so there are chains of peaks with open plains between them.
+    const chain = ridged(fbm(seed + 71, 5, 3, 5));
+    const where = fbm(seed + 83, 3, 2, 3);
+    const peakAt = (wu, wv, u, v) => Math.pow(chain(wu, wv), 6) * clamp((where(u, v) - 0.4) * 4, 0, 1);
     const dim = (o.dim || 1) * (o.dark ? 0.86 : 1);
     const at = (u, v) => {
       const wu = u + (wa(u, v) - 0.5) * 0.16, wv = clamp(v + (wb(u, v) - 0.5) * 0.16, 0, 1);
-      return [big(u, v), fold(wu, wv), fine(u, v), fold2(wu, wv)];
+      return [big(u, v), fold(wu, wv), fine(u, v), fold2(wu, wv), peakAt(wu, wv, u, v)];
     };
     const hgt = pixelPass(ctx, W, H, (u, v) => {
-      const [b, f, n, f2] = at(u, v);
+      const [b, f, n, f2, pk] = at(u, v);
       let L = 52 + b * 125 + Math.pow(f, 2.5) * 78 + Math.pow(f2, 3) * 26 - Math.pow(1 - f, 3) * 36 + (n - 0.5) * 28;
+      L += pk * 70;                                 // pale summits
       L = clamp(L * dim, 0, 255);
       return [L, L, L * 0.99];                      // a plain, cool grey
-    }, (u, v) => { const [b, f, n, f2] = at(u, v); return b * 0.45 + f * 0.35 + f2 * 0.1 + n * 0.1; });
+    }, (u, v) => { const [b, f, n, f2, pk] = at(u, v); return b * 0.4 + f * 0.25 + f2 * 0.08 + n * 0.07 + pk * 1.1; });
     craters(ctx, W, H, rng, Math.round((o.craters || 80) * 0.15), 0.008, 0.05, [220, 220, 218]);
     return hgt;
   },
