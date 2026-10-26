@@ -2407,7 +2407,7 @@ const TYPES = {
   black_hole: {
     label: 'Black Hole', group: 'EXOTIC', mass: 10 * M_SUN, rad: 0,
     kind: 'bh', spin: 0.02, disk: true,
-    blurb: 'Gravity so steep that not even light escapes. Anything crossing the horizon is gone.'
+    blurb: 'Gravity so steep that not even light escapes. Anything crossing the horizon is gone. Make it heavier than 50 Suns and it pulls nearby stars apart, drawing their gas into a glowing disc.'
   },
   smbh: {
     label: 'Supermassive Hole', group: 'EXOTIC', mass: 4.3e6 * M_SUN, rad: 0,
@@ -3128,6 +3128,9 @@ function computeAccel() {
   let minT2 = Infinity;
 
   for (let i = 0; i < n; i++) bs[i].a.set(0, 0, 0);
+  for (let i = 0; i < plunging.length; i += 2) {
+    if (plunging[i].alive && plunging[i + 1].alive) collisionPairs.push(plunging[i], plunging[i + 1]);
+  }
 
   /* Plummer softening lengths, hoisted out of the inner loop. A galaxy's mass
      is not in a point — it is spread through a bulge, a disc and a halo — so
@@ -3261,9 +3264,12 @@ const carried = [];
 const _q = new THREE.Quaternion(), _ax = new THREE.Vector3(), _ra = new THREE.Vector3(), _hp = new THREE.Vector3();
 const ORBIT_STEPS = 40;                // a step must be under 1/40 of an orbit's fastest stretch
 
+const plunging = [];             // pairs [hole, body] to merge on the next collision pass
+
 function assignOrbitHosts(dt) {
   const bs = sim.bodies, gm = G * settings.gravity;
   carried.length = 0;
+  plunging.length = 0;
   for (const b of bs) { b._wasHost = b.rotHost || null; b.rotHost = null; b._depth = -1; }
   for (const b of bs) {
     b.domHost = null;
@@ -3306,7 +3312,15 @@ function assignOrbitHosts(dt) {
     const ecc = Math.sqrt(Math.max(0, 1 - _ax.lengthSq() / (mu * sma)));
     // Something on a collision course, or falling nearly straight in, is not
     // in an orbit that can be carried round — it must be stepped, so it hits.
-    if (ecc > 0.9 || sma * (1 - ecc) < (visRadius(b) + visRadius(best)) * 1.2) continue;
+    if (ecc > 0.9 || sma * (1 - ecc) < (visRadius(b) + visRadius(best)) * 1.2) {
+      /* A body that was being carried round a black hole and has now decayed
+         down onto it cannot be handed back to the ordinary step: at the speed
+         that made it worth carrying, one step would swing it through the hole
+         and fling it out at a sizeable fraction of light speed. It has
+         reached the hole, so the hole has it. */
+      if (best.kind === 'bh' && b._wasHost === best) plunging.push(best, b);
+      continue;
+    }
     const swing = TAU * Math.sqrt(sma * sma * sma / mu) * Math.pow(1 - Math.min(ecc, 0.95), 1.5);
     if (dt * ORBIT_STEPS > swing) b.rotHost = best;
   }
@@ -3436,6 +3450,7 @@ function step(dt) {
   resolveCollisions();
   if (homers.length) stepHomers(new Map());     // report a crash the moment it happens
   if (settings.tidal) updateTides(dt);
+  if (settings.tidal) siphonStars(dt);
   updateSpin(dt);
 }
 
@@ -6335,6 +6350,110 @@ function shedEnvelope(b) {
   refreshVisual(b);
   fx.flash(b.p, oldR * 30, [170, 255, 230], 0.8);
   toast(name + ' shed its envelope and became a white dwarf');
+}
+
+/* ====================================================== black holes feeding */
+/*
+ * A black hole heavier than 50 Suns eats the stars that come close. A star
+ * is held together far too well for the ordinary tides above, but near a
+ * hole that heavy the pull on its near side beats its own gravity well
+ * outside the point of no return — its tidal radius, R★·(M●/M★)^⅓ — and gas
+ * pours off it through the point between the two (the inner Lagrange point)
+ * in a glowing stream. That gas does not fall straight in: it carries the
+ * star's sideways motion, so it swings round and piles into a disc before it
+ * spirals down. Every grain is real matter, so the hole grows by what it
+ * swallows and the star shrinks by what it loses; deep enough in, the last
+ * of the star is torn into the stream altogether.
+ */
+const FEED_MIN = 50 * M_SUN;      // only holes heavier than this feed on stars
+const FEED_REACH = 3;             // × the tidal radius: where the stream starts
+const FEED_RATE = 0.03;           // share of the star a day, at the very bottom
+const FEED_LAST = 0.02 * M_SUN;   // below this the remnant is pulled apart
+const DISC_R = 0.03 * AU;         // × (M●/M☉)^⅓: how far out its disc reaches
+const DISC_DRAG = 0.05;           // share of sideways speed the disc gas loses per orbit
+const DISC_EAT = 0.06;            // × the disc's reach: gas this far in has fallen in
+
+function siphonStars(dt) {
+  const bs = sim.bodies;
+  for (const H of bs) {
+    if (!H.alive || H.kind !== 'bh' || H.m <= FEED_MIN) continue;
+    for (const s of bs) {
+      if (s === H || !s.alive || s.kind !== 'body' || !TYPES[s.type].star) continue;
+      if (s.m >= H.m) continue;                                // only a lighter star is eaten
+      const d = s.p.distanceTo(H.p);
+      const touch = visRadius(H) + visRadius(s);
+      const tidal = s.r * Math.cbrt(H.m / Math.max(s.m, 1e-9));
+      const reach = Math.max(tidal * FEED_REACH, touch * 2.5);
+      if (d >= reach) continue;
+      const x = clamp((reach - d) / Math.max(reach - touch, 1e-9), 0, 1);
+      const loss = Math.min(s.m * FEED_RATE * x * x * dt, s.m * 0.3);
+      if (!(loss > 0)) continue;
+      s.m -= loss;
+      s.feedPending = (s.feedPending || 0) + loss;
+      // Right down on the hole, or worn down to a scrap, the rest is torn
+      // apart at once: the end of a tidal disruption.
+      if (s.m < FEED_LAST || d < touch * 1.5) {
+        s.feedPending += s.m;
+        s.m = 0;
+      } else {
+        s.r = natRadius(s);
+        updateLuminosity(s);
+        scaleVisual(s);
+      }
+      // released in small puffs, so a slow trickle still shows as a stream
+      if (s.feedPending > Math.max(s.m, FEED_LAST) * 0.0003 || s.m === 0) {
+        s.feedPending -= feedStream(s, H, s.feedPending, s.m === 0 ? 200 : 30);
+      }
+      if (!s.feedToast) {
+        s.feedToast = 1;
+        toast(H.name + ' is pulling ' + s.name + ' apart');
+      }
+      if (s.m === 0) {
+        H.m += s.feedPending;                                  // whatever could not be drawn
+        s.feedPending = 0;
+        removeBody(s);
+        toast(H.name + ' has eaten ' + s.name);
+      }
+    }
+  }
+}
+
+/** Throw `mass` off star s through its near side, towards hole H. Returns how much went. */
+function feedStream(s, H, mass, count) {
+  const n = Math.min(count, parts.free.length);
+  if (n <= 0 || !(mass > 0)) return 0;
+  const each = mass / n;
+  const toH = H.p.clone().sub(s.p).normalize();
+  const rs = visRadius(s);
+  const vOrb = s.v.distanceTo(H.v);
+  for (let i = 0; i < n; i++) {
+    const k = parts.free.pop(), k3 = k * 3;
+    // just clear of the star's near side, so it cannot fall straight back
+    const jx = rnd(-0.2, 0.2), jy = rnd(-0.2, 0.2), jz = rnd(-0.2, 0.2);
+    parts.pos[k3] = s.p.x + toH.x * rs * 1.35 + jx * rs;
+    parts.pos[k3 + 1] = s.p.y + toH.y * rs * 1.35 + jy * rs;
+    parts.pos[k3 + 2] = s.p.z + toH.z * rs * 1.35 + jz * rs;
+    // let go at the star's own speed plus a gentle nudge towards the hole —
+    // the hole's pull does the rest
+    const push = vOrb * rnd(0.04, 0.12);
+    parts.vel[k3] = s.v.x + toH.x * push;
+    parts.vel[k3 + 1] = s.v.y + toH.y * push;
+    parts.vel[k3 + 2] = s.v.z + toH.z * push;
+    const bsz = rnd(3, 7);
+    parts.bsize[k] = bsz; parts.size[k] = bsz;
+    parts.m[k] = each;
+    parts.hot[k] = 1;
+    parts.crate[k] = COOL_IMPACT * 0.15;                       // glows all the way down
+    parts.src[k] = -1;
+    const c = s.lightColor || new THREE.Color(1, 0.9, 0.75);
+    parts.warm[k3] = Math.min(1, c.r * 0.6 + 0.45); parts.warm[k3 + 1] = Math.min(1, c.g * 0.6 + 0.4); parts.warm[k3 + 2] = Math.min(1, c.b * 0.6 + 0.35);
+    parts.cool[k3] = 1.0; parts.cool[k3 + 1] = 0.45; parts.cool[k3 + 2] = 0.2;
+    parts.col[k3] = parts.warm[k3]; parts.col[k3 + 1] = parts.warm[k3 + 1]; parts.col[k3 + 2] = parts.warm[k3 + 2];
+    parts.on[k] = 1;
+    parts.live++;
+  }
+  parts.dirty = true;
+  return each * n;
 }
 
 /* ============================================================ tidal forces  */
@@ -11787,13 +11906,21 @@ function stepParticles(dt) {
     const k3 = k * 3;
     const px = pos[k3], py = pos[k3 + 1], pz = pos[k3 + 2];
     const pm = parts.m[k];
-    let ax = 0, ay = 0, az = 0, hit = null;
+    let ax = 0, ay = 0, az = 0, hit = null, disc = null, discD2 = 0;
 
     for (let s = 0; s < ns; s++) {
       const b = src[s];
       if (!b.alive) continue;
       const dx = b.p.x - px, dy = b.p.y - py, dz = b.p.z - pz;
       const d2 = dx * dx + dy * dy + dz * dz;
+      if (b.kind === 'bh' && b.m > FEED_MIN && parts.src[k] < 0) {
+        const R = DISC_R * Math.cbrt(b.m / M_SUN);
+        if (d2 < R * R) {
+          disc = b; discD2 = d2;
+          // down at the bottom of the disc it is gone: swallowed
+          if (d2 < R * R * DISC_EAT * DISC_EAT) { hit = b; break; }
+        }
+      }
       const rv = visRadius(b);
       if (d2 < rv * rv) {
         // A knot still climbing out of the crater is passing through its own
@@ -11834,6 +11961,17 @@ function stepParticles(dt) {
     }
 
     vel[k3] += ax * dt; vel[k3 + 1] += ay * dt; vel[k3 + 2] += az * dt;
+    if (disc) {
+      /* In a feeding hole's disc the gas rubs against itself and loses its
+         sideways motion bit by bit, a set share every orbit, so it spirals in
+         instead of going round for ever — which is what makes a disc feed. */
+      const d = Math.sqrt(discD2);
+      const P = TAU * Math.sqrt(d * d * d / (gm * disc.m));
+      const keepV = 1 - Math.min(DISC_DRAG * dt / P, 0.5);
+      vel[k3] = disc.v.x + (vel[k3] - disc.v.x) * keepV;
+      vel[k3 + 1] = disc.v.y + (vel[k3 + 1] - disc.v.y) * keepV;
+      vel[k3 + 2] = disc.v.z + (vel[k3 + 2] - disc.v.z) * keepV;
+    }
     pos[k3] += vel[k3] * dt; pos[k3 + 1] += vel[k3 + 1] * dt; pos[k3 + 2] += vel[k3 + 2] * dt;
   }
 
