@@ -11961,7 +11961,9 @@ function updateFx(realDt, simDt) {
 /* =================================================================== trails */
 
 const TRAIL_CAP = 320;
-const MAX_TRAILS = 28;
+// Every object gets one. The cap is only a backstop for a scene stuffed with
+// hundreds of bodies (debris, a shattered planet), where the heaviest keep theirs.
+const MAX_TRAILS = 400;
 
 function buildTrail(b) { b.trail = null; }
 
@@ -11999,7 +12001,6 @@ function updateTrails() {
     for (const b of sim.bodies) if (b.trail) killTrail(b);
     return;
   }
-  // Only the most significant bodies get a trail, so the line count stays sane.
   const ranked = sim.bodies.slice().sort((a, b) => b.m - a.m).slice(0, MAX_TRAILS);
   const keep = new Set(ranked);
   for (const b of sim.bodies) {
