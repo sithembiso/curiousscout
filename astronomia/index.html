@@ -1159,8 +1159,34 @@ function earthGround(u, v) {
 
 const SURFACE = {
 
+  /* Moons, asteroids and comets: pale, mottled grey ground, folded into soft
+     swirling ridges and lit in broad bright and dark patches, with only a few
+     worn-down craters — dusty, rounded and old rather than freshly pitted. */
+  plaster(ctx, W, H, rng, o) {
+    const seed = (rng() * 1e6) | 0;
+    const big = fbm(seed, 3, 2, 4);                 // the broad light and dark patches
+    const wa = fbm(seed + 11, 4, 3, 4), wb = fbm(seed + 23, 4, 3, 4);
+    const fold = ridged(fbm(seed + 37, 7, 4, 5));   // the swirls, bent by the warp
+    const fold2 = ridged(fbm(seed + 61, 14, 7, 4)); // and finer swirls inside them
+    const fine = fbm(seed + 51, 26, 13, 3);
+    const dim = (o.dim || 1) * (o.dark ? 0.86 : 1);
+    const at = (u, v) => {
+      const wu = u + (wa(u, v) - 0.5) * 0.16, wv = clamp(v + (wb(u, v) - 0.5) * 0.16, 0, 1);
+      return [big(u, v), fold(wu, wv), fine(u, v), fold2(wu, wv)];
+    };
+    const hgt = pixelPass(ctx, W, H, (u, v) => {
+      const [b, f, n, f2] = at(u, v);
+      let L = 52 + b * 125 + Math.pow(f, 2.5) * 78 + Math.pow(f2, 3) * 26 - Math.pow(1 - f, 3) * 36 + (n - 0.5) * 28;
+      L = clamp(L * dim, 0, 255);
+      return [L, L, L * 0.99];                      // a plain, cool grey
+    }, (u, v) => { const [b, f, n, f2] = at(u, v); return b * 0.45 + f * 0.35 + f2 * 0.1 + n * 0.1; });
+    craters(ctx, W, H, rng, Math.round((o.craters || 80) * 0.15), 0.008, 0.05, [220, 220, 218]);
+    return hgt;
+  },
+
   /* Airless grey cratered crust — moons, asteroids, impactors. */
   rock(ctx, W, H, rng, o) {
+    if (o.plaster) return SURFACE.plaster(ctx, W, H, rng, o);
     const seed = (rng() * 1e6) | 0;
     const elev = fbm(seed, 6, 3, 5);
     const maria = fbm(seed + 555, 3, 2, 3);
@@ -1794,18 +1820,9 @@ const SURFACE = {
     return hgtCh;
   },
 
-  /* Comet nucleus: sooty, pitted, veined with exposed ice. */
+  /* Comet nucleus: the same pale, folded grey as the moons, a shade darker. */
   comet(ctx, W, H, rng, o) {
-    const seed = (rng() * 1e6) | 0;
-    const base = fbm(seed, 6, 4, 5);
-    const hgtK = pixelPass(ctx, W, H, (u, v) => {
-      const e = base(u, v);
-      let c = ramp([[0, [16, 14, 14]], [0.5, [34, 30, 28]], [0.85, [58, 54, 50]], [1, [86, 82, 78]]], e);
-      if (e > 0.78) c = mix(c, [206, 220, 236], (e - 0.78) * 3.4);
-      return c;
-    }, (u, v) => base(u, v));
-    craters(ctx, W, H, rng, 60, 0.008, 0.09, [150, 160, 172]);
-    return hgtK;
+    return SURFACE.plaster(ctx, W, H, rng, Object.assign({ dim: 0.82, craters: 24 }, o));
   },
 
   /* A starless wanderer: frozen, dim, lightly cratered. */
@@ -2345,7 +2362,7 @@ const TYPES = {
   /* ---- moons & debris --------------------------------------------------- */
   moon: {
     label: 'Moon', group: 'MOONS & DEBRIS', mass: 0.0123, rad: 0.2727,
-    surf: 'rock', spin: 27.3, opts: { craters: 150 },
+    surf: 'rock', spin: 27.3, opts: { plaster: true, craters: 150 },
     blurb: 'A tide-locked companion, its face pocked by four billion years of impacts.'
   },
   dwarf_planet: {
@@ -2355,7 +2372,7 @@ const TYPES = {
   },
   asteroid: {
     label: 'Asteroid', group: 'MOONS & DEBRIS', mass: 1.6e-4, rad: 0.0742,
-    surf: 'rock', spin: 0.38, lumpy: 0.34, opts: { dark: true, craters: 90 },
+    surf: 'rock', spin: 0.38, lumpy: 0.34, opts: { plaster: true, dark: true, craters: 90 },
     blurb: 'A leftover chunk of the building material the planets were made from.'
   },
   comet: {
@@ -2522,7 +2539,7 @@ const TYPES = {
   },
   sol_luna: {
     label: 'The Moon', group: 'SOLAR SYSTEM', pname: 'Luna', mass: 0.0123, rad: 0.2727,
-    surf: 'rock', spin: 27.322, tilt: 0.0269, opts: { craters: 170 },
+    surf: 'rock', spin: 27.322, tilt: 0.0269, opts: { plaster: true, craters: 170 },
     blurb: 'Our Moon, and the only other world people have stood on. It turns exactly once per orbit, so it always shows us the same face.'
   },
   sol_mars: {
@@ -2568,7 +2585,7 @@ const TYPES = {
   },
   sol_ceres: {
     label: 'Ceres', group: 'SOLAR SYSTEM', pname: 'Ceres', mass: 0.000157, rad: 0.0742,
-    surf: 'rock', spin: 0.3781, opts: { craters: 120, dark: true },
+    surf: 'rock', spin: 0.3781, opts: { plaster: true, craters: 120, dark: true },
     blurb: 'The biggest thing in the Asteroid Belt — big enough to have pulled itself round, so it counts as a dwarf planet. It may hide a salty ocean under its crust.'
   },
 
@@ -2602,7 +2619,7 @@ const TYPES = {
   },
   sol_dysnomia: {
     label: 'Dysnomia', group: 'MOONS OF THE PLANETS', pname: 'Dysnomia', mass: 1.3e-5, rad: 0.055,
-    surf: 'rock', spin: 15.79, opts: { dark: true, craters: 30 },
+    surf: 'rock', spin: 15.79, opts: { plaster: true, dark: true, craters: 30 },
     blurb: 'Eris\'s moon, named after its mother\'s daughter, the spirit of lawlessness.'
   },
   sol_sedna: {
@@ -2629,12 +2646,12 @@ const TYPES = {
   /* ---- the moons of the other planets, at their real masses and sizes ---- */
   sol_phobos: {
     label: 'Phobos', group: 'MOONS OF THE PLANETS', pname: 'Phobos', mass: 1.78e-9, rad: 0.00177,
-    surf: 'rock', spin: 0.3189, lumpy: 0.30, opts: { dark: true, craters: 60 },
+    surf: 'rock', spin: 0.3189, lumpy: 0.30, opts: { plaster: true, dark: true, craters: 60 },
     blurb: 'Mars\'s bigger moon, a lumpy potato 22 km long. It is spiralling inwards and will be torn into a ring around Mars in about 50 million years.'
   },
   sol_deimos: {
     label: 'Deimos', group: 'MOONS OF THE PLANETS', pname: 'Deimos', mass: 2.5e-10, rad: 0.00097,
-    surf: 'rock', spin: 1.263, lumpy: 0.28, opts: { dark: true, craters: 30 },
+    surf: 'rock', spin: 1.263, lumpy: 0.28, opts: { plaster: true, dark: true, craters: 30 },
     blurb: 'Mars\'s little moon — so small and so weak that you could jump off it into space.'
   },
   sol_io: {
@@ -2651,12 +2668,12 @@ const TYPES = {
   },
   sol_ganymede: {
     label: 'Ganymede', group: 'MOONS OF THE PLANETS', pname: 'Ganymede', mass: 0.0248, rad: 0.4135,
-    surf: 'rock', spin: 7.155, opts: { craters: 120 },
+    surf: 'rock', spin: 7.155, opts: { plaster: true, craters: 120 },
     blurb: 'The biggest moon in the Solar System — bigger than the planet Mercury — and the only moon with its own magnetic field.'
   },
   sol_callisto: {
     label: 'Callisto', group: 'MOONS OF THE PLANETS', pname: 'Callisto', mass: 0.018, rad: 0.378,
-    surf: 'rock', spin: 16.689, opts: { craters: 260, dark: true },
+    surf: 'rock', spin: 16.689, opts: { plaster: true, craters: 260, dark: true },
     blurb: 'The most heavily cratered thing we know of. Nothing has happened on its surface for four billion years except being hit.'
   },
   sol_titan: {
@@ -2675,7 +2692,7 @@ const TYPES = {
   },
   sol_iapetus: {
     label: 'Iapetus', group: 'MOONS OF THE PLANETS', pname: 'Iapetus', mass: 3.03e-4, rad: 0.1153,
-    surf: 'rock', spin: 79.32, opts: { craters: 90 },
+    surf: 'rock', spin: 79.32, opts: { plaster: true, craters: 90 },
     blurb: 'The two-faced moon: one side is as dark as coal and the other as bright as snow, and a mountain ridge runs round its middle like the seam on a walnut.'
   },
   sol_dione: {
@@ -2690,7 +2707,7 @@ const TYPES = {
   },
   sol_mimas: {
     label: 'Mimas', group: 'MOONS OF THE PLANETS', pname: 'Mimas', mass: 6.3e-6, rad: 0.0311,
-    surf: 'rock', spin: 0.942, opts: { craters: 140 },
+    surf: 'rock', spin: 0.942, opts: { plaster: true, craters: 140 },
     blurb: 'The "Death Star" moon — one crater, Herschel, is a third as wide as the whole moon.'
   },
   sol_titania: {
@@ -2700,7 +2717,7 @@ const TYPES = {
   },
   sol_oberon: {
     label: 'Oberon', group: 'MOONS OF THE PLANETS', pname: 'Oberon', mass: 5.2e-4, rad: 0.1194,
-    surf: 'rock', spin: 13.463, opts: { craters: 110, dark: true },
+    surf: 'rock', spin: 13.463, opts: { plaster: true, craters: 110, dark: true },
     blurb: 'The outermost of Uranus\'s big moons: old, dark and covered in craters.'
   },
   sol_ariel: {
@@ -2710,7 +2727,7 @@ const TYPES = {
   },
   sol_umbriel: {
     label: 'Umbriel', group: 'MOONS OF THE PLANETS', pname: 'Umbriel', mass: 2.1e-4, rad: 0.0918,
-    surf: 'rock', spin: 4.144, opts: { craters: 120, dark: true },
+    surf: 'rock', spin: 4.144, opts: { plaster: true, craters: 120, dark: true },
     blurb: 'The darkest of Uranus\'s big moons, with one strange bright ring on its face.'
   },
   sol_miranda: {
@@ -2725,7 +2742,7 @@ const TYPES = {
   },
   sol_charon: {
     label: 'Charon', group: 'MOONS OF THE PLANETS', pname: 'Charon', mass: 2.66e-4, rad: 0.0951,
-    surf: 'rock', spin: 6.387, opts: { craters: 60 },
+    surf: 'rock', spin: 6.387, opts: { plaster: true, craters: 60 },
     blurb: 'Half as wide as Pluto, so big that Pluto and Charon swing round a point in the space between them — almost a double planet. It has a rusty-red cap on its north pole.'
   }
 };
