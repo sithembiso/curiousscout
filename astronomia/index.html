@@ -15698,6 +15698,119 @@ function updateBelts() {
   beltx.pts.material.uniforms.uDpr.value = VIEW.dpr;
 }
 
+/* ------------------------------------------------------- named asteroids */
+/*
+ * The asteroids people know by name, as real bodies on their real orbits:
+ * the biggest in the main belt, the ones spacecraft have visited, the
+ * near-Earth ones that cross our path (Apophis, Bennu, Didymos), Jupiter's
+ * Trojans that Lucy is flying to, and the centaurs out among the giants.
+ * (More than 1.3 million asteroids are known; these are the famous ones —
+ * the belts are the rest.)
+ *
+ * Each orbit is set from its measured elements: size and shape (a, e), tilt
+ * (i), and which way it is turned (Ω, ω). Where each one is along its orbit
+ * today is not followed, because the planets here are not at their dated
+ * positions either — except the Trojans, which must ride 60° ahead of (L4)
+ * or behind (L5) Jupiter or they would not be Trojans at all.
+ *
+ * Row: name, a (AU), e, i (°), Ω (°), ω (°), diameter (km), mass (kg, or 0 to
+ * work it out from the size), and for a Trojan which point it holds.
+ */
+const NAMED_ASTEROIDS = [
+  // ---- the big ones of the main belt
+  ['Vesta', 2.362, 0.089, 7.14, 103.8, 151.2, 525, 2.59e20],
+  ['Pallas', 2.773, 0.230, 34.84, 173.1, 310.0, 512, 2.04e20],
+  ['Hygiea', 3.139, 0.112, 3.83, 283.2, 312.3, 434, 8.3e19],
+  ['Interamnia', 3.056, 0.155, 17.31, 280.3, 95.9, 332, 3.5e19],
+  ['52 Europa', 3.100, 0.110, 7.48, 128.7, 343.4, 315, 2.4e19],
+  ['Davida', 3.170, 0.190, 15.9, 107.6, 338.0, 289, 2.7e19],
+  ['Sylvia', 3.480, 0.090, 10.9, 73.0, 263.0, 271, 1.48e19],
+  ['Eunomia', 2.640, 0.190, 11.7, 293.2, 98.0, 268, 3.1e19],
+  ['Euphrosyne', 3.150, 0.220, 26.3, 31.1, 61.5, 268, 1.7e19],
+  ['Juno', 2.669, 0.257, 12.99, 169.9, 248.0, 247, 2.7e19],
+  ['Cybele', 3.430, 0.110, 3.56, 155.6, 102.0, 237, 1.4e19],
+  ['Psyche', 2.924, 0.134, 3.10, 150.0, 229.0, 222, 2.29e19],
+  ['Iris', 2.390, 0.230, 5.5, 259.5, 145.4, 214, 1.4e19],
+  ['Metis', 2.390, 0.120, 5.6, 68.9, 6.4, 190, 0],
+  ['Hebe', 2.430, 0.200, 14.7, 138.6, 239.8, 185, 1.3e19],
+  ['Flora', 2.200, 0.160, 5.9, 110.9, 285.5, 147, 0],
+  ['Kleopatra', 2.790, 0.250, 13.1, 215.3, 180.0, 122, 3.0e18],
+  ['Astraea', 2.570, 0.190, 5.4, 141.6, 358.7, 107, 0],
+  // ---- visited by spacecraft
+  ['Lutetia', 2.430, 0.160, 3.06, 80.9, 250.0, 98, 1.7e18],
+  ['Mathilde', 2.650, 0.270, 6.7, 179.6, 157.4, 53, 1.03e17],
+  ['Ida', 2.860, 0.040, 1.13, 324.0, 110.0, 31, 4.2e16],
+  ['Gaspra', 2.210, 0.170, 4.1, 253.0, 129.9, 12, 0],
+  ['Šteins', 2.360, 0.150, 9.9, 55.4, 251.0, 5.3, 0],
+  ['Annefrank', 2.210, 0.060, 4.25, 120.6, 9.7, 4.8, 0],
+  ['Donaldjohanson', 2.380, 0.190, 4.4, 262.8, 212.9, 4, 0],
+  ['Dinkinesh', 2.190, 0.110, 2.09, 21.4, 66.6, 0.79, 0],
+  ['Eros', 1.458, 0.223, 10.83, 304.3, 178.9, 16.8, 6.7e15],
+  ['Itokawa', 1.324, 0.280, 1.62, 69.1, 162.8, 0.33, 3.5e10],
+  ['Ryugu', 1.190, 0.191, 5.88, 251.6, 211.4, 0.9, 4.5e11],
+  ['Bennu', 1.126, 0.204, 6.03, 2.06, 66.2, 0.49, 7.3e10],
+  ['Didymos', 1.644, 0.384, 3.41, 73.2, 319.6, 0.78, 5.6e11],
+  // ---- near-Earth: they cross our orbit
+  ['Apophis', 0.922, 0.191, 3.34, 204.0, 126.4, 0.37, 6.1e10],
+  ['1036 Ganymed', 2.660, 0.530, 26.7, 215.5, 132.4, 35, 0],
+  ['Toutatis', 2.530, 0.630, 0.45, 125.4, 278.8, 2.5, 0],
+  ['Geographos', 1.246, 0.335, 13.3, 337.2, 277.0, 2.5, 0],
+  ['Phaethon', 1.271, 0.890, 22.3, 265.2, 322.2, 5.8, 0],
+  ['Icarus', 1.078, 0.827, 22.8, 87.9, 31.4, 1.4, 0],
+  ['Hermes', 1.655, 0.624, 6.07, 34.6, 92.8, 0.3, 0],
+  ['Florence', 1.769, 0.423, 22.1, 336.1, 27.9, 4.9, 0],
+  ['Kamoʻoalewa', 1.001, 0.103, 7.8, 66.0, 306.0, 0.04, 0],
+  ['2024 YR4', 2.520, 0.660, 3.41, 271.4, 134.4, 0.06, 0],
+  // ---- Jupiter's Trojans
+  ['Hektor', 5.260, 0.023, 18.2, 342.8, 185.0, 225, 7.9e18, 'L4'],
+  ['Eurybates', 5.210, 0.090, 8.1, 43.5, 27.8, 64, 0, 'L4'],
+  ['Leucus', 5.290, 0.065, 11.6, 251.0, 160.0, 34, 0, 'L4'],
+  ['Polymele', 5.170, 0.100, 13.0, 50.3, 7.6, 21, 0, 'L4'],
+  ['Orus', 5.120, 0.040, 8.5, 258.6, 177.0, 51, 0, 'L4'],
+  ['Patroclus', 5.210, 0.140, 22.0, 44.3, 307.9, 140, 1.2e18, 'L5'],
+  // ---- out among the giant planets
+  ['Hidalgo', 5.730, 0.660, 42.5, 21.4, 56.5, 38, 0],
+  ['Chiron', 13.70, 0.380, 6.9, 209.3, 339.3, 206, 0],
+  ['Chariklo', 15.80, 0.170, 23.4, 300.4, 241.6, 250, 0],
+  ['Pholus', 20.30, 0.570, 24.7, 119.3, 354.9, 180, 0],
+  ['Arrokoth', 44.60, 0.040, 2.45, 158.9, 174.4, 36, 0]
+];
+
+/** Places every named asteroid round `sun`. */
+function buildNamedAsteroids(sun, jupiter) {
+  const mu = G * settings.gravity * sun.m;
+  const rad = Math.PI / 180;
+  const rng = mulberry32(1801);                    // 1801: the year Ceres was found
+  const jupLon = jupiter ? Math.atan2(jupiter.p.z - sun.p.z, jupiter.p.x - sun.p.x) : 0;
+  for (const [name, aAU, e, iD, OD, wD, dKm, kg, troj] of NAMED_ASTEROIDS) {
+    const a = aAU * AU, inc = iD * rad, O = OD * rad, w = wD * rad;
+    let M = rng() * TAU;
+    // a Trojan's longitude is pinned 60° from Jupiter's
+    if (troj) M = jupLon + (troj === 'L4' ? 1 : -1) * Math.PI / 3 - O - w;
+    let E = M;
+    for (let k = 0; k < 30; k++) E -= (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+    const r = a * (1 - e * Math.cos(E));
+    const px = a * (Math.cos(E) - e), py = a * Math.sqrt(1 - e * e) * Math.sin(E);
+    const f = Math.sqrt(mu * a) / r;
+    const vx = -f * Math.sin(E), vy = f * Math.sqrt(1 - e * e) * Math.cos(E);
+    // perifocal → ecliptic (X, Y in the plane, Z north)
+    const cO = Math.cos(O), sO = Math.sin(O), cw = Math.cos(w), sw = Math.sin(w), ci = Math.cos(inc), si = Math.sin(inc);
+    const rot = (x, y) => [
+      (cO * cw - sO * sw * ci) * x + (-cO * sw - sO * cw * ci) * y,
+      (sO * cw + cO * sw * ci) * x + (-sO * sw + cO * cw * ci) * y,
+      (sw * si) * x + (cw * si) * y
+    ];
+    const P = rot(px, py), V = rot(vx, vy);
+    // the game's ecliptic: x and z in the plane, y north (see eclipticDir)
+    const pos = sun.p.clone().add(new V3(P[0], P[2], P[1]));
+    const vel = sun.v.clone().add(new V3(V[0], V[2], V[1]));
+    const rKm = dKm / 2;
+    const mass = (kg || 2000 * 4 / 3 * Math.PI * Math.pow(rKm * 1000, 3)) / KG_PER_ME;
+    const b = makeBody('asteroid', pos, vel, { name: name, mass: mass, r: rKm * 1e-6, spin: 0.2 + rng() * 0.4 });
+    b.shy = sun.shy;
+  }
+}
+
 /** The Sun and its worlds, at their real distances, centred on `c` and all
     carried along at velocity `v` (zero on its own; the galactic orbit in the
     Milky Way). */
@@ -15796,6 +15909,7 @@ function buildSolarSystem(c, v) {
   // The belts of rubble left over from building the planets, and beyond them
   // the spacecraft, the edge of the Sun's bubble and the Oort Cloud.
   addSolarBelts(sun, by.sol_jupiter);
+  buildNamedAsteroids(sun, by.sol_jupiter);
   return sun;
 }
 
@@ -17102,7 +17216,7 @@ function openHelp() {
     '<li>A <b>galaxy</b> is eleven thousand individual stars wrapped in glowing clouds of gas, and every one of them is really orbiting. Drop two and crash them together — that is what <b>Galaxy Collision</b> in Systems sets up.</li>' +
     '</ul>' +
     '<h3>THE SOLAR SYSTEM</h3>' +
-    '<p><b>The Solar System</b> map (and the Sun hidden in the Milky Way) has every planet with its major moons — Phobos and Deimos, Jupiter\'s Io, Europa, Ganymede and Callisto, Saturn\'s Titan, Rhea, Dione, Enceladus, Mimas and Iapetus, Uranus\'s five on their sideways orbits, Neptune\'s backwards Triton and Pluto\'s Charon — plus the dwarf planet Ceres. Thousands of rocks fill the <b>Asteroid Belt</b> between Mars and Jupiter (with the gaps Jupiter has cleared out of it), two swarms of <b>Trojan asteroids</b> ride 60° ahead of and behind Jupiter, and the icy <b>Kuiper Belt</b> rings everything beyond Neptune. Every moon can also be dropped on its own from <b>Moons of the Planets</b>.</p>' +
+    '<p><b>The Solar System</b> map (and the Sun hidden in the Milky Way) has every planet with its major moons — Phobos and Deimos, Jupiter\'s Io, Europa, Ganymede and Callisto, Saturn\'s Titan, Rhea, Dione, Enceladus, Mimas and Iapetus, Uranus\'s five on their sideways orbits, Neptune\'s backwards Triton and Pluto\'s Charon — plus the dwarf planet Ceres. Over fifty <b>named asteroids</b> fly their real orbits — Vesta, Pallas, Hygiea, Psyche and the other big ones, every one a spacecraft has visited (Eros, Itokawa, Ryugu, Bennu, Didymos), the near-Earth ones that cross our path like Apophis, Jupiter\'s Trojans Hektor and Patroclus, and the centaurs Chiron and Chariklo. Thousands more rocks fill the <b>Asteroid Belt</b> between Mars and Jupiter (with the gaps Jupiter has cleared out of it), two swarms of <b>Trojan asteroids</b> ride 60° ahead of and behind Jupiter, and the icy <b>Kuiper Belt</b> rings everything beyond Neptune. Every moon can also be dropped on its own from <b>Moons of the Planets</b>.</p>' +
     '<p>And everything known beyond it: the dwarf planets <b>Haumea</b> (egg-shaped, with a ring), <b>Makemake</b>, <b>Quaoar</b>, <b>Gonggong</b> and <b>Eris</b> with its moon Dysnomia; the <b>scattered disc</b>; the far-flung <b>Sedna</b>, <b>2012 VP113</b> and <b>Leleākūhonua</b> on orbits thousands of years long; the five spacecraft leaving us — <b>Voyager 1 and 2</b>, <b>Pioneer 10 and 11</b> and <b>New Horizons</b>, where they really are and flying outward at their real speeds (click one); the <b>heliopause</b>, the edge of the Sun\'s bubble; the <b>Oort Cloud</b> of comets reaching a third of the way to the stars; and, 4.37 light-years away, the next star system — <b>Alpha Centauri</b> A and B, and Proxima with its planet Proxima b.</p>' +
     '<h3>KINDS OF GALAXY</h3>' +
     '<ul>' +
