@@ -6371,6 +6371,7 @@ const FEED_RATE = 0.03;           // share of the star a day, at the very bottom
 const FEED_LAST = 0.02 * M_SUN;   // below this the remnant is pulled apart
 const DISC_R = 0.03 * AU;         // × (M●/M☉)^⅓: how far out its disc reaches
 const DISC_DRAG = 0.05;           // share of sideways speed the disc gas loses per orbit
+const CLOUD_DIM = 0.24;           // how faint one cloud of stripped gas is drawn
 const DISC_EAT = 0.06;            // × the disc's reach: gas this far in has fallen in
 
 function siphonStars(dt) {
@@ -6402,7 +6403,7 @@ function siphonStars(dt) {
       }
       // released in small puffs, so a slow trickle still shows as a stream
       if (s.feedPending > Math.max(s.m, FEED_LAST) * 0.0003 || s.m === 0) {
-        s.feedPending -= feedStream(s, H, s.feedPending, s.m === 0 ? 200 : 30);
+        s.feedPending -= feedStream(s, H, s.feedPending, s.m === 0 ? 90 : 12);
       }
       if (!s.feedToast) {
         s.feedToast = 1;
@@ -6441,6 +6442,7 @@ function feedStream(s, H, mass, count) {
     parts.vel[k3 + 2] = s.v.z + toH.z * push;
     const bsz = rnd(3, 7);
     parts.bsize[k] = bsz; parts.size[k] = bsz;
+    parts.wr[k] = rs * rnd(0.8, 1.7);                          // a big soft cloud of gas, not a speck
     parts.m[k] = each;
     parts.hot[k] = 1;
     parts.crate[k] = COOL_IMPACT * 0.15;                       // glows all the way down
@@ -11353,6 +11355,9 @@ function initParticles() {
   parts.m = new Float32Array(P_MAX);
   parts.size = new Float32Array(P_MAX);
   parts.bsize = new Float32Array(P_MAX);
+  // A grain drawn as a cloud has a real width (Gm) instead of a size in pixels,
+  // so it swells as you close in. 0 for ordinary grit.
+  parts.wr = new Float32Array(P_MAX);
   parts.hot = new Float32Array(P_MAX);
   parts.crate = new Float32Array(P_MAX);
   parts.on = new Uint8Array(P_MAX);
@@ -11865,6 +11870,7 @@ function killParticle(k) {
   parts.src[k] = -1;
   parts.m[k] = 0;
   parts.size[k] = 0;
+  parts.wr[k] = 0;
   parts.col[k3] = parts.col[k3 + 1] = parts.col[k3 + 2] = 0;
   parts.free.push(k);
   parts.live--;
@@ -12002,6 +12008,7 @@ function updateParticles(simDt) {
     keep.push(b.p.x, b.p.y, b.p.z, R * R);
   }
   const o = camera.position, gp = parts.gpos;
+  const wppK = worldPerPixel(1);                  // world per pixel at unit distance
 
   for (let k = 0; k < P_MAX; k++) {
     if (!parts.on[k]) continue;
@@ -12025,6 +12032,13 @@ function updateParticles(simDt) {
     parts.col[k3 + 1] = lerp(parts.cool[k3 + 1], parts.warm[k3 + 1], g);
     parts.col[k3 + 2] = lerp(parts.cool[k3 + 2], parts.warm[k3 + 2], g);
     parts.size[k] = parts.bsize[k] * (0.7 + 0.3 * g);
+    if (parts.wr[k] > 0) {
+      // a cloud: as wide as it really is, and faint, so that where many of
+      // them overlap they build up into glowing gas instead of white glare
+      const px = parts.wr[k] / (wppK * Math.max(Math.hypot(gp[k3], gp[k3 + 1], gp[k3 + 2]), 1e-12));
+      parts.size[k] = clamp(px, parts.bsize[k], 900) * (0.75 + 0.25 * g);
+      parts.col[k3] *= CLOUD_DIM; parts.col[k3 + 1] *= CLOUD_DIM; parts.col[k3 + 2] *= CLOUD_DIM;
+    }
   }
 
   parts.geo.attributes.position.needsUpdate = true;
