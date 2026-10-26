@@ -641,7 +641,10 @@ function fmtDist(gm) {
   if (gm >= LY_GM * 0.5) return prec((gm / LY_GM), 3) + ' ly';
   if (gm >= AU * 0.05) return prec((gm / AU), 3) + ' AU';
   if (gm >= 0.5) return prec((gm * 1e6), 3) + ' km';
-  return Math.round(gm * 1e6).toLocaleString() + ' km';
+  if (gm >= 1e-6) return Math.round(gm * 1e6).toLocaleString() + ' km';
+  // zoomed right in: metres, then centimetres
+  if (gm >= 1e-9) return prec(gm * 1e9, 3) + ' m';
+  return prec(gm * 1e11, 3) + ' cm';
 }
 
 /** A distance given as log10(Gm), for scales no number can hold. */
@@ -12218,7 +12221,7 @@ function renderFrame() {
 /* =================================================================== camera */
 
 const view = { target: new THREE.Vector3(), dist: 900, yaw: 0.75, pitch: 0.46, over: 0 };
-const MIN_DIST = 2e-4, MAX_DIST = 1e16;   // ~1 billion light-years
+const MIN_DIST = 5e-10, MAX_DIST = 1e16;  // half a metre to ~1 billion light-years
 /*
  * Past MAX_DIST the zoom carries on as a power of ten in view.over, out to a
  * camera distance of 10^1002 km. No floating-point number reaches that far
@@ -12245,9 +12248,34 @@ function zoomBy(f) {
   }
 }
 
+/* Zooming in on a world stops half a metre above its ground rather than half
+   a metre from its centre: a ray is dropped from well outside, along the line
+   the camera is on, onto what is actually drawn (mountains, sea and all). */
+const _gRay = new THREE.Raycaster(), _gDir = new THREE.Vector3(), _gFrom = new THREE.Vector3();
+function groundFloor(b, dir) {
+  const p = b.parts, r = visRadius(b);
+  if (!p || !p.surf || !(r > 0)) return 0;
+  _gFrom.copy(b.p).addScaledVector(dir, r * 3);
+  _gRay.set(_gFrom, _gDir.copy(dir).negate());
+  _gRay.near = 0; _gRay.far = r * 3;
+  const targets = [p.surf];
+  if (p.sea && p.sea.visible !== false) targets.push(p.sea);
+  const hit = _gRay.intersectObjects(targets, false)[0];
+  return hit ? r * 3 - hit.distance : r;
+}
+
 function applyCamera() {
   view.pitch = clamp(view.pitch, -1.52, 1.52);
   view.dist = clamp(view.dist, MIN_DIST, MAX_DIST);
+  const f = sim.follow;
+  view.see = view.dist;                 // how far off the thing in view is, for the scale bar
+  if (f && f.alive && f.kind === 'body' && f.parts && view.dist < visRadius(f) * 3) {
+    const cp0 = Math.cos(view.pitch);
+    _gDir.set(cp0 * Math.sin(view.yaw), Math.sin(view.pitch), cp0 * Math.cos(view.yaw));
+    const g = groundFloor(f, _gDir.clone());
+    view.dist = Math.max(view.dist, g + MIN_DIST);
+    view.see = view.dist - g;
+  }
   // Anything that put the camera back inside the real range (framing a body,
   // landing) has left the far zoom behind.
   if (view.dist < MAX_DIST * 0.999) view.over = 0;
@@ -12259,7 +12287,7 @@ function applyCamera() {
   );
   camera.lookAt(view.target);
   // keep the near plane sensible across nine orders of magnitude
-  camera.near = Math.max(1e-6, view.dist * 1e-4);
+  camera.near = Math.max(1e-14, view.dist * 1e-4);
   // Real-sized galaxies are ~10^12 Gm across: from inside one, looking at a
   // single star, the rest of it still has to be in range.
   camera.far = Math.max(view.dist * 12, SKY_R * 2.2, galx.live > 0 ? 2e17 : 0);
@@ -17383,7 +17411,7 @@ function updateHud(realDt) {
   if ((slowEl.style.display !== 'none') !== slowOn) slowEl.style.display = slowOn ? '' : 'none';
   $('an-scale-lbl').textContent = view.over > 0
     ? fmtFar(Math.log10(54 * worldPerPixel(view.dist)) + view.over)
-    : fmtDist(54 * worldPerPixel(view.dist));
+    : fmtDist(54 * worldPerPixel(view.see || view.dist));
 }
 
 function showPanel(which) {
