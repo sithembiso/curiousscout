@@ -16438,21 +16438,25 @@ function buildKnownStars(g, sun) {
   return out;
 }
 
-/* ------------------------------------------------------- Saturn's ring chunks */
+/* ------------------------------------------------------------- ring chunks */
 /*
  * Saturn's rings are not a sheet: they are countless lumps of ice, from grains
  * to house-sized boulders, each on its own orbit. So here they are drawn as
  * thousands of separate chunks instead of a painted disc, each going round at
  * the Kepler speed for its distance — the inner edge laps the outer one — with
  * the real structure: the faint C ring, the bright B ring, the dark Cassini
- * Division, the A ring and the thin Encke Gap near its edge. Click any chunk
+ * Division, the A ring and the thin Encke Gap near its edge. Every other ring
+ * (Uranus's, Haumea's, Quaoar's, a ringed giant's, one added in Customise) is
+ * made the same way, as ringlets with gaps in its own two colours. Click any chunk
  * to pick it out; its name only shows while it is the one picked.
  *
  * Positions are worked out from the orbit each frame (like the belts), so they
  * cost no physics and stay exact at any speed of time. They follow the ring
  * edges set in Customise.
  */
-const CHUNK_N = 7000;
+const CHUNK_N = 7000;              // for Saturn
+const CHUNK_N_OTHER = 3000;        // for every other ring
+const CHUNK_MAX = 40000;           // drawn at once, all rings together
 // [from, to, share of the chunks, name, colour] across the ring, 0 = inner edge
 const RING_BANDS = [
   [0.000, 0.277, 0.14, 'C Ring', [150, 136, 118]],
@@ -16477,26 +16481,64 @@ function chunkTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+/** Saturn's own structure, for Saturn and any ringed giant drawn after it. */
+const SATURN_LIKE = new Set(['sol_saturn', 'ringed_giant']);
+
 function makeChunks(b) {
   const rng = mulberry32(hashStr('chunks' + b.id));
-  const n = CHUNK_N;
+  const saturn = SATURN_LIKE.has(b.type);
+  const n = saturn ? CHUNK_N : CHUNK_N_OTHER;
   const k = { n, u: new Float32Array(n), th: new Float64Array(n), z: new Float32Array(n),
-    sz: new Float32Array(n), band: new Uint8Array(n), col: new Float32Array(n * 3) };
+    sz: new Float32Array(n), band: new Uint8Array(n), col: new Float32Array(n * 3), br: new Float32Array(n), mix: new Float32Array(n), pal: '' };
+  // Any other ring: a few ringlets with dark gaps between, set by the planet
+  let gaps = [];
+  if (!saturn) {
+    const g = 2 + ((rng() * 3) | 0);
+    for (let j = 0; j < g; j++) gaps.push([rng(), 0.02 + rng() * 0.06]);
+  }
   let tot = 0;
   for (const B of RING_BANDS) tot += B[2];
   for (let i = 0; i < n; i++) {
-    let x = rng() * tot, bi = 0;
-    while (bi < RING_BANDS.length - 1 && x > RING_BANDS[bi][2]) { x -= RING_BANDS[bi][2]; bi++; }
-    const B = RING_BANDS[bi];
-    k.u[i] = lerp(B[0], B[1], rng());
+    if (saturn) {
+      let x = rng() * tot, bi = 0;
+      while (bi < RING_BANDS.length - 1 && x > RING_BANDS[bi][2]) { x -= RING_BANDS[bi][2]; bi++; }
+      const B = RING_BANDS[bi];
+      k.u[i] = lerp(B[0], B[1], rng());
+      k.band[i] = bi;
+    } else {
+      let u;
+      do u = rng(); while (gaps.some(([c, w]) => Math.abs(u - c) < w / 2));
+      k.u[i] = u;
+      k.band[i] = 255;
+    }
     k.th[i] = rng() * TAU;
     k.z[i] = (rng() + rng() - 1) * 0.004;           // barely any thickness at all
     k.sz[i] = 0.5 + Math.pow(rng(), 4) * 2.5;       // mostly small, a few big ones
-    k.band[i] = bi;
-    const br = 0.78 + rng() * 0.36;
-    k.col[i * 3] = B[4][0] / 255 * br; k.col[i * 3 + 1] = B[4][1] / 255 * br; k.col[i * 3 + 2] = B[4][2] / 255 * br;
+    k.br[i] = 0.78 + rng() * 0.36;
+    k.mix[i] = rng();
   }
   b.chunks = k;
+  paintChunks(b);
+}
+
+/** Colour the chunks: Saturn's by its real bands, any other ring from the two
+    colours set for it in Customise (and again whenever they change). */
+function paintChunks(b) {
+  const k = b.chunks, s = b.ringSpec;
+  const pal = s && s.pal ? s.pal : [[200, 190, 170], [130, 120, 108]];
+  k.pal = JSON.stringify(pal) + (s ? s.opacity : '');
+  // a faint ring is drawn with dimmer chunks
+  const op = s && s.opacity != null ? s.opacity : 0.92;
+  const fade = clamp(op / 0.92, 0.25, 1.1);
+  for (let i = 0; i < k.n; i++) {
+    let c;
+    if (k.band[i] !== 255) {
+      c = RING_BANDS[k.band[i]][4];
+      if (b.type !== 'sol_saturn') c = mix(c, mix(pal[0], pal[1], k.mix[i]), 0.5);
+    } else c = mix(pal[0], pal[1], k.mix[i]);
+    const f = k.br[i] * fade / 255;
+    k.col[i * 3] = c[0] * f; k.col[i * 3 + 1] = c[1] * f; k.col[i * 3 + 2] = c[2] * f;
+  }
 }
 
 const _ce1 = new THREE.Vector3(), _ce2 = new THREE.Vector3(), _cn = new THREE.Vector3();
@@ -16523,11 +16565,12 @@ function ringHosts() {
   _cbFor = null;
   const out = [];
   for (const b of sim.bodies) {
-    if (!b.alive || b.type !== 'sol_saturn' || !b.ringSpec || !b.obj) {
+    if (!b.alive || !b.ringSpec || !b.obj || b.kind !== 'body') {
       if (b.chunks && !b.ringSpec) b.chunks = null;
       continue;
     }
     if (!b.chunks) makeChunks(b);
+    else if (b.chunks.pal !== JSON.stringify(b.ringSpec.pal) + b.ringSpec.opacity) paintChunks(b);
     if (shyFar(b)) continue;
     out.push(b);
   }
@@ -16538,7 +16581,7 @@ function updateRingChunks() {
   const hosts = ringHosts();
   if (!ringx.pts) {
     if (!hosts.length) return;
-    const M = CHUNK_N * 2;
+    const M = CHUNK_MAX;
     ringx.pos = new Float32Array(M * 3); ringx.col = new Float32Array(M * 3); ringx.siz = new Float32Array(M);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(ringx.pos, 3));
@@ -16553,7 +16596,7 @@ function updateRingChunks() {
     ringx.pts.renderOrder = 3;
     scene.add(ringx.pts);
   }
-  const o = camera.position, M = CHUNK_N * 2;
+  const o = camera.position, M = CHUNK_MAX;
   let n = 0;
   const P = new THREE.Vector3();
   for (const b of hosts) {
@@ -16597,9 +16640,10 @@ function pickChunk(sx, sy) {
   }
   if (!best) return null;
   const [b, i] = best;
-  const band = RING_BANDS[b.chunks.band[i]][3];
+  const bi = b.chunks.band[i];
+  const band = bi === 255 ? 'rings' : RING_BANDS[bi][3];
   const s = { kind: 'chunk', host: b, i: i, alive: true, band: band,
-    name: band + ' chunk ' + (i + 1).toLocaleString(), p: new THREE.Vector3(), v: new THREE.Vector3(), r: 0, dist: 0, mm: 1 };
+    name: (bi === 255 ? 'Ring' : band) + ' chunk ' + (i + 1).toLocaleString(), p: new THREE.Vector3(), v: new THREE.Vector3(), r: 0, dist: 0, mm: 1 };
   updateChunkSel(s);
   return s;
 }
