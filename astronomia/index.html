@@ -1327,13 +1327,27 @@ const SURFACE = {
     const seed = (rng() * 1e6) | 0;
     const base = fbm(seed, 5, 3, 5);
     const dunes = ridged(fbm(seed + 77, 26, 6, 3));
+    /* Titan: the basins of its seas, sunk deep enough that its liquid fills
+       them and nothing else — big ragged seas round the north (Kraken Mare,
+       Ligeia Mare, Punga Mare) and one lake far to the south (Ontario Lacus). */
+    const shore = fbm(seed + 91, 7, 4, 4);
+    const basin = (u, v) => {
+      if (!o.seas) return 0;
+      const lat = (0.5 - v) * 180;
+      const north = clamp((lat - 48) / 8, 0, 1) * clamp((shore(u, v) - 0.42) * 6, 0, 1);
+      const du = Math.min(Math.abs(u - 0.5), 1 - Math.abs(u - 0.5)) * 360 * Math.cos(lat * Math.PI / 180), dv = lat + 62;
+      const south = clamp(1 - Math.hypot(du / 9, dv / 5), 0, 1) * 2;
+      return Math.min(north + south, 1);
+    };
     const hgtD = pixelPass(ctx, W, H, (u, v) => {
       const e = base(u, v);
       // Rust-orange plains mottled with darker ground (the Universe Sandbox look)
       let c = ramp(o.pal || [[0, [70, 30, 18]], [0.36, [96, 42, 22]], [0.47, [150, 70, 34]], [0.56, [194, 102, 50]], [0.72, [212, 126, 68]], [1, [230, 162, 110]]], e);
       c = mix(c, [226, 150, 96], dunes(u, v) * 0.12);
+      const bs = basin(u, v);
+      if (bs > 0) c = mix(c, [20, 16, 12], bs);      // the dark sea floor
       return c;
-    }, (u, v) => base(u, v) + dunes(u, v) * 0.10);
+    }, (u, v) => base(u, v) + dunes(u, v) * 0.10 - basin(u, v) * 1.4);
     // hardly a crater to be seen, and no polar caps
     craters(ctx, W, H, rng, o.craters != null ? o.craters : 10, 0.006, 0.05, [226, 196, 158]);
     if (o.caps) iceCaps(ctx, W, H, rng, o.caps, [246, 240, 234]);
@@ -2073,7 +2087,12 @@ function titanHazeTexture(seed, W, H) {
       const t = clamp(v + (drift(u, v) - 0.5) * 0.18 * eq, 0, 1);
       let c = ramp(RAMP, t);
       c = mix(c, [86, 92, 78], clamp((ground(u, v) - 0.55) * 2.2, 0, 1) * 0.35 * eq);   // the ground, barely
-      d[i++] = c[0]; d[i++] = c[1]; d[i++] = c[2]; d[i++] = 250;
+      // Thinner over the far north and the south polar region, where the
+      // methane seas and Ontario Lacus lie, so they show through as dark
+      // shapes — the way Cassini saw them, looking through the haze in infrared.
+      const lat = (0.5 - v) * 180;
+      const thin = Math.max(clamp((lat - 42) / 14, 0, 1), clamp((-lat - 52) / 8, 0, 1) * 0.8);
+      d[i++] = c[0]; d[i++] = c[1]; d[i++] = c[2]; d[i++] = 250 - thin * 160;
     }
   }
   ctx.putImageData(img, 0, 0);
@@ -2691,7 +2710,11 @@ const TYPES = {
     // cyan to the south, a blue haze at the limb (as Cassini saw it)
     surf: 'desert', spin: 15.945, atmo: [96, 140, 235], clouds: 1,
     cloudStyle: 'titan', cloudUnder: [170, 112, 58], sky: [186, 128, 66],
-    opts: { pal: [[0, [48, 36, 26]], [0.5, [92, 70, 46]], [1, [140, 110, 76]]], craters: 4, caps: 0 },
+    opts: { pal: [[0, [48, 36, 26]], [0.5, [92, 70, 46]], [1, [140, 110, 76]]], craters: 4, caps: 0, seas: true },
+    // seas and lakes of liquid methane and ethane — the only other place with
+    // open liquid on its surface. Mixed together the two stay liquid down to
+    // about 75 K, well below Titan's 94 K.
+    water: 0.5, sea: { col: [0.045, 0.036, 0.028], freeze: 75 },
     blurb: 'A moon with a thick orange sky, methane rain and real lakes and rivers — of liquid natural gas. Its air is thicker than Earth\'s.'
   },
   sol_rhea: {
@@ -3671,7 +3694,11 @@ const WATER_LIQUID = new THREE.Color(0.015, 0.075, 0.26);  // deep navy ocean, a
 const WATER_ICE = new THREE.Color(0.84, 0.91, 0.97);
 // Earth's own: the bright marble blue it is drawn in
 const WATER_EARTH = new THREE.Color(0.025, 0.10, 0.46);
-const waterColour = (b) => b.type === 'sol_earth' ? WATER_EARTH : WATER_LIQUID;
+const waterColour = (b) => {
+  const sea = TYPES[b.type].sea;
+  if (sea) return sea.c || (sea.c = new THREE.Color(sea.col[0], sea.col[1], sea.col[2]));
+  return b.type === 'sol_earth' ? WATER_EARTH : WATER_LIQUID;
+};
 
 /**
  * The radius the sea sits at, as a multiple of the body's mean radius: from the
@@ -13031,7 +13058,9 @@ function updateVisuals(realDt, simDt) {
        is. The change happens over forty kelvin either side of freezing rather
        than at a hard line, because a world is not all one temperature. */
     if (p.sea) {
-      const frozen = clamp((273 - b.temp) / 40, 0, 1);
+      // water freezes at 273 K; Titan's methane and ethane not until about 75 K
+      const sea = TYPES[b.type].sea;
+      const frozen = sea ? clamp((sea.freeze - b.temp) / 6, 0, 1) : clamp((273 - b.temp) / 40, 0, 1);
       p.sea.material.color.copy(waterColour(b)).lerp(WATER_ICE, frozen);
       p.sea.material.roughness = lerp(0.22, 0.78, frozen);
       p.sea.rotation.y = b.rot;
