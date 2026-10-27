@@ -6451,34 +6451,48 @@ function shedEnvelope(b) {
  * Something hitting a world with open sea throws the water up in a plume and
  * sends a ring of waves racing out from the impact across the whole ocean —
  * the way the asteroid that ended the dinosaurs raised waves kilometres high
- * all round the Gulf of Mexico. The ring is drawn on the sea itself: a raised
- * crest with white foam on top and a trough behind it, followed by smaller
- * waves, flattening out as it spreads. Where the coast is low the crest rides
- * up over the land; high ground stands above it. It runs on the wall clock,
- * like the other impact effects, so it can be watched at any time rate.
+ * all round the Gulf of Mexico. The ring is a raised crest with white foam
+ * on top and a trough behind it, followed by smaller waves. Where it reaches
+ * a coast it does not stop: it rolls on inland over the continents, and the
+ * land it has crossed is left under a sheet of water that drains away slowly
+ * once the waves have passed. The ring runs on round to the far side of the
+ * world, meets itself there and comes back, weaker each time.
+ *
+ * It is drawn on a copy of the world's own ground, lifted to sea level
+ * wherever the ground is lower than the sea, so the water hugs the land and
+ * the coastline exactly. It runs on the wall clock, like the other impact
+ * effects, so it can be watched at any time rate.
  */
-const TSU_SECONDS = 9;            // from the hit to the far side of the world
-const TSU_MAX = 6;                // waves at once, across every world
+const TSU_LAP = 11;               // seconds for the ring to reach the far side
+const TSU_SECONDS = 34;           // from the hit until the last water has drained
+const TSU_MAX = 4;                // tsunamis at once, across every world
 
 const TSU_VERT = `
   #include <common>
   #include <logdepthbuf_pars_vertex>
+  attribute float aLand;
   uniform vec3 uN;
-  uniform float uR, uW, uH;
-  varying float vCrest;
+  uniform float uR, uW, uH, uBack;
+  varying float vCrest, vFlood, vLand;
   varying vec3 vNrm;
-  float wave(float ang) {
-    // the crest, a trough just behind it, and two smaller waves following
-    float x = (ang - uR) / uW;
+  float ring(float ang, float r) {
+    // the crest, a trough just behind it, and smaller waves following
+    float x = (ang - r) / uW;
     return exp(-x * x) - 0.45 * exp(-pow(x + 2.2, 2.0))
          + 0.45 * exp(-pow(x + 4.2, 2.0)) - 0.2 * exp(-pow(x + 6.0, 2.0)) + 0.22 * exp(-pow(x + 8.0, 2.0));
   }
   void main() {
     vec3 p = normalize(position);
     float ang = acos(clamp(dot(p, uN), -1.0, 1.0));
-    vCrest = (ang < uR + uW * 3.0) ? wave(ang) : 0.0;
+    // out to the far side, then back again from it (uBack is how strong the
+    // returning ring still is)
+    vCrest = ring(ang, uR);
+    if (uR > PI) vCrest = vCrest * 0.4 + ring(2.0 * PI - ang, uR) * uBack;
+    // land the waves have already crossed stays flooded
+    vFlood = aLand * smoothstep(0.0, uW * 2.0, uR - ang);
+    vLand = aLand;
     vNrm = p;
-    vec4 mv = modelViewMatrix * vec4(p * (1.0 + uH * vCrest), 1.0);
+    vec4 mv = modelViewMatrix * vec4(position * (1.0 + uH * max(vCrest, -0.4)), 1.0);
     gl_Position = projectionMatrix * mv;
     #include <logdepthbuf_vertex>
   }`;
@@ -6486,24 +6500,50 @@ const TSU_FRAG = `
   #include <common>
   #include <logdepthbuf_pars_fragment>
   uniform vec3 uL, uSea;
-  uniform float uFade;
-  varying float vCrest;
+  uniform float uFade, uDrain;
+  varying float vCrest, vFlood, vLand;
   varying vec3 vNrm;
   void main() {
     #include <logdepthbuf_fragment>
     float c = vCrest;
-    if (abs(c) < 0.04) discard;
+    float flood = vFlood * uDrain;
+    float wave = abs(c);
+    if (wave < 0.04 && flood < 0.03) discard;
     float lit = max(dot(normalize(vNrm), uL), 0.0) * 0.85 + 0.12;
-    // white foam breaking along the top of each crest, deep water in the troughs
-    vec3 col = c > 0.0 ? mix(uSea * 1.6, vec3(0.95, 0.98, 1.0), smoothstep(0.35, 0.9, c)) : uSea * 0.55;
-    gl_FragColor = vec4(col * lit, clamp(abs(c) * 1.7, 0.0, 1.0) * uFade);
+    // white foam breaking along the top of each crest — worse where it hits land
+    vec3 foam = vec3(0.95, 0.98, 1.0);
+    vec3 col = c > 0.0 ? mix(uSea * 1.6, foam, smoothstep(0.35 - vLand * 0.2, 0.9, c)) : uSea * 0.55;
+    // the sheet of muddy sea water left lying over the land
+    vec3 sheet = mix(uSea * 1.3, vec3(0.32, 0.30, 0.24), 0.35);
+    float a = clamp(wave * 1.7, 0.0, 1.0);
+    vec3 outc = mix(sheet, col, a);
+    gl_FragColor = vec4(outc * lit, max(a, flood * 0.82) * uFade);
   }`;
 
 const tsunamis = [];
 
+/** The world's ground, lifted to sea level wherever it lies below the sea. */
+function floodGeometry(b) {
+  const p = b.parts, base = p.surf.geometry;
+  const g = base.clone();
+  const pos = g.attributes.position;
+  const seaR = seaRadius(b);
+  const land = new Float32Array(pos.count);
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const r = v.length();
+    land[i] = r > seaR * 1.0005 ? 1 : 0;
+    v.multiplyScalar(Math.max(r, seaR) * 1.004 / Math.max(r, 1e-9));
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.setAttribute('aLand', new THREE.BufferAttribute(land, 1));
+  return g;
+}
+
 function startTsunami(b, worldDir, size, vRel) {
   const p = b.parts;
-  if (!p || !p.sea || !(b.water > 0.02)) return;
+  if (!p || !p.sea || !p.surf || !(b.water > 0.02)) return;
   const sea = TYPES[b.type].sea;
   const frozen = sea ? clamp((sea.freeze - b.temp) / 6, 0, 1) : clamp((273 - b.temp) / 40, 0, 1);
   if (frozen > 0.6) return;                                   // an ice sheet cracks; it does not wave
@@ -6511,28 +6551,30 @@ function startTsunami(b, worldDir, size, vRel) {
   const n = localOnBody(b, worldDir);
   const mat = new THREE.ShaderMaterial({
     uniforms: {
-      uN: { value: n.clone() }, uR: { value: 0 }, uW: { value: 0.05 }, uH: { value: 0 },
-      uL: { value: new THREE.Vector3(1, 0, 0) }, uSea: { value: waterColour(b).clone() }, uFade: { value: 1 }
+      uN: { value: n.clone() }, uR: { value: 0 }, uW: { value: 0.05 }, uH: { value: 0 }, uBack: { value: 0 },
+      uL: { value: new THREE.Vector3(1, 0, 0) }, uSea: { value: waterColour(b).clone() },
+      uFade: { value: 1 }, uDrain: { value: 1 }
     },
     vertexShader: TSU_VERT, fragmentShader: TSU_FRAG, transparent: true, depthWrite: false
   });
-  const mesh = new THREE.Mesh(SPHERE_MID, mat);
-  mesh.scale.setScalar(1.002);
+  const mesh = new THREE.Mesh(floodGeometry(b), mat);
   mesh.renderOrder = 2;
-  p.sea.add(mesh);
+  p.surf.add(mesh);                     // a child of the ground, so it turns with the world
   // a bigger, faster hit raises a bigger wave
   const speed = vRel ? vRel.length() / KMS : 10;
   const h = clamp(size * 0.04 * Math.sqrt(clamp(speed / 15, 0.3, 4)), 0.01, 0.07);
-  tsunamis.push({ b, mesh, t: 0, h });
+  tsunamis.push({ b, mesh, t: 0, h, host: p.surf });
   waterSpray(b, worldDir, size, h);
   if (!b.tsuToast || sim.time - b.tsuToast > 30) {
     b.tsuToast = sim.time;
-    toast('A tsunami is racing across ' + b.name + '’s ocean');
+    // after the impact's own message, so this one is the one left showing
+    setTimeout(() => { if (b.alive) toast('A tsunami is racing across ' + b.name + '’s ocean'); }, 1600);
   }
 }
 
 function endTsunami(w) {
   w.mesh.parent && w.mesh.parent.remove(w.mesh);
+  w.mesh.geometry.dispose();
   w.mesh.material.dispose();
   const i = tsunamis.indexOf(w);
   if (i >= 0) tsunamis.splice(i, 1);
@@ -6542,16 +6584,20 @@ const _tsL = new THREE.Vector3();
 function updateTsunamis(dt) {
   for (let i = tsunamis.length - 1; i >= 0; i--) {
     const w = tsunamis[i], b = w.b;
-    if (!b.alive || !b.parts || !b.parts.sea || w.mesh.parent !== b.parts.sea) { endTsunami(w); continue; }
-    w.t += dt / TSU_SECONDS;
-    if (w.t >= 1) { endTsunami(w); continue; }
+    if (!b.alive || !b.parts || b.parts.surf !== w.host || w.mesh.parent !== w.host) { endTsunami(w); continue; }
+    w.t += dt;
+    if (w.t >= TSU_SECONDS) { endTsunami(w); continue; }
     const u = w.mesh.material.uniforms;
-    // out to the far side of the world, quick at first and slowing as it spreads
-    u.uR.value = Math.PI * Math.sqrt(w.t) * 0.98;
-    u.uW.value = 0.05 + 0.06 * w.t;
-    // the height drops as the ring spreads round a bigger circle, then fades
-    u.uH.value = w.h * (0.25 + 0.75 * (1 - w.t)) / (1 + 3 * Math.sin(Math.min(u.uR.value, Math.PI / 2)));
-    u.uFade.value = clamp((1 - w.t) * 2.5, 0, 1) * clamp(w.t * 30, 0, 1);
+    // out to the far side and back again, quick at first and slowing as it spreads
+    const lap = w.t / TSU_LAP;
+    u.uR.value = lap < 1 ? Math.PI * Math.sqrt(lap) : Math.min(Math.PI * lap, TAU);
+    u.uW.value = 0.05 + 0.04 * Math.min(lap, 2);
+    u.uBack.value = clamp(2 - lap, 0, 1) * 0.6;
+    // lower as the ring spreads round a bigger circle, and weaker every lap
+    u.uH.value = w.h * Math.max(0, 1 - lap * 0.45) / (1 + 3 * Math.sin(Math.min(u.uR.value, Math.PI / 2)));
+    // the flood stands while the waves go round, then drains away
+    u.uDrain.value = clamp(1 - (w.t - TSU_LAP * 1.6) / (TSU_SECONDS - TSU_LAP * 1.6), 0, 1);
+    u.uFade.value = clamp(w.t * 30, 0, 1);
     const star = nearestStar(b);
     if (star) u.uL.value.copy(localOnBody(b, _tsL.copy(star.p).sub(b.p)));
   }
