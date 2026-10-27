@@ -7410,6 +7410,7 @@ function displaceSphere(field, amount, base) {
   field.rAmount = amount; field.rlo = rlo; field.rhi = rhi;
   g.computeVertexNormals();
   weldNormals(g);
+  g.userData.grid = sphereGrid(base || SPHERE_HI);
   return g;
 }
 
@@ -7555,7 +7556,68 @@ function lumpyGeometry(seed, amount, base) {
   }
   g.computeVertexNormals();
   weldNormals(g);
+  g.userData.grid = sphereGrid(base || SPHERE_LO);
   return g;
+}
+
+/** The widthSegments × heightSegments a shared sphere was made with. */
+function sphereGrid(base) {
+  const p = base.parameters;
+  return p ? [p.widthSegments, p.heightSegments] : null;
+}
+
+/**
+ * How far out the drawn ground is in direction `dir` (in the world's own
+ * turning frame), as a multiple of its radius — read off the very mesh that
+ * is drawn, lumps, mountains and all, by blending the four corners of the
+ * grid square that direction falls in. Anything laid on the surface (a
+ * crater mark) then sits on what you see instead of floating off a bulge or
+ * sinking into it.
+ */
+function surfRadiusAt(b, dir) {
+  const g = b.parts && b.parts.surf && b.parts.surf.geometry;
+  const grid = g && g.userData.grid;
+  if (!grid) return groundAt(b, dir);
+  const [W, H] = grid, pos = g.attributes.position;
+  // three.js lays a sphere out as x = -cos(phi)sin(theta), y = cos(theta), z = sin(phi)sin(theta)
+  const v = Math.acos(clamp(dir.y / Math.max(dir.length(), 1e-12), -1, 1)) / Math.PI;
+  let u = Math.atan2(dir.z, -dir.x) / TAU;
+  if (u < 0) u += 1;
+  const x0 = Math.min(Math.floor(u * W), W - 1), y0 = Math.min(Math.floor(v * H), H - 1);
+  // The grid square is drawn as two flat triangles; find where the line out
+  // from the middle along `dir` crosses whichever of them it passes through.
+  // (Latitude lines are not great circles, so near a square's edge the right
+  // triangle can be in the next square over: look there too.)
+  const P = (ix, iy) => {
+    const i = iy * (W + 1) + ((ix % W) + W) % W;
+    return [pos.getX(i), pos.getY(i), pos.getZ(i)];
+  };
+  const L = Math.hypot(dir.x, dir.y, dir.z) || 1, D = [dir.x / L, dir.y / L, dir.z / L];
+  const hitTri = (p0, p1, p2) => {
+    const e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]], e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    const den = n[0] * D[0] + n[1] * D[1] + n[2] * D[2];
+    if (Math.abs(den) < 1e-14) return 0;
+    const t = (n[0] * p0[0] + n[1] * p0[1] + n[2] * p0[2]) / den;
+    if (!(t > 0)) return 0;
+    const q = [D[0] * t - p0[0], D[1] * t - p0[1], D[2] * t - p0[2]];
+    const d00 = e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2], d01 = e1[0] * e2[0] + e1[1] * e2[1] + e1[2] * e2[2];
+    const d11 = e2[0] * e2[0] + e2[1] * e2[1] + e2[2] * e2[2];
+    const d20 = q[0] * e1[0] + q[1] * e1[1] + q[2] * e1[2], d21 = q[0] * e2[0] + q[1] * e2[1] + q[2] * e2[2];
+    const dn = d00 * d11 - d01 * d01;
+    if (!(Math.abs(dn) > 0)) return 0;
+    const bv = (d11 * d20 - d01 * d21) / dn, bw = (d00 * d21 - d01 * d20) / dn;
+    return bv >= -1e-6 && bw >= -1e-6 && bv + bw <= 1 + 1e-6 ? t : 0;
+  };
+  for (const oy of [0, -1, 1]) for (const ox of [0, -1, 1]) {
+    const cx = x0 + ox, cy = y0 + oy;
+    if (cy < 0 || cy >= H) continue;
+    // (SphereGeometry splits each square along the diagonal from (x, y) to (x+1, y+1))
+    const a = P(cx, cy), bb = P(cx, cy + 1), c = P(cx + 1, cy + 1), d = P(cx + 1, cy);
+    const t = hitTri(d, a, c) || hitTri(a, bb, c);
+    if (t) return t;
+  }
+  return groundAt(b, dir);
 }
 
 /* ============================================================ body visuals  */
@@ -8615,7 +8677,7 @@ function scarCapGeometry(b, sc, lift, list) {
       const th = (j / SEGS) * TAU, ct = Math.cos(th), st = Math.sin(th);
       dir.copy(n).multiplyScalar(ca).addScaledVector(uu, sa * ct).addScaledVector(ww, sa * st).normalize();
       // Every crater on the body, not just this one, so overlapping rims agree.
-      const rr = scarredRadius(list, dir, groundAt(b, dir)) + lift;
+      const rr = scarredRadius(list, dir, surfRadiusAt(b, dir)) + lift;
       pos.push(dir.x * rr, dir.y * rr, dir.z * rr);
       if (e > 0) uvs.push(clamp(0.5 + rx * ct - ox, 0, 1), clamp(0.5 + ry * st, 0, 1));
       else uvs.push(0.5 + rt * ct, 0.5 + rt * st);
