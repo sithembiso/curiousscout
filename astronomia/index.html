@@ -8562,6 +8562,11 @@ function slantScar(b, mark, worldDir, vRel) {
    A real melt sheet takes thousands of years to solidify; this is short enough
    to actually watch happen at a sensible time rate. */
 const SCAR_COOL = 90;
+/* …and then how long the cold mark takes to weather into the ground around it
+   (dust settling over it, the darkened rock wearing back to the colour of the
+   rest), until only a faint ghost of it is left. */
+const SCAR_FADE = 150;
+const SCAR_LAST = SCAR_COOL + SCAR_FADE;
 
 /* A crater's shape, as fractions of its own radius. Real ones run about a fifth
    of their diameter deep with a rim a little above the surrounding ground. */
@@ -8809,6 +8814,29 @@ function buildScars(b) {
   paintScars(b);
 }
 
+/** The average colour of a world's own ground (a shade darker, as rock that
+    was melted stays), read once off its surface map — what an old impact
+    mark weathers back to. */
+function groundColour(b) {
+  if (b.groundCol) return b.groundCol;
+  let c = [90, 84, 78];
+  const map = b.parts && b.parts.surf && b.parts.surf.material && b.parts.surf.material.map;
+  const img = map && map.image;
+  if (img && img.width) {
+    try {
+      const cv = newCanvas(8, 8), ctx = cv.getContext('2d');
+      ctx.drawImage(img, 0, 0, 8, 8);
+      const d = ctx.getImageData(0, 0, 8, 8).data;
+      let r = 0, g = 0, bl = 0;
+      for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; bl += d[i + 2]; }
+      const n = d.length / 4;
+      c = [r / n * 0.82, g / n * 0.82, bl / n * 0.82];
+    } catch (e) { /* keep the plain grey */ }
+  }
+  b.groundCol = c;
+  return c;
+}
+
 /* What an impact spot passes through as it ages: bright yellow, then
    orange, then a deep maroon that stays. */
 const SCAR_RAMP = [
@@ -8827,16 +8855,21 @@ function paintScars(b) {
   if (!p || !p.scars || !p.scars.length) return false;
   let anyHot = false;
   for (const sk of p.scars) {
-    // A scar restored from an old save has no age at all: treat it as cold.
-    const age = sk.sc.age != null ? sk.sc.age : SCAR_COOL;
+    // A scar restored from an old save has no age at all: treat it as old.
+    const age = sk.sc.age != null ? sk.sc.age : SCAR_LAST;
     const t = clamp(age / SCAR_COOL, 0, 1);
-    if (t < 1) anyHot = true;
+    if (age < SCAR_LAST) anyHot = true;
 
-    // The spot: yellow when it lands, fading through orange to maroon.
-    const c = ramp(SCAR_RAMP, t);
+    // The spot: yellow when it lands, fading through orange to maroon…
+    let c = ramp(SCAR_RAMP, t);
+    // …then weathering away into the ground, until only a faint ghost is left
+    const w = smoothstep(clamp((age - SCAR_COOL) / SCAR_FADE, 0, 1));
+    if (w > 0) c = mix(c, groundColour(b), w);
     // (given as screen colours, so converted for the renderer's sRGB output)
     sk.pit.material.color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255).convertSRGBToLinear();
-    sk.pit.material.opacity = 0.9;
+    // (and see-through as it goes: the mark is not lit like the ground, so it
+    // has to give way to it rather than try to match it)
+    sk.pit.material.opacity = 0.06 + 0.84 * Math.pow(1 - w, 1.6);
     sk.pit.visible = true;
     // A yellow glow on top while it is fresh, fading away as it cools.
     const lit = Math.pow(1 - t, 1.7);
@@ -8855,11 +8888,11 @@ function coolScars(simDt) {
     if (!b.alive || !b.scars || !b.scars.length || b.scarsCold) continue;
     let hot = false;
     for (const sc of b.scars) {
-      if (sc.age == null) { sc.age = SCAR_COOL; continue; }
-      if (sc.age < SCAR_COOL) sc.age = Math.min(sc.age + simDt, SCAR_COOL);
+      if (sc.age == null) { sc.age = SCAR_LAST; continue; }
+      if (sc.age < SCAR_LAST) sc.age = Math.min(sc.age + simDt, SCAR_LAST);
       // Tested AFTER the step, so the frame that finishes the job is also the
       // frame that stops the work rather than the one after it.
-      if (sc.age < SCAR_COOL) hot = true;
+      if (sc.age < SCAR_LAST) hot = true;
     }
     // One last repaint on the way past the finish line, then leave it alone.
     paintScars(b);
