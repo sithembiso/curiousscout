@@ -3664,6 +3664,9 @@ function impact(a, b) {
     return true;
   }
 
+  // The Great Collision's Theia: a glancing blow that leaves a Moon behind.
+  if (b.moonMaker && a.kind === 'body' && !TYPES[a.type].star) return giantImpact(a, b);
+
   // Two neutron stars touching is not an ordinary merge — it is a kilonova.
   // Checked before the bounce setting, because this is a real event with a real
   // outcome and letting the pair rebound off each other would just be wrong.
@@ -6444,6 +6447,68 @@ function shedEnvelope(b) {
   refreshVisual(b);
   fx.flash(b.p, oldR * 30, [170, 255, 230], 0.8);
   toast(name + ' shed its envelope and became a white dwarf');
+}
+
+/* ------------------------------------------------------------ giant impact */
+/*
+ * How the Moon was made, as best anyone can tell. A Mars-sized world, Theia,
+ * caught the young Earth a glancing blow — not head on, but at about 45°, so
+ * a great deal of molten rock was thrown sideways into orbit instead of
+ * straight back down. Most of Theia ended up inside the Earth; the splash of
+ * rock left going round it gathered itself into the Moon, close in at first
+ * (a few Earth widths away) and glowing hot, with a disc of leftovers round it
+ * that rained down on both over the next few years.
+ */
+const MOON_MASS = 0.0123;          // M⊕: the Moon is about an eightieth of the Earth
+
+function giantImpact(E, T) {
+  const dir = T.p.clone().sub(E.p).normalize();
+  const vRel = T.v.clone().sub(E.v);
+  // the sideways part of the hit sets which way the new Moon goes round
+  let tang = vRel.clone().addScaledVector(dir, -vRel.dot(dir));
+  if (tang.lengthSq() < 1e-18) tang.crossVectors(new THREE.Vector3(0, 1, 0), dir);
+  tang.normalize();
+
+  const pTot = E.v.clone().multiplyScalar(E.m).addScaledVector(T.v, T.m);
+  const mTot = E.m + T.m;
+  const moonM = Math.min(MOON_MASS, T.m * 0.5);
+  const debrisM = T.m * 0.08;
+  const earthM = mTot - moonM - debrisM;
+
+  // The Moon: gathered from the splash, just outside where the Earth's tides
+  // could pull it apart again, in a circle round the new Earth.
+  const probe = { m: moonM, r: trueRadius('moon', moonM), type: 'moon', kind: 'body' };
+  const rOrbit = Math.max(rocheLimit(E, probe) * 1.35, visRadius(E) * 3.2);
+  // a quarter of the way round from the impact, going the way Theia was going
+  const at = tang.clone(), along = dir.clone().negate();     // there it is moving back past where it hit
+  const M = earthM + moonM;
+  const vCirc = Math.sqrt(G * settings.gravity * M / rOrbit);
+  const vcm = pTot.divideScalar(mTot);
+
+  // The Earth takes the rest.
+  E.m = earthM;
+  E.r = natRadius(E);
+  updateLuminosity(E);
+  scaleVisual(E);
+  E.coreT = Math.max(E.coreT, 9000);                // molten right through
+  addScar(E, dir, 1.15, vRel);
+  removeBody(T);
+
+  const moon = makeBody('moon', E.p.clone().addScaledVector(at, rOrbit), new THREE.Vector3(), { name: 'Moon', mass: moonM, coreT: 3000 });
+  // the pair go round their shared centre, which carries the momentum of it all
+  moon.v.copy(vcm).addScaledVector(along, vCirc * earthM / M);
+  E.v.copy(vcm).addScaledVector(along, -vCirc * moonM / M);
+  // born hot and pocked: the last of the splash still landing on it
+  for (let i = 0; i < 3; i++) addScar(moon, new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)), rnd(0.25, 0.6));
+
+  // The leftovers: a glowing disc of molten rock round the Earth, out past the
+  // Moon's orbit, raining down on both.
+  ringEjecta(E.p.clone().addScaledVector(at, rOrbit * 0.75), moon.v, E, Math.min(900, parts.free.length), debrisM, 1.6,
+    [255, 196, 120], [120, 96, 84]);
+  fx.flash(E.p.clone().addScaledVector(dir, visRadius(E)), visRadius(E) * 4, [255, 210, 150], 1);
+  trailRestart(E); trailRestart(moon);
+  toast('Theia struck a glancing blow — the splash has gathered into the Moon');
+  return true;
 }
 
 /* ================================================================ tsunamis */
@@ -17291,11 +17356,22 @@ const PRESETS = [
     }
   },
   {
-    name: 'The Great Collision', desc: 'Theia on a direct course for a young Earth — the impact that made our Moon.',
+    name: 'The Great Collision', desc: 'Theia on an orbit that just grazes the young Earth — the glancing blow that made our Moon. Watch the splash of molten rock gather into the Moon, going round the Earth with a glowing disc of leftovers.',
     dist: 1.6,
     build() {
-      makeBody('lava_world', new V3(), new V3(), { name: 'Proto-Earth', mass: 0.9, r: rE(0.97) });
-      makeBody('theia', new V3(-0.9, 0, 0.16), new V3(0.34, 0, -0.055), { name: 'Theia' });
+      const E = makeBody('lava_world', new V3(), new V3(), { name: 'Proto-Earth', mass: 0.9, r: rE(0.97) });
+      /* Theia comes in on an orbit whose closest point just reaches the
+         Earth's surface — a glancing blow, not a head-on one — which is what
+         throws enough rock into orbit to make a Moon. */
+      const T = makeBody('theia', new V3(-0.9, 0, 0), new V3(), { name: 'Theia' });
+      T.moonMaker = true;
+      const mu = G * settings.gravity * (E.m + T.m);
+      const d0 = 0.9, rp = (visRadius(E) + visRadius(T)) * 0.9;
+      const v0 = Math.sqrt(2 * mu / d0) * 0.85;             // bound to the Earth, falling in
+      const eng = v0 * v0 / 2 - mu / d0;
+      const vp = Math.sqrt(2 * (eng + mu / rp));
+      const vt = rp * vp / d0, vr = Math.sqrt(Math.max(v0 * v0 - vt * vt, 0));
+      T.v.set(vr, 0, -vt);
       sim.running = true;
     }
   },
