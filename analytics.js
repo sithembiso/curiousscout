@@ -33,11 +33,13 @@
   // The behaviour-defaults bundle PostHog generated with this project's snippet.
   var PH_DEFAULTS = '2026-05-30';
 
-  // The play counter shown on the landing page lives on the StarTube Worker
-  // (startube-server/), because that already has a database. Paste the same
-  // address as SERVER in startube/index.html. While it is empty the counter is
-  // off: nothing is counted and the landing page shows no numbers.
-  var PLAYS_SERVER = '';
+  // The play counter shown on the landing page. The site is plain files with
+  // no database of its own, so the counts are kept by Abacus, a free public
+  // counter service (no account needed): one counter per game under our own
+  // namespace. All it is ever sent is which game was played. Set PLAYS_SERVER
+  // to '' to switch the counter off.
+  var PLAYS_SERVER = 'https://abacus.jasoncameron.dev';
+  var PLAYS_NS = 'curiousscout';
 
   // A visit counts as a play once the game has been in front of the player for
   // this long, so a quick open-and-back doesn't count.
@@ -148,49 +150,64 @@
 
   /* ---------------------------------------------------------- play counter */
 
-  // One play per visit, sent to our own server (not PostHog) so the landing
-  // page can show it. Carries nothing but the game's name.
+  // A game's counter name: its directory, with anything the counter service
+  // does not allow in a name (spaces, mostly) turned into dashes.
+  function playKey(game) {
+    return 'plays-' + String(game).toLowerCase().replace(/[^a-z0-9_.-]+/g, '-');
+  }
+
+  // One play per visit, sent to the counter (not PostHog) so the landing page
+  // can show it. Carries nothing but the game's name.
   function countPlay() {
     if (!PLAYS_SERVER) return;
-    var url = PLAYS_SERVER + '/api/plays/' + encodeURIComponent(GAME.toLowerCase());
+    var url = PLAYS_SERVER + '/hit/' + PLAYS_NS + '/' + playKey(GAME);
     if (IS_DEV && !FORCE_LIVE) {
       if (window.console && console.log) console.log('%c[plays · local]', 'color:#ff6fd8', 'would count a play:', url);
       return;
     }
-    try { fetch(url, { method: 'POST', keepalive: true }).catch(function () {}); } catch (e) {}
+    try { fetch(url, { keepalive: true }).catch(function () {}); } catch (e) {}
   }
 
-  // Landing page: put "▶ 1,234 plays" on each card and a total under the title.
+  // Landing page: put "1,234 plays" on each card and a total under the title.
   function showPlays() {
     if (!PLAYS_SERVER || !window.fetch) return;
-    fetch(PLAYS_SERVER + '/api/plays').then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
-      if (!data || !data.plays) return;
-      var fmt = function (n) { return Number(n).toLocaleString('en'); };
-      var cards = document.querySelectorAll('a.card');
-      for (var i = 0; i < cards.length; i++) {
-        var href = (cards[i].getAttribute('href') || '').replace(/\/+$/, '');
-        var slug;
-        try { slug = decodeURIComponent(href).toLowerCase(); } catch (e) { slug = href.toLowerCase(); }
-        var n = data.plays[slug] || 0;
-        if (!n) continue;
-        var play = cards[i].querySelector('.play');
-        if (!play) continue;
-        // Sit the count on the same line as PLAY.
-        var row = document.createElement('div');
-        row.className = 'play-row';
-        var tag = document.createElement('span');
-        tag.className = 'plays';
-        tag.textContent = fmt(n) + (n === 1 ? ' play' : ' plays');
-        play.parentNode.insertBefore(row, play);
-        row.appendChild(play);
-        row.appendChild(tag);
+    var fmt = function (n) { return Number(n).toLocaleString('en'); };
+    var cards = document.querySelectorAll('a.card');
+    var jobs = [];
+    var total = 0;
+    for (var i = 0; i < cards.length; i++) (function (card) {
+      var href = (card.getAttribute('href') || '').replace(/\/+$/, '');
+      var slug;
+      try { slug = decodeURIComponent(href); } catch (e) { slug = href; }
+      if (!slug) return;
+      // a game nobody has played yet has no counter at all (404): that is 0
+      jobs.push(fetch(PLAYS_SERVER + '/get/' + PLAYS_NS + '/' + playKey(slug))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          var n = data && data.value ? +data.value : 0;
+          if (!n) return;
+          total += n;
+          var play = card.querySelector('.play');
+          if (!play) return;
+          // Sit the count on the same line as PLAY.
+          var row = document.createElement('div');
+          row.className = 'play-row';
+          var tag = document.createElement('span');
+          tag.className = 'plays';
+          tag.textContent = fmt(n) + (n === 1 ? ' play' : ' plays');
+          play.parentNode.insertBefore(row, play);
+          row.appendChild(play);
+          row.appendChild(tag);
+        })
+        .catch(function () {}));
+    })(cards[i]);
+    Promise.all(jobs).then(function () {
+      var el = document.getElementById('total-plays');
+      if (el && total) {
+        el.textContent = fmt(total) + ' games played';
+        el.hidden = false;
       }
-      var total = document.getElementById('total-plays');
-      if (total && data.total) {
-        total.textContent = fmt(data.total) + ' games played';
-        total.hidden = false;
-      }
-    }).catch(function () {});
+    });
   }
 
   if (IS_LANDING) {

@@ -72,14 +72,16 @@ the real pipeline from localhost, append `?analytics=live` to the URL.
 
 ### Play counter
 
-`analytics.js` also keeps a public play counter, separate from PostHog: once a
-game has been visible for 10 seconds (`PLAY_AFTER`) it POSTs one play to
-`PLAYS_SERVER/api/plays/<game>`, and on the landing page it fetches
-`/api/plays` and adds "N plays" beside each card's PLAY plus a "N games played"
-total under the byline. The counts live in the `plays` table of the
-`startube-server/` Worker's D1 database. The counter is off (nothing sent,
-nothing shown) while `PLAYS_SERVER` is empty, and local dev only logs instead
-of counting unless `?analytics=live`. Only the game name is sent.
+`analytics.js` also keeps a public play counter, separate from PostHog. The site
+is plain files with no database, so the counts are kept by **Abacus**
+(`abacus.jasoncameron.dev`), a free public counter service that needs no
+account: one counter per game, `curiousscout/plays-<game>` (spaces become `-`).
+Once a game has been visible for 10 seconds (`PLAY_AFTER`) it hits
+`/hit/curiousscout/plays-<game>`; the landing page reads `/get/…` for each card
+and adds "N plays" beside its PLAY, plus a "N games played" total under the
+byline (a game with no plays yet shows nothing). Only the game name is sent.
+Local dev only logs instead of counting unless `?analytics=live`. Set
+`PLAYS_SERVER` to `''` in `analytics.js` to switch the counter off.
 
 Games can add their own events with the global `track()`:
 `track('level_cleared', { level: 3 })`.
