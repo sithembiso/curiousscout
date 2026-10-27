@@ -16,6 +16,9 @@
    Storage: R2 bucket VIDEOS (the files and their thumbnails), D1 database DB
    (everything else; see schema.sql). Secrets: ADMIN_KEY. Vars:
    ALLOWED_ORIGINS (comma-separated, or *). Setup steps are in README.md.
+
+   It also keeps the site-wide play counter (see "plays" below), because it
+   already has a database — that part has nothing to do with videos.
    ========================================================================== */
 
 const MAX_VIDEO = 95 * 1024 * 1024;      // Workers accept request bodies up to 100 MB
@@ -24,6 +27,8 @@ const MAX_SECONDS = 5 * 60;
 const UPLOADS_PER_DAY = 3;               // per connection
 const REPORTS_PER_DAY = 10;
 const CHEERS_PER_DAY = 200;
+const PLAYS_PER_DAY = 100;               // per connection, all games together — a school shares one address
+const MAX_GAMES = 100;                   // stops anyone filling the plays table with made-up game names
 const CHEERS = ['star', 'clap', 'laugh', 'heart', 'rocket'];
 const TYPES = { mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime' };
 
@@ -222,6 +227,37 @@ async function report(req, env, id) {
   return json({ ok: true });
 }
 
+/* ------------------------------------------------------------- plays */
+
+/* The play counter for the whole CuriousScout site, shown on the landing page.
+   analytics.js counts one play per visit, once a game has been open for a
+   little while. Game names are the game's directory name, e.g. "math mine". */
+const GAME_RE = /^[a-z0-9][a-z0-9 -]{0,39}$/;
+
+async function listPlays(env) {
+  const { results } = await env.DB.prepare('SELECT game, n FROM plays').all();
+  const plays = {};
+  let total = 0;
+  for (const r of results) { plays[r.game] = r.n; total += r.n; }
+  return new Response(JSON.stringify({ plays, total }), {
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=60' }
+  });
+}
+
+async function addPlay(req, env, game) {
+  if (!GAME_RE.test(game)) return fail(400, 'Bad game');
+  if (!(await underLimit(req, env, 'play', PLAYS_PER_DAY))) return json({ ok: true, counted: false });
+  const known = await env.DB.prepare('SELECT 1 FROM plays WHERE game = ?1').bind(game).first();
+  if (!known) {
+    const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM plays').first();
+    if (n >= MAX_GAMES) return fail(400, 'Bad game');
+  }
+  const row = await env.DB.prepare(
+    'INSERT INTO plays (game, n) VALUES (?1, 1) ON CONFLICT(game) DO UPDATE SET n = n + 1 RETURNING n'
+  ).bind(game).first();
+  return json({ ok: true, counted: true, plays: row.n });
+}
+
 /* ------------------------------------------------------------- admin */
 
 async function admin(req, env, path) {
@@ -258,6 +294,11 @@ async function handle(req, env) {
   if (path === '' || path === 'health') return json({ ok: true, service: 'startube' });
   if (path === 'videos' && req.method === 'GET') return listPublic(env);
   if (path === 'videos' && req.method === 'POST') return createVideo(req, env);
+  if (path === 'plays' && req.method === 'GET') return listPlays(env);
+  if (path.startsWith('plays/') && req.method === 'POST') {
+    let game; try { game = decodeURIComponent(path.slice(6)); } catch (e) { return fail(400, 'Bad game'); }
+    return addPlay(req, env, game);
+  }
   if (path.startsWith('admin/')) return admin(req, env, path.slice(6));
   if (m) {
     const [, id, act] = m;

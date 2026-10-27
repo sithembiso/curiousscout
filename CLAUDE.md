@@ -70,6 +70,17 @@ Local development (`file://` or localhost) **logs events to the console instead
 of sending them**, so testing never pollutes the numbers. To deliberately test
 the real pipeline from localhost, append `?analytics=live` to the URL.
 
+### Play counter
+
+`analytics.js` also keeps a public play counter, separate from PostHog: once a
+game has been visible for 10 seconds (`PLAY_AFTER`) it POSTs one play to
+`PLAYS_SERVER/api/plays/<game>`, and on the landing page it fetches
+`/api/plays` and adds "N plays" beside each card's PLAY plus a "N games played"
+total under the byline. The counts live in the `plays` table of the
+`startube-server/` Worker's D1 database. The counter is off (nothing sent,
+nothing shown) while `PLAYS_SERVER` is empty, and local dev only logs instead
+of counting unless `?analytics=live`. Only the game name is sent.
+
 Games can add their own events with the global `track()`:
 `track('level_cleared', { level: 3 })`.
 

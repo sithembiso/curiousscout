@@ -48,6 +48,11 @@ its title and its made-up channel name).
    (`https://startube-server.<you>.workers.dev`) into `SERVER` near the top of
    the script in `startube/index.html`, then push to `main`.
 
+6. **Turn on the play counter** (optional, works on its own too). Paste the
+   same Worker address into `PLAYS_SERVER` near the top of `analytics.js`
+   and push. If your database was made before the counter existed, run
+   `schema.sql` in the D1 Console again — it only adds what's missing.
+
 Then visit `/startube/#/review` on your site, enter your `ADMIN_KEY`, and you
 will see every video waiting to be checked.
 
@@ -62,6 +67,8 @@ will see every video waiting to be checked.
 | GET | `/api/videos/:id/mine` | Uploader checks status (`X-Token`) |
 | DELETE | `/api/videos/:id` | Uploader deletes (`X-Token`) |
 | POST | `/api/videos/:id/view`, `/cheer`, `/report` | |
+| GET | `/api/plays` | Play counts for the landing page → `{ plays: { "math mine": 12, … }, total }` |
+| POST | `/api/plays/:game` | Count one play (100 a day per connection) |
 | GET | `/api/admin/queue` | Pending, reported and live (`Authorization: Bearer ADMIN_KEY`) |
 | POST | `/api/admin/videos/:id/approve`, `/reject` | |
 
