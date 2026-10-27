@@ -6446,6 +6446,148 @@ function shedEnvelope(b) {
   toast(name + ' shed its envelope and became a white dwarf');
 }
 
+/* ================================================================ tsunamis */
+/*
+ * Something hitting a world with open sea throws the water up in a plume and
+ * sends a ring of waves racing out from the impact across the whole ocean —
+ * the way the asteroid that ended the dinosaurs raised waves kilometres high
+ * all round the Gulf of Mexico. The ring is drawn on the sea itself: a raised
+ * crest with white foam on top and a trough behind it, followed by smaller
+ * waves, flattening out as it spreads. Where the coast is low the crest rides
+ * up over the land; high ground stands above it. It runs on the wall clock,
+ * like the other impact effects, so it can be watched at any time rate.
+ */
+const TSU_SECONDS = 9;            // from the hit to the far side of the world
+const TSU_MAX = 6;                // waves at once, across every world
+
+const TSU_VERT = `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  uniform vec3 uN;
+  uniform float uR, uW, uH;
+  varying float vCrest;
+  varying vec3 vNrm;
+  float wave(float ang) {
+    // the crest, a trough just behind it, and two smaller waves following
+    float x = (ang - uR) / uW;
+    return exp(-x * x) - 0.45 * exp(-pow(x + 2.2, 2.0))
+         + 0.45 * exp(-pow(x + 4.2, 2.0)) - 0.2 * exp(-pow(x + 6.0, 2.0)) + 0.22 * exp(-pow(x + 8.0, 2.0));
+  }
+  void main() {
+    vec3 p = normalize(position);
+    float ang = acos(clamp(dot(p, uN), -1.0, 1.0));
+    vCrest = (ang < uR + uW * 3.0) ? wave(ang) : 0.0;
+    vNrm = p;
+    vec4 mv = modelViewMatrix * vec4(p * (1.0 + uH * vCrest), 1.0);
+    gl_Position = projectionMatrix * mv;
+    #include <logdepthbuf_vertex>
+  }`;
+const TSU_FRAG = `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  uniform vec3 uL, uSea;
+  uniform float uFade;
+  varying float vCrest;
+  varying vec3 vNrm;
+  void main() {
+    #include <logdepthbuf_fragment>
+    float c = vCrest;
+    if (abs(c) < 0.04) discard;
+    float lit = max(dot(normalize(vNrm), uL), 0.0) * 0.85 + 0.12;
+    // white foam breaking along the top of each crest, deep water in the troughs
+    vec3 col = c > 0.0 ? mix(uSea * 1.6, vec3(0.95, 0.98, 1.0), smoothstep(0.35, 0.9, c)) : uSea * 0.55;
+    gl_FragColor = vec4(col * lit, clamp(abs(c) * 1.7, 0.0, 1.0) * uFade);
+  }`;
+
+const tsunamis = [];
+
+function startTsunami(b, worldDir, size, vRel) {
+  const p = b.parts;
+  if (!p || !p.sea || !(b.water > 0.02)) return;
+  const sea = TYPES[b.type].sea;
+  const frozen = sea ? clamp((sea.freeze - b.temp) / 6, 0, 1) : clamp((273 - b.temp) / 40, 0, 1);
+  if (frozen > 0.6) return;                                   // an ice sheet cracks; it does not wave
+  while (tsunamis.length >= TSU_MAX) endTsunami(tsunamis[0]);
+  const n = localOnBody(b, worldDir);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uN: { value: n.clone() }, uR: { value: 0 }, uW: { value: 0.05 }, uH: { value: 0 },
+      uL: { value: new THREE.Vector3(1, 0, 0) }, uSea: { value: waterColour(b).clone() }, uFade: { value: 1 }
+    },
+    vertexShader: TSU_VERT, fragmentShader: TSU_FRAG, transparent: true, depthWrite: false
+  });
+  const mesh = new THREE.Mesh(SPHERE_MID, mat);
+  mesh.scale.setScalar(1.002);
+  mesh.renderOrder = 2;
+  p.sea.add(mesh);
+  // a bigger, faster hit raises a bigger wave
+  const speed = vRel ? vRel.length() / KMS : 10;
+  const h = clamp(size * 0.04 * Math.sqrt(clamp(speed / 15, 0.3, 4)), 0.01, 0.07);
+  tsunamis.push({ b, mesh, t: 0, h });
+  waterSpray(b, worldDir, size, h);
+  if (!b.tsuToast || sim.time - b.tsuToast > 30) {
+    b.tsuToast = sim.time;
+    toast('A tsunami is racing across ' + b.name + '’s ocean');
+  }
+}
+
+function endTsunami(w) {
+  w.mesh.parent && w.mesh.parent.remove(w.mesh);
+  w.mesh.material.dispose();
+  const i = tsunamis.indexOf(w);
+  if (i >= 0) tsunamis.splice(i, 1);
+}
+
+const _tsL = new THREE.Vector3();
+function updateTsunamis(dt) {
+  for (let i = tsunamis.length - 1; i >= 0; i--) {
+    const w = tsunamis[i], b = w.b;
+    if (!b.alive || !b.parts || !b.parts.sea || w.mesh.parent !== b.parts.sea) { endTsunami(w); continue; }
+    w.t += dt / TSU_SECONDS;
+    if (w.t >= 1) { endTsunami(w); continue; }
+    const u = w.mesh.material.uniforms;
+    // out to the far side of the world, quick at first and slowing as it spreads
+    u.uR.value = Math.PI * Math.sqrt(w.t) * 0.98;
+    u.uW.value = 0.05 + 0.06 * w.t;
+    // the height drops as the ring spreads round a bigger circle, then fades
+    u.uH.value = w.h * (0.25 + 0.75 * (1 - w.t)) / (1 + 3 * Math.sin(Math.min(u.uR.value, Math.PI / 2)));
+    u.uFade.value = clamp((1 - w.t) * 2.5, 0, 1) * clamp(w.t * 30, 0, 1);
+    const star = nearestStar(b);
+    if (star) u.uL.value.copy(localOnBody(b, _tsL.copy(star.p).sub(b.p)));
+  }
+}
+
+/** The plume of sea water thrown up at the impact, falling back as spray. */
+function waterSpray(b, worldDir, size, h) {
+  const n = Math.min(Math.round(40 + size * 120), parts.free.length);
+  if (n <= 0) return;
+  const r = visRadius(b) * seaRadius(b);
+  const up = worldDir.clone().normalize();
+  const vEsc = Math.sqrt(2 * G * settings.gravity * b.m / Math.max(b.r, 1e-9));
+  const c = waterColour(b);
+  for (let i = 0; i < n; i++) {
+    const k = parts.free.pop(), k3 = k * 3;
+    const side = new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1));
+    side.addScaledVector(up, -side.dot(up)).normalize();
+    const out = up.clone().multiplyScalar(rnd(0.6, 1.4)).addScaledVector(side, rnd(0.2, 0.9)).normalize();
+    parts.pos[k3] = b.p.x + up.x * r * 1.01; parts.pos[k3 + 1] = b.p.y + up.y * r * 1.01; parts.pos[k3 + 2] = b.p.z + up.z * r * 1.01;
+    const sp = vEsc * rnd(0.12, 0.35) * Math.sqrt(h / 0.03);   // not enough to leave: it all rains back down
+    parts.vel[k3] = b.v.x + out.x * sp; parts.vel[k3 + 1] = b.v.y + out.y * sp; parts.vel[k3 + 2] = b.v.z + out.z * sp;
+    const bsz = rnd(1.5, 4);
+    parts.bsize[k] = bsz; parts.size[k] = bsz;
+    parts.m[k] = 0;
+    parts.hot[k] = 1;
+    parts.crate[k] = COOL_IMPACT;
+    parts.src[k] = -1;
+    parts.warm[k3] = 0.85; parts.warm[k3 + 1] = 0.93; parts.warm[k3 + 2] = 1.0;           // white spray
+    parts.cool[k3] = Math.min(1, c.r * 4 + 0.2); parts.cool[k3 + 1] = Math.min(1, c.g * 4 + 0.3); parts.cool[k3 + 2] = Math.min(1, c.b * 3 + 0.4);
+    parts.col[k3] = parts.warm[k3]; parts.col[k3 + 1] = parts.warm[k3 + 1]; parts.col[k3 + 2] = parts.warm[k3 + 2];
+    parts.on[k] = 1;
+    parts.live++;
+  }
+  parts.dirty = true;
+}
+
 /* ====================================================== black holes feeding */
 /*
  * A black hole heavier than 50 Suns eats the stars that come close. A star
@@ -8213,6 +8355,8 @@ function addScar(b, worldDir, size, vRel) {
   b.scarsCold = false;                   // something on this body is glowing again
   while (b.scars.length > MAX_SCARS) b.scars.shift();
   if (b.parts) buildScars(b);
+  // a real hit (it came with a speed) on a world with open sea raises a tsunami
+  if (vRel) startTsunami(b, worldDir, mark.s, vRel);
   // Handed back so a crater that is still being dug can go on growing.
   return b.scars.indexOf(mark) >= 0 ? mark : null;
 }
@@ -13073,6 +13217,7 @@ function updateVisuals(realDt, simDt) {
   const fxDt = sim.running ? realDt * slowmoScale() : 0;
   // Worlds part-way inside one another. First, because finishing one removes a body.
   updateEngulf(fxDt);
+  updateTsunamis(fxDt);
   // Then, because an explosion can destroy bodies and is itself a light source
   // that the two passes below need to know about.
   updateSupernovae(simDt);
@@ -17366,6 +17511,7 @@ function openSystems() {
 }
 
 function clearAll() {
+  while (tsunamis.length) endTsunami(tsunamis[0]);
   homers.length = 0;
   for (const b of sim.bodies) { disposeVisual(b); }
   sim.bodies.length = 0;
