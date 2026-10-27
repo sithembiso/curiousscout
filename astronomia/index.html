@@ -31,17 +31,15 @@
 
   #an-canvas { position: fixed; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
 
-  /* Soft vignette + scanlines to match the arcade */
+  /* Soft vignette (no scanlines: they striped every planet) */
   #an-vignette {
     position: fixed; inset: 0; z-index: 2; pointer-events: none;
     background:
-      repeating-linear-gradient(rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.10) 3px, rgba(0,0,0,0) 4px),
       radial-gradient(ellipse at center, transparent 52%, rgba(3,2,10,0.72) 100%);
   }
   /* Standing on a world in daylight, the heavy space vignette reads as a dirty lens */
   #an-vignette.landed {
     background:
-      repeating-linear-gradient(rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.06) 3px, rgba(0,0,0,0) 4px),
       radial-gradient(ellipse at center, transparent 68%, rgba(3,2,10,0.32) 100%);
   }
 
