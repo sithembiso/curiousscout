@@ -781,10 +781,10 @@ function hash3(seed, i, j, k) {
 function noise3(seed, x, y, z) {
   const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
   const tx = smoothstep(x - xi), ty = smoothstep(y - yi), tz = smoothstep(z - zi);
-  const c = (a, b, d) => hash3(seed, xi + a, yi + b, zi + d);
+  const x1 = xi + 1, y1 = yi + 1, z1 = zi + 1;
   return lerp(
-    lerp(lerp(c(0, 0, 0), c(1, 0, 0), tx), lerp(c(0, 1, 0), c(1, 1, 0), tx), ty),
-    lerp(lerp(c(0, 0, 1), c(1, 0, 1), tx), lerp(c(0, 1, 1), c(1, 1, 1), tx), ty), tz);
+    lerp(lerp(hash3(seed, xi, yi, zi), hash3(seed, x1, yi, zi), tx), lerp(hash3(seed, xi, y1, zi), hash3(seed, x1, y1, zi), tx), ty),
+    lerp(lerp(hash3(seed, xi, yi, z1), hash3(seed, x1, yi, z1), tx), lerp(hash3(seed, xi, y1, z1), hash3(seed, x1, y1, z1), tx), ty), tz);
 }
 /** Octaves of noise3, starting at `freq` cells per unit; returns 0..1. */
 function fbm3(seed, freq, octaves, gain) {
@@ -1209,14 +1209,35 @@ const SURFACE = {
     const chain = ridged3(fbm3(seed + 71, 1.7, 5));
     const where = fbm3(seed + 83, 1.0, 3);
     const dim = (o.dim || 1) * (o.dark ? 0.86 : 1);
+    // Worked out at half size and smoothed back up: these maps are built for
+    // a dozen moons at once, and the noise is too soft to need every pixel.
+    const half = W > 256 ? 2 : 1, FW = W / half, FH = H / half;
+    const G = new Float32Array(FW * FH * 5);          // big, fold, fold2, fine, peak
+    for (let y = 0, k = 0; y < FH; y++) {
+      const th = (y + 0.5) / FH * Math.PI, st = Math.sin(th), cy = Math.cos(th);
+      for (let x = 0; x < FW; x++, k += 5) {
+        // three.js lays a sphere out as x = -cos(phi)sin(theta), y = cos(theta), z = sin(phi)sin(theta)
+        const ph = (x + 0.5) / FW * TAU;
+        const px = -Math.cos(ph) * st, pz = Math.sin(ph) * st;
+        const qx = px + (wx(px, cy, pz) - 0.5) * 0.5, qy = cy + (wy(px, cy, pz) - 0.5) * 0.5, qz = pz + (wz(px, cy, pz) - 0.5) * 0.5;
+        G[k] = big(px, cy, pz); G[k + 1] = fold(qx, qy, qz); G[k + 2] = fold2(qx, qy, qz); G[k + 3] = fine(px, cy, pz);
+        G[k + 4] = Math.pow(chain(qx, qy, qz), 6) * clamp((where(px, cy, pz) - 0.4) * 4, 0, 1);
+      }
+    }
+    const S = [0, 0, 0, 0, 0];
+    const sample = (u, v) => {
+      const fx = clamp(u * FW - 0.5, 0, FW - 1), fy = clamp(v * FH - 0.5, 0, FH - 1);
+      const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = (x0 + 1) % FW, y1 = Math.min(y0 + 1, FH - 1);
+      const tx = fx - x0, ty = fy - y0;
+      for (let c = 0; c < 5; c++) {
+        S[c] = lerp(lerp(G[(y0 * FW + x0) * 5 + c], G[(y0 * FW + x1) * 5 + c], tx),
+                    lerp(G[(y1 * FW + x0) * 5 + c], G[(y1 * FW + x1) * 5 + c], tx), ty);
+      }
+      return S;
+    };
     let last = 0;
     const hgt = pixelPass(ctx, W, H, (u, v) => {
-      // three.js lays a sphere out as x = -cos(phi)sin(theta), y = cos(theta), z = sin(phi)sin(theta)
-      const ph = u * TAU, th = v * Math.PI, st = Math.sin(th);
-      const x = -Math.cos(ph) * st, y = Math.cos(th), z = Math.sin(ph) * st;
-      const qx = x + (wx(x, y, z) - 0.5) * 0.5, qy = y + (wy(x, y, z) - 0.5) * 0.5, qz = z + (wz(x, y, z) - 0.5) * 0.5;
-      const b = big(x, y, z), f = fold(qx, qy, qz), f2 = fold2(qx, qy, qz), n = fine(x, y, z);
-      const pk = Math.pow(chain(qx, qy, qz), 6) * clamp((where(x, y, z) - 0.4) * 4, 0, 1);
+      const [b, f, f2, n, pk] = sample(u, v);
       last = b * 0.4 + f * 0.25 + f2 * 0.08 + n * 0.07 + pk * 1.1;
       let L = 52 + b * 125 + Math.pow(f, 2.5) * 78 + Math.pow(f2, 3) * 26 - Math.pow(1 - f, 3) * 36 + (n - 0.5) * 28;
       L += pk * 70;                                   // pale summits
@@ -2009,34 +2030,45 @@ function cloudClimate(latDeg) {
 function cloudTexture(seed, W, H, opacity, tintCol, swirl, cover) {
   const cv = newCanvas(W, H);
   const ctx = cv.getContext('2d');
+  /* Worked out with 3-D noise at each point of the sphere rather than on the
+     flat map: on the map every column crowds into a single point at each
+     pole, so any pattern drawn there gets dragged into streaks that all point
+     at the pole. On the sphere there is no such point. */
   // Earth-like weather: swirling systems a few thousand km across with crisper
   // detail laid in. (Any bigger, and a whole hemisphere could come out clear.)
-  const f = swirl ? fbm(seed, 10, 5, 5) : fbm(seed, 6, 3, 5), crisp = swirl ? fbm(seed + 3, 18, 9, 4) : null;
-  const band = fbm(seed + 2, 3, 9, 3);
-  // Weather on an Earth-like world: the cloud field is pushed round by two
-  // slow noise fields, which curls it into storms and long sweeping fronts.
-  const wx = swirl ? fbm(seed + 11, 4, 2, 3) : null, wy = swirl ? fbm(seed + 23, 4, 2, 3) : null;
+  const f = swirl ? fbm3(seed, 3.6, 4) : fbm3(seed, 2.2, 4), crisp = swirl ? fbm3(seed + 3, 7, 3) : null;
+  // latitude bands: noise stretched round the planet, squeezed north–south
+  const bandN = fbm3(seed + 2, 1.1, 3), band = (x, y, z) => bandN(x * 0.4, y * 4, z * 0.4);
+  // Weather on an Earth-like world: the cloud field is pushed about by slow
+  // noise fields, which curls it into storms and long sweeping fronts.
+  const wx = swirl ? fbm3(seed + 11, 1.5, 2) : null, wy = swirl ? fbm3(seed + 23, 1.5, 2) : null, wz = swirl ? fbm3(seed + 31, 1.5, 2) : null;
   const tint = tintCol || [255, 255, 255];
   const img = ctx.createImageData(W, H);
   const d = img.data;
-  const field = new Float32Array(W * H);
-  for (let y = 0, k = 0; y < H; y++) {
-    const v = (y + 0.5) / H;
-    for (let x = 0; x < W; x++, k++) {
-      const u = (x + 0.5) / W;
-      let uu = u, vv = v;
+  // the big maps work their field out smaller and are smoothed back up
+  const half = W >= 2048 ? 4 : W >= 1024 ? 2 : 1, FW = W / half, FH = H / half;
+  const field = new Float32Array(FW * FH);
+  for (let y = 0, k = 0; y < FH; y++) {
+    const v = (y + 0.5) / FH, th = v * Math.PI, st = Math.sin(th), py = Math.cos(th);
+    for (let x = 0; x < FW; x++, k++) {
+      const ph = (x + 0.5) / FW * TAU;
+      let px = -Math.cos(ph) * st, pz = Math.sin(ph) * st, qy = py;
       if (swirl) {
-        // (the swirl calms toward the poles, where the map's columns crowd together)
-        const calm = 1 - clamp((Math.abs(0.5 - v) * 180 - 60) / 25, 0, 1);
-        const a1 = (wx(u, v) - 0.5) * TAU * 1.6, r1 = 0.05 * swirl * calm;
-        uu = u + Math.cos(a1) * r1; vv = clamp(v + Math.sin(a1) * r1 * 0.5 + (wy(u, v) - 0.5) * 0.03 * swirl, 0, 0.999);
-        uu -= Math.floor(uu);
+        const ax = wx(px, py, pz) - 0.5, ay = wy(px, py, pz) - 0.5, az = wz(px, py, pz) - 0.5;
+        px += ax * 0.5 * swirl; qy += ay * 0.5 * swirl; pz += az * 0.5 * swirl;
       }
       field[k] = swirl
-        ? (f(uu, vv) * 0.55 + crisp(uu, vv) * 0.45) * 0.8 + band(uu, vv) * 0.2
-        : f(uu, vv) * 0.75 + band(uu, vv) * 0.25;
+        ? (f(px, qy, pz) * 0.55 + crisp(px, qy, pz) * 0.45) * 0.8 + band(px, qy, pz) * 0.2
+        : f(px, qy, pz) * 0.75 + band(px, qy, pz) * 0.25;
     }
   }
+  // the field at full-size pixel (x, y), smoothed between the half-size samples
+  const at = half === 1 ? (x, y) => field[y * W + x] : (x, y) => {
+    const fx = clamp((x + 0.5) / half - 0.5, 0, FW - 1), fy = clamp((y + 0.5) / half - 0.5, 0, FH - 1);
+    const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = (x0 + 1) % FW, y1 = Math.min(y0 + 1, FH - 1);
+    const tx = fx - x0, ty = fy - y0;
+    return lerp(lerp(field[y0 * FW + x0], field[y0 * FW + x1], tx), lerp(field[y1 * FW + x0], field[y1 * FW + x1], tx), ty);
+  };
   /* Swirled weather covers the share of sky its climate calls for, at every
      latitude, whatever the seed: each 10° band reads its own threshold off its
      own values (about 30% overall, more in the storm belts, less over the
@@ -2050,26 +2082,27 @@ function cloudTexture(seed, W, H, opacity, tintCol, swirl, cover) {
       const want = clamp(0.3 + (cover || 0) * 2 + cloudClimate(lat) * 3, 0.05, 0.9), samples = [];
       for (let s = 0; s < 1500; s++) {
         const y = Math.min(H - 1, Math.floor((bnd + Math.random()) * rowsPer));
-        samples.push(field[y * W + ((Math.random() * W) | 0)]);
+        samples.push(at((Math.random() * W) | 0, y));
       }
       samples.sort((p, q) => p - q);
       // the cloud's soft rim starts a little below where it counts as cloud
       thrB[bnd] = samples[Math.floor(samples.length * (1 - want))] - 0.02;
     }
   }
-  for (let k = 0, i = 0; k < W * H; k++) {
-    let a;
-    if (swirl) {
-      const fb = clamp(((Math.floor(k / W) + 0.5) / H) * NB - 0.5, 0, NB - 1), b0 = Math.floor(fb), b1 = Math.min(b0 + 1, NB - 1);
-      const thr = lerp(thrB[b0], thrB[b1], fb - b0);
-      // solid white through the body of a cloud, with only a soft rim — softer
-      // and hazier near the poles, so nothing pinches into a star there
-      const pole = clamp((Math.abs(0.5 - (Math.floor(k / W) + 0.5) / H) * 180 - 62) / 22, 0, 1);
-      a = clamp((field[k] - thr) * lerp(16.0, 3.0, pole), 0, 1);
-      a = a * a * (3 - 2 * a) * Math.max(opacity, 0.98);
-    } else a = Math.pow(clamp((field[k] - 0.48) * 3.4, 0, 1), 1.25) * opacity;
-    d[i++] = tint[0]; d[i++] = tint[1]; d[i++] = tint[2];
-    d[i++] = (a * 255) | 0;
+  for (let y = 0, i = 0; y < H; y++) {
+    const fb = clamp(((y + 0.5) / H) * NB - 0.5, 0, NB - 1), b0 = Math.floor(fb), b1 = Math.min(b0 + 1, NB - 1);
+    const thr = lerp(thrB[b0], thrB[b1], fb - b0);
+    for (let x = 0; x < W; x++) {
+      const fv = at(x, y);
+      let a;
+      if (swirl) {
+        // solid white through the body of a cloud, with only a soft rim
+        a = clamp((fv - thr) * 16, 0, 1);
+        a = a * a * (3 - 2 * a) * Math.max(opacity, 0.98);
+      } else a = Math.pow(clamp((fv - 0.48) * 3.4, 0, 1), 1.25) * opacity;
+      d[i++] = tint[0]; d[i++] = tint[1]; d[i++] = tint[2];
+      d[i++] = (a * 255) | 0;
+    }
   }
   ctx.putImageData(img, 0, 0);
   return cv;
