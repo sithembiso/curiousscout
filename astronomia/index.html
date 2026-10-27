@@ -769,6 +769,37 @@ function fbm(seed, gw, gh, octaves, gain) {
   };
 }
 
+/* 3-D value noise: the same idea as Lattice, but sampled at a point in space
+   rather than on the flat map, so a pattern laid on a sphere through it has no
+   poles and no seam. */
+function hash3(seed, i, j, k) {
+  let h = (Math.imul(i, 374761393) + Math.imul(j, 668265263) + Math.imul(k, 1274126177) + Math.imul(seed, 144665)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function noise3(seed, x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const tx = smoothstep(x - xi), ty = smoothstep(y - yi), tz = smoothstep(z - zi);
+  const c = (a, b, d) => hash3(seed, xi + a, yi + b, zi + d);
+  return lerp(
+    lerp(lerp(c(0, 0, 0), c(1, 0, 0), tx), lerp(c(0, 1, 0), c(1, 1, 0), tx), ty),
+    lerp(lerp(c(0, 0, 1), c(1, 0, 1), tx), lerp(c(0, 1, 1), c(1, 1, 1), tx), ty), tz);
+}
+/** Octaves of noise3, starting at `freq` cells per unit; returns 0..1. */
+function fbm3(seed, freq, octaves, gain) {
+  gain = gain || 0.5;
+  return (x, y, z) => {
+    let s = 0, a = 1, norm = 0, f = freq;
+    for (let i = 0; i < octaves; i++) {
+      s += noise3(seed + i * 7919, x * f + 17.3, y * f + 31.7, z * f + 47.1) * a;
+      norm += a; a *= gain; f *= 2;
+    }
+    return s / norm;
+  };
+}
+const ridged3 = (f) => (x, y, z) => 1 - Math.abs(f(x, y, z) * 2 - 1);
+
 /** Ridged noise — good for mountain chains, cracks and filaments. */
 function ridged(f) {
   return (u, v) => {
@@ -1161,32 +1192,37 @@ function earthGround(u, v) {
 const SURFACE = {
 
   /* Moons, asteroids and comets: pale, mottled grey ground, folded into soft
-     swirling ridges and lit in broad bright and dark patches, with only a few
-     worn-down craters — dusty, rounded and old rather than freshly pitted. */
+     swirling ridges and lit in broad bright and dark patches, with chains of
+     mountains and only a few worn-down craters — dusty, rounded and old
+     rather than freshly pitted. Worked out on the sphere itself (3-D noise at
+     each point of the surface), so nothing pinches into streaks at the poles
+     or shows a seam down the back. */
   plaster(ctx, W, H, rng, o) {
     const seed = (rng() * 1e6) | 0;
-    const big = fbm(seed, 3, 2, 4);                 // the broad light and dark patches
-    const wa = fbm(seed + 11, 4, 3, 4), wb = fbm(seed + 23, 4, 3, 4);
-    const fold = ridged(fbm(seed + 37, 7, 4, 5));   // the swirls, bent by the warp
-    const fold2 = ridged(fbm(seed + 61, 14, 7, 4)); // and finer swirls inside them
-    const fine = fbm(seed + 51, 26, 13, 3);
+    const big = fbm3(seed, 1.1, 4);                   // the broad light and dark patches
+    const wx = fbm3(seed + 11, 1.4, 3), wy = fbm3(seed + 12, 1.4, 3), wz = fbm3(seed + 13, 1.4, 3);
+    const fold = ridged3(fbm3(seed + 37, 2.3, 5));    // the swirls, bent by the warp
+    const fold2 = ridged3(fbm3(seed + 61, 4.6, 4));   // and finer swirls inside them
+    const fine = fbm3(seed + 51, 10, 3);
     // Mountain ranges: sharp ridge lines, standing up only where the range
     // mask says, so there are chains of peaks with open plains between them.
-    const chain = ridged(fbm(seed + 71, 5, 3, 5));
-    const where = fbm(seed + 83, 3, 2, 3);
-    const peakAt = (wu, wv, u, v) => Math.pow(chain(wu, wv), 6) * clamp((where(u, v) - 0.4) * 4, 0, 1);
+    const chain = ridged3(fbm3(seed + 71, 1.7, 5));
+    const where = fbm3(seed + 83, 1.0, 3);
     const dim = (o.dim || 1) * (o.dark ? 0.86 : 1);
-    const at = (u, v) => {
-      const wu = u + (wa(u, v) - 0.5) * 0.16, wv = clamp(v + (wb(u, v) - 0.5) * 0.16, 0, 1);
-      return [big(u, v), fold(wu, wv), fine(u, v), fold2(wu, wv), peakAt(wu, wv, u, v)];
-    };
+    let last = 0;
     const hgt = pixelPass(ctx, W, H, (u, v) => {
-      const [b, f, n, f2, pk] = at(u, v);
+      // three.js lays a sphere out as x = -cos(phi)sin(theta), y = cos(theta), z = sin(phi)sin(theta)
+      const ph = u * TAU, th = v * Math.PI, st = Math.sin(th);
+      const x = -Math.cos(ph) * st, y = Math.cos(th), z = Math.sin(ph) * st;
+      const qx = x + (wx(x, y, z) - 0.5) * 0.5, qy = y + (wy(x, y, z) - 0.5) * 0.5, qz = z + (wz(x, y, z) - 0.5) * 0.5;
+      const b = big(x, y, z), f = fold(qx, qy, qz), f2 = fold2(qx, qy, qz), n = fine(x, y, z);
+      const pk = Math.pow(chain(qx, qy, qz), 6) * clamp((where(x, y, z) - 0.4) * 4, 0, 1);
+      last = b * 0.4 + f * 0.25 + f2 * 0.08 + n * 0.07 + pk * 1.1;
       let L = 52 + b * 125 + Math.pow(f, 2.5) * 78 + Math.pow(f2, 3) * 26 - Math.pow(1 - f, 3) * 36 + (n - 0.5) * 28;
-      L += pk * 70;                                 // pale summits
+      L += pk * 70;                                   // pale summits
       L = clamp(L * dim, 0, 255);
-      return [L, L, L * 0.99];                      // a plain, cool grey
-    }, (u, v) => { const [b, f, n, f2, pk] = at(u, v); return b * 0.4 + f * 0.25 + f2 * 0.08 + n * 0.07 + pk * 1.1; });
+      return [L, L, L * 0.99];                        // a plain, cool grey
+    }, () => last);                                   // the height worked out with the colour
     craters(ctx, W, H, rng, Math.round((o.craters || 80) * 0.15), 0.008, 0.05, [220, 220, 218]);
     return hgt;
   },
@@ -7152,7 +7188,35 @@ function displaceSphere(field, amount, base) {
   // level measured against the old landscape.
   field.rAmount = amount; field.rlo = rlo; field.rhi = rhi;
   g.computeVertexNormals();
+  weldNormals(g);
   return g;
+}
+
+/**
+ * A sphere mesh has a seam from pole to pole (the first and last column of
+ * vertices sit in the same place) and a whole ring of vertices at each pole.
+ * Shading worked out triangle by triangle treats each copy on its own, so a
+ * displaced world gets a hard crease down the seam and a pinched star at each
+ * pole. Giving every copy of a point the average of their normals heals both.
+ */
+function weldNormals(g) {
+  const pos = g.attributes.position, nor = g.attributes.normal;
+  const groups = new Map();
+  for (let i = 0; i < pos.count; i++) {
+    const key = Math.round(pos.getX(i) * 1e5) + ',' + Math.round(pos.getY(i) * 1e5) + ',' + Math.round(pos.getZ(i) * 1e5);
+    let a = groups.get(key);
+    if (!a) groups.set(key, a = []);
+    a.push(i);
+  }
+  const n = new THREE.Vector3();
+  for (const a of groups.values()) {
+    if (a.length < 2) continue;
+    n.set(0, 0, 0);
+    for (const i of a) n.x += nor.getX(i), n.y += nor.getY(i), n.z += nor.getZ(i);
+    n.normalize();
+    for (const i of a) nor.setXYZ(i, n.x, n.y, n.z);
+  }
+  nor.needsUpdate = true;
 }
 
 /**
@@ -7258,18 +7322,18 @@ function cachedTexture(key, make) {
 /** Deform a sphere into a believable irregular body (asteroids, comet nuclei). */
 function lumpyGeometry(seed, amount, base) {
   const g = (base || SPHERE_LO).clone();
-  const pos = g.attributes.position, uv = g.attributes.uv;
-  const f = fbm(seed, 4, 2, 3);
+  const pos = g.attributes.position;
+  // 3-D noise at each point of the sphere: the seam and pole copies of a
+  // vertex land on exactly the same value, so no fading is needed
+  const f = fbm3(seed, 1.3, 3);
   const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i).normalize();
-    const u = uv.getX(i), vv = 1 - uv.getY(i);
-    // fade the displacement out at the poles so the seam vertices stay together
-    const fade = Math.sin(Math.PI * clamp(vv, 0, 1));
-    const s = 1 + (f(u, vv) - 0.5) * 2 * amount * fade;
+    const s = 1 + (f(v.x, v.y, v.z) - 0.5) * 2 * amount;
     pos.setXYZ(i, v.x * s, v.y * s, v.z * s);
   }
   g.computeVertexNormals();
+  weldNormals(g);
   return g;
 }
 
