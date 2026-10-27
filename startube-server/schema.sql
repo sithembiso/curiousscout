@@ -25,3 +25,10 @@ CREATE TABLE IF NOT EXISTS limits (
   n    INTEGER NOT NULL,
   day  TEXT NOT NULL
 );
+
+-- How many times each CuriousScout game has been played (the landing page counter).
+-- game = the game's directory name, e.g. "math mine".
+CREATE TABLE IF NOT EXISTS plays (
+  game  TEXT PRIMARY KEY,
+  n     INTEGER NOT NULL DEFAULT 0
+);

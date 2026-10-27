@@ -200,6 +200,36 @@
 
     .card:hover .play { transform: translateX(4px); }
 
+    /* Play counter, filled in by analytics.js once the server is set up */
+    .play-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .play-row .play { margin-top: 0; }
+
+    .plays {
+      font-family: "Orbitron", sans-serif;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: #b6b4d8;
+    }
+
+    .total-plays {
+      margin-top: 12px;
+      font-family: "Orbitron", sans-serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #4de1a0;
+      text-shadow: 0 0 10px rgba(77,225,160,0.55);
+    }
+
     .support {
       position: relative;
       z-index: 1;
@@ -302,6 +332,7 @@
     <div class="logo">CuriousScout</div>
     <p class="subtitle">A little arcade of homemade games. Pick one and have fun.</p>
     <p class="byline">By Lunga Khumalo</p>
+    <p class="total-plays" id="total-plays" hidden></p>
     <p class="prompt">&#9654; SELECT YOUR GAME &#9664;</p>
   </header>
 

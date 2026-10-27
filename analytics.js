@@ -33,6 +33,16 @@
   // The behaviour-defaults bundle PostHog generated with this project's snippet.
   var PH_DEFAULTS = '2026-05-30';
 
+  // The play counter shown on the landing page lives on the StarTube Worker
+  // (startube-server/), because that already has a database. Paste the same
+  // address as SERVER in startube/index.html. While it is empty the counter is
+  // off: nothing is counted and the landing page shows no numbers.
+  var PLAYS_SERVER = '';
+
+  // A visit counts as a play once the game has been in front of the player for
+  // this long, so a quick open-and-back doesn't count.
+  var PLAY_AFTER = 10;
+
   var HOSTS = {
     us: { api: 'https://us.i.posthog.com', assets: 'https://us-assets.i.posthog.com' },
     eu: { api: 'https://eu.i.posthog.com', assets: 'https://eu-assets.i.posthog.com' }
@@ -136,7 +146,57 @@
 
   /* ---------------------------------------------------------------- events */
 
+  /* ---------------------------------------------------------- play counter */
+
+  // One play per visit, sent to our own server (not PostHog) so the landing
+  // page can show it. Carries nothing but the game's name.
+  function countPlay() {
+    if (!PLAYS_SERVER) return;
+    var url = PLAYS_SERVER + '/api/plays/' + encodeURIComponent(GAME.toLowerCase());
+    if (IS_DEV && !FORCE_LIVE) {
+      if (window.console && console.log) console.log('%c[plays · local]', 'color:#ff6fd8', 'would count a play:', url);
+      return;
+    }
+    try { fetch(url, { method: 'POST', keepalive: true }).catch(function () {}); } catch (e) {}
+  }
+
+  // Landing page: put "▶ 1,234 plays" on each card and a total under the title.
+  function showPlays() {
+    if (!PLAYS_SERVER || !window.fetch) return;
+    fetch(PLAYS_SERVER + '/api/plays').then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+      if (!data || !data.plays) return;
+      var fmt = function (n) { return Number(n).toLocaleString('en'); };
+      var cards = document.querySelectorAll('a.card');
+      for (var i = 0; i < cards.length; i++) {
+        var href = (cards[i].getAttribute('href') || '').replace(/\/+$/, '');
+        var slug;
+        try { slug = decodeURIComponent(href).toLowerCase(); } catch (e) { slug = href.toLowerCase(); }
+        var n = data.plays[slug] || 0;
+        if (!n) continue;
+        var play = cards[i].querySelector('.play');
+        if (!play) continue;
+        // Sit the count on the same line as PLAY.
+        var row = document.createElement('div');
+        row.className = 'play-row';
+        var tag = document.createElement('span');
+        tag.className = 'plays';
+        tag.textContent = fmt(n) + (n === 1 ? ' play' : ' plays');
+        play.parentNode.insertBefore(row, play);
+        row.appendChild(play);
+        row.appendChild(tag);
+      }
+      var total = document.getElementById('total-plays');
+      if (total && data.total) {
+        total.textContent = fmt(data.total) + ' games played';
+        total.hidden = false;
+      }
+    }).catch(function () {});
+  }
+
   if (IS_LANDING) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showPlays);
+    else showPlays();
+
     // Which cards get clicked. Capture phase, so it still fires as the browser
     // starts navigating away.
     document.addEventListener('click', function (e) {
@@ -166,9 +226,15 @@
     var engagedAt = 30;
     var engagedSent = false;
 
+    var playSent = false;
+
     setInterval(function () {
       if (document.hidden) return;
       visibleSec++;
+      if (!playSent && visibleSec >= PLAY_AFTER) {
+        playSent = true;
+        countPlay();
+      }
       if (!engagedSent && visibleSec >= engagedAt) {
         engagedSent = true;
         send('game_engaged', { seconds: engagedAt });
