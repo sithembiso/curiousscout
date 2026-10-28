@@ -1173,7 +1173,9 @@ const EARTH_MAP = [
 const EARTH_H = { '.': 0.30, '#': 0.58, '^': 0.88, 'i': 0.63 };
 const EARTH_SEA = 0.44;          // where the coastline falls in those units
 
-/** The map read as a smooth field: bilinear between cells, wrapping in longitude. */
+/** The map read as a smooth field — a Catmull-Rom curve through the cells
+    rather than straight lines between them, so a coast comes out as a curve
+    instead of a staircase — wrapping in longitude. */
 function earthGround(u, v) {
   const x = u * 288 - 0.5, y = v * 144 - 0.5;
   const x0 = Math.floor(x), y0 = Math.floor(y);
@@ -1182,8 +1184,10 @@ function earthGround(u, v) {
     const r = EARTH_MAP[clamp(cy, 0, 143)];
     return EARTH_H[r.charAt((((cx % 288) + 288) % 288))] || 0.30;
   };
-  return lerp(lerp(at(x0, y0), at(x0 + 1, y0), fx),
-              lerp(at(x0, y0 + 1), at(x0 + 1, y0 + 1), fx), fy);
+  const cr = (p0, p1, p2, p3, t) =>
+    p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
+  const row = (cy) => cr(at(x0 - 1, cy), at(x0, cy), at(x0 + 1, cy), at(x0 + 2, cy), fx);
+  return clamp(cr(row(y0 - 1), row(y0), row(y0 + 1), row(y0 + 2), fy), 0, 1);
 }
 
 /**
@@ -2648,6 +2652,9 @@ const TYPES = {
   sol_earth: {
     label: 'Earth', group: 'SOLAR SYSTEM', pname: 'Earth', mass: 1, rad: 1,
     surf: 'earth', spin: 0.99727, tilt: 0.4091, atmo: SKY, clouds: 0.95, water: 0.295,
+    // drawn finer than any other world (a 2048-wide map on a dense mesh), so
+    // its coasts and the edges of its deserts are smooth curves up close
+    texW: 2048,
     blurb: 'The only place anyone has ever lived. Seven-tenths water, tipped 23.4° on its axis — which is the entire reason we have seasons.'
   },
   sol_luna: {
@@ -7411,7 +7418,7 @@ function surfaceTexture(type, seed) {
   // photosphere stars get twice the resolution of everything else.
   const small = def.group === 'MOONS & DEBRIS' || def.lumpy;
   const fine = def.surf === 'star';
-  const W = small ? 256 : fine ? 1024 : 512, H = small ? 128 : fine ? 512 : 256;
+  const W = def.texW || (small ? 256 : fine ? 1024 : 512), H = W / 2;
   const cv = newCanvas(W, H);
   const rng = mulberry32(hashStr(key));
   const opts = Object.assign({ temp: def.temp, spots: def.spots }, def.opts || {});
@@ -7602,6 +7609,8 @@ const reliefTop = (type) => reliefOf(type) * 0.40;
  * deliberately NOT assigned to b.ownGeo, which would dispose it out from under
  * all the others.
  */
+let SPHERE_FINE = null;
+
 function reliefGeometry(type, seed) {
   const amount = reliefOf(type);
   if (amount <= 1e-6) return SPHERE;
@@ -7611,7 +7620,9 @@ function reliefGeometry(type, seed) {
   surfaceTexture(type, seed);                       // fills heightCache
   const field = heightCache.get(tk);
   if (!field) return SPHERE;                        // this surface has no ground
-  const g = displaceSphere(field, amount, SPHERE_MID);
+  // a finely mapped world (Earth) gets a mesh dense enough to carry its coasts
+  const base = TYPES[type].texW >= 2048 ? (SPHERE_FINE || (SPHERE_FINE = new THREE.SphereGeometry(1, 512, 256))) : SPHERE_MID;
+  const g = displaceSphere(field, amount, base);
   geoCache.set(key, g);
   return g;
 }
