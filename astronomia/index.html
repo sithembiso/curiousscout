@@ -1186,6 +1186,44 @@ function earthGround(u, v) {
               lerp(at(x0, y0 + 1), at(x0 + 1, y0 + 1), fx), fy);
 }
 
+/**
+ * What covers the ground at a point on Earth: 'forest', 'desert' or 'ice' —
+ * laid out after a map drawn for the game (green forest almost everywhere,
+ * deserts and ice where they really are), on top of the real coastlines.
+ */
+function earthBiome(lat, lon) {
+  const box = (la0, la1, lo0, lo1) => lat >= la0 && lat <= la1 && lon >= lo0 && lon <= lo1;
+  // ---- ice
+  if (lat < -60 || lat > 80) return 'ice';                             // Antarctica, the Arctic pack
+  if (box(59, 84, -73, -11)) return 'ice';                             // Greenland
+  if (box(69, 84, -125, -60)) return 'ice';                            // the Canadian Arctic islands
+  if (box(68, 82, 5, 42)) return 'ice';                                // the far north of Scandinavia, Svalbard
+  if (box(68, 82, 50, 180)) return 'ice';                              // the Arctic coast of Siberia, Novaya Zemlya
+  if (box(70, 82, -180, -140)) return 'ice';                           // the top of Alaska
+  if (box(29, 37, 77, 101)) {                                          // Tibet: an icy ring round a dry heart
+    return box(32, 35.5, 85, 94) ? 'desert' : 'ice';
+  }
+  // ---- desert
+  if (box(25, 49, -125, -100)) return 'desert';                        // the American West and its deserts
+  if (box(19, 33, -117, -100)) return 'desert';                        // northern Mexico and Baja
+  if (lat <= -4 && lat >= -56) {                                       // down South America's western side
+    const edge = lat > -18 ? -76 : lat > -30 ? -69 : -67;
+    if (lon >= -82 && lon < edge) return 'desert';
+  }
+  if (box(36, 43.5, -9.5, 0)) return 'desert';                         // the dry heart of Spain
+  if (box(14, 33, -18, 36)) return 'desert';                           // the Sahara
+  if (box(1, 13, 40, 52)) return 'desert';                             // the Horn of Africa
+  if (box(-34, -16, 11, 25)) return 'desert';                          // the Namib and the Kalahari
+  if (box(12, 33, 34, 60)) return 'desert';                            // Arabia
+  if (box(25, 40, 44, 70)) return 'desert';                            // Iran and Afghanistan
+  if (box(36, 49, 50, 120) && !(lat < 37 && lon > 100)) return 'desert';   // Central Asia to the Gobi
+  if (box(-36, -11, 112, 146)) {                                       // Australia, all but the green east coast
+    const coast = lat < -28 ? 146 : 142.5;
+    if (lon < coast - (lat < -32 ? 6 : 0)) return 'desert';
+  }
+  return 'forest';
+}
+
 /* ========================================================= surface painters */
 /* Each painter fills an equirectangular canvas for one class of world.       */
 
@@ -1276,49 +1314,29 @@ const SURFACE = {
     const fine = fbm(seed, 30, 11, 4);
     const arid = fbm(seed + 7, 6, 3, 3);
     const veg = fbm(seed + 31, 12, 5, 3);
+    const wob = fbm(seed + 53, 14, 7, 3), wob2 = fbm(seed + 59, 40, 20, 2);
     // The map, roughened a little so coastlines and hills are not too tidy.
     const hf = (u, v) => clamp(earthGround(u, v) + (fine(u, v) - 0.5) * 0.06, 0, 1);
 
-    const bed = [[0, [18, 22, 28]], [0.5, [40, 44, 46]], [0.82, [84, 82, 70]], [1, [136, 128, 102]]];
-    const hgtE = pixelPass(ctx, W, H, (u, v, lat) => {
+    // The sea floor: brown ground, deepest in the middle of the basins.
+    const bed = [[0, [92, 58, 40]], [0.5, [134, 88, 60]], [0.82, [168, 112, 78]], [1, [186, 124, 88]]];
+    const hgtE = pixelPass(ctx, W, H, (u, v) => {
       const e = hf(u, v);
       if (e < EARTH_SEA) return ramp(bed, e / EARTH_SEA);
-      const deg = Math.abs(lat) * 180 / Math.PI;
-      const high = clamp((e - 0.66) / 0.30, 0, 1);
-
-      /* Biomes by latitude, which is most of why Earth looks the way it does:
-         rain forest along the equator, a belt of desert either side of the
-         tropics where the dry air of the Hadley cells comes back down — the
-         Sahara, Arabia, the Kalahari and the Australian interior are all on the
-         same two lines — then green temperate middles, dark taiga, tundra, and
-         ice at the poles.
-
-         The latitude that decides it is nudged by up to seven degrees of noise,
-         which is what stops the belts being drawn with a ruler: it is why a
-         monsoon coast at the Sahara's latitude is green, and why the desert
-         reaches further from the equator in some places than others. */
-      const t = clamp((deg + (arid(u, v) - 0.5) * 15) / 90, 0, 1);
-      // (muted, the way it looks from orbit, not a map's bright greens and yellows)
-      let c = ramp([
-        [0.00, [ 28,  92,  36]],   // equator — rain forest
-        [0.13, [ 56, 108,  44]],
-        [0.19, [158, 134,  96]],   // ~17–30° — the desert belt
-        [0.33, [150, 128,  94]],
-        [0.40, [ 70, 112,  52]],   // ~36° — temperate
-        [0.52, [ 40,  80,  44]],   // ~47° — taiga
-        [0.68, [108, 110, 100]],   // ~61° — tundra
-        [0.79, [216, 226, 236]],   // ~71° — permanent snow
-        [1.00, [240, 246, 252]]
-      ], t);
-      // Local variety on top, so no two patches at one latitude are identical.
-      c = mix(c, mix(c, [58, 100, 50], 0.5), (veg(u, v) - 0.5) * 0.9 + 0.5);
-
-      // Bare rock then snow on the high ground, wherever it is.
-      if (high > 0) c = mix(c, [124, 116, 106], Math.min(high * 1.5, 1));
-      if (e > 0.78) c = mix(c, [236, 240, 246], clamp((e - 0.78) * 6, 0, 1));
+      const lon = u * 360 - 180, lat = (0.5 - v) * 180;
+      const n = veg(u, v), a = arid(u, v);
+      // the borders wander a few degrees either way, so no edge is a ruled line
+      const kind = earthBiome(lat + (wob(u, v) - 0.5) * 22 + (n - 0.5) * 6, lon + (a - 0.5) * 30 + (wob2(u, v) - 0.5) * 10);
+      let c;
+      if (kind === 'ice') c = mix([226, 234, 242], [250, 252, 255], n);
+      else if (kind === 'desert') c = mix(mix([214, 178, 104], [196, 146, 84], a), [232, 204, 140], n * 0.5);
+      else {
+        // forest: lush near the equator, darker and bluer in the far north
+        const north = clamp((Math.abs(lat) - 40) / 25, 0, 1);
+        c = mix(mix([34, 112, 44], [52, 128, 50], n), mix([30, 84, 48], [42, 96, 56], n), north);
+      }
       return c;
     }, hf);
-    iceCaps(ctx, W, H, rng, 0.10, [240, 246, 252]);
     return hgtE;
   },
 
