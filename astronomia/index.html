@@ -1023,14 +1023,14 @@ function iceCaps(ctx, W, H, rng, extent, color) {
  */
 
 const EARTH_MAP = [
-  'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii',
-  'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii',
-  'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii',
-  'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii',
-  'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii',
-  'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii',
-  'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii',
-  '............................................................................................iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii.....................................####..........................................................................................................................',
+  '................................................................................................................................................................................................................................................................................................',
+  '................................................................................................................................................................................................................................................................................................',
+  '................................................................................................................................................................................................................................................................................................',
+  '................................................................................................................................................................................................................................................................................................',
+  '................................................................................................................................................................................................................................................................................................',
+  '....................................................................iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii..........................................................................................................................................................',
+  '....................................................................iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii..........................................................................................................................................................',
+  '............................................................................................iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii...................................................................................................................................................................',
   '.........................................................................................iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii..........................##############.........................................................................................................................',
   '......................................................................................iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii..........................##############.........................................................................................................................',
   '.......................................................................................iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii..........................#############...............................##..........................####...........................................................',
@@ -1315,10 +1315,41 @@ const SURFACE = {
   /* Earth. Real continents, and biomes set by latitude the way real ones are. */
   earth(ctx, W, H, rng, o) {
     const seed = (rng() * 1e6) | 0;
-    const fine = fbm(seed, 30, 11, 4);
-    const arid = fbm(seed + 7, 6, 3, 3);
-    const veg = fbm(seed + 31, 12, 5, 3);
-    const wob = fbm(seed + 53, 14, 7, 3), wob2 = fbm(seed + 59, 40, 20, 2);
+    /* Every pattern laid over the map — the roughness of the coasts, the
+       wandering of the desert edges, the patchiness of forest and sand — is
+       worked out with 3-D noise at each point of the globe, not on the flat
+       map, where all the columns crowd into one point at each pole and any
+       pattern there is dragged into a star of streaks. Worked out on a coarser
+       grid and smoothed back up, since the noise is soft. */
+    // (no finer than the grid can carry, or it streaks where the grid's columns crowd in)
+    const fine3 = fbm3(seed, 6, 3), arid3 = fbm3(seed + 7, 1.8, 3), veg3 = fbm3(seed + 31, 3.6, 3);
+    const wob3 = fbm3(seed + 53, 2.2, 3), wob23 = fbm3(seed + 59, 6.5, 2);
+    const FW = 512, FH = 256, NC = 5, G = new Float32Array(FW * FH * NC);
+    for (let y = 0, k = 0; y < FH; y++) {
+      const th = (y + 0.5) / FH * Math.PI, st = Math.sin(th), cy = Math.cos(th);
+      for (let x = 0; x < FW; x++, k += NC) {
+        // three.js lays a sphere out as x = -cos(phi)sin(theta), y = cos(theta), z = sin(phi)sin(theta)
+        const ph = (x + 0.5) / FW * TAU, px = -Math.cos(ph) * st, pz = Math.sin(ph) * st;
+        G[k] = fine3(px, cy, pz); G[k + 1] = arid3(px, cy, pz); G[k + 2] = veg3(px, cy, pz);
+        G[k + 3] = wob3(px, cy, pz); G[k + 4] = wob23(px, cy, pz);
+      }
+    }
+    const S = new Float32Array(NC);
+    let su = -1, sv = -1;
+    const noiseAt = (u, v) => {
+      if (u === su && v === sv) return S;             // asked for twice per pixel (colour and height)
+      su = u; sv = v;
+      const fx = u * FW - 0.5, fy = clamp(v * FH - 0.5, 0, FH - 1);
+      const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
+      const xa = ((x0 % FW) + FW) % FW, xb = (xa + 1) % FW, y1 = Math.min(y0 + 1, FH - 1);
+      for (let c = 0; c < NC; c++) {
+        S[c] = lerp(lerp(G[(y0 * FW + xa) * NC + c], G[(y0 * FW + xb) * NC + c], tx),
+                    lerp(G[(y1 * FW + xa) * NC + c], G[(y1 * FW + xb) * NC + c], tx), ty);
+      }
+      return S;
+    };
+    const fine = (u, v) => noiseAt(u, v)[0], arid = (u, v) => noiseAt(u, v)[1], veg = (u, v) => noiseAt(u, v)[2];
+    const wob = (u, v) => noiseAt(u, v)[3], wob2 = (u, v) => noiseAt(u, v)[4];
     // The map, roughened a little so coastlines and hills are not too tidy.
     const hf = (u, v) => clamp(earthGround(u, v) + (fine(u, v) - 0.5) * 0.06, 0, 1);
 
@@ -3825,7 +3856,8 @@ function setWater(b, w) {
     return;
   }
   if (!p.sea) {
-    const sea = new THREE.Mesh(SPHERE, new THREE.MeshStandardMaterial({
+    // a smooth ball: on the coarse one the sea shows flat panels round the poles
+    const sea = new THREE.Mesh(SPHERE_MID, new THREE.MeshStandardMaterial({
       color: waterColour(b).clone(), roughness: 0.42, metalness: 0.04,   // a soft sheen, not a hard spot
       // Shallow water lets a little of the seabed through, and it must not write
       // depth or it would hide the land standing out of it.
@@ -7489,8 +7521,14 @@ function displaceSphere(field, amount, base) {
     // wrap in u so the vertices on the seam sample the same texel and stay put
     const x = ((Math.round(u * W - 0.5) % W) + W) % W;
     const y = clamp(Math.round(vv * H - 0.5), 0, H - 1);
-    const fade = Math.sin(Math.PI * clamp(vv, 0, 1));
-    const s = 1 + (d[y * W + x] - mean) * amount * fade;
+    // Toward a pole every column crowds into one point, so the ground there
+    // is eased to the average of its own row — the same for every column, so
+    // the copies of the pole vertex agree — rather than to the world's average,
+    // which sank the poles and let the sea show through in a round hole.
+    // (only in the last sliver at the pole itself: wider than that, a ridge
+    // near the pole — Greenland's tip — gets smeared into a ring all round)
+    const fade = clamp(Math.sin(Math.PI * clamp(vv, 0, 1)) / Math.sin(Math.PI * 1.5 / H), 0, 1);
+    const s = 1 + (lerp(rowMean(field, y), d[y * W + x], fade) - mean) * amount;
     if (s < rlo) rlo = s;
     if (s > rhi) rhi = s;
     pos.setXYZ(i, v.x * s, v.y * s, v.z * s);
@@ -7554,8 +7592,22 @@ function groundAt(b, n) {
   if (u < 0) u += 1;
   const x = ((Math.round(u * W - 0.5) % W) + W) % W;
   const y = clamp(Math.round(vv * H - 0.5), 0, H - 1);
-  const fade = Math.sin(Math.PI * clamp(vv, 0, 1));
-  return 1 + (d[y * W + x] - field.mean) * amount * fade;
+  const fade = clamp(Math.sin(Math.PI * clamp(vv, 0, 1)) / Math.sin(Math.PI * 1.5 / H), 0, 1);
+  return 1 + (lerp(rowMean(field, y), d[y * W + x], fade) - field.mean) * amount;
+}
+
+/** The average height of one row of a height field (cached). */
+function rowMean(field, y) {
+  if (!field.rowMean) {
+    const W = field.W, H = field.H, d = field.d, m = new Float32Array(H);
+    for (let r = 0; r < H; r++) {
+      let t = 0;
+      for (let x = 0; x < W; x++) t += d[r * W + x];
+      m[r] = t / W;
+    }
+    field.rowMean = m;
+  }
+  return field.rowMean[y];
 }
 
 /* ------------------------------------------------------------ real elevation */
