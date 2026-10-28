@@ -728,15 +728,61 @@ const smoothstep = (t) => t * t * (3 - 2 * t);
  * A value-noise lattice that wraps in u (longitude) and clamps in v (latitude),
  * so equirectangular textures have no visible seam down the back of a planet.
  */
+/* Where a spot of the map (u, v) lands on the globe turned on its side, as
+   map coordinates there, plus its point on the upright globe — worked out
+   once for each spot, since every octave of every pattern asks again. */
+const _side = [0, 0, 0, 0, 0];
+let _sideU = NaN, _sideV = NaN;
+function sideways(u, v) {
+  if (u === _sideU && v === _sideV) return _side;
+  _sideU = u; _sideV = v;
+  const ph = u * TAU, th = clamp(v, 0, 1) * Math.PI, st = Math.sin(th);
+  const x = -Math.cos(ph) * st, y = Math.cos(th), z = Math.sin(ph) * st;
+  // turned a quarter round the x axis: the poles go to the equator
+  const x2 = x, y2 = -z, z2 = y;
+  let u2 = Math.atan2(z2, -x2) / TAU;
+  if (u2 < 0) u2 += 1;
+  _side[0] = u2; _side[1] = Math.acos(clamp(y2, -1, 1)) / Math.PI;
+  _side[2] = x; _side[3] = y; _side[4] = z;
+  return _side;
+}
+
 class Lattice {
   constructor(seed, gw, gh) {
-    this.gw = gw; this.gh = gh;
+    this.gw = gw; this.gh = gh; this.seed = seed;
     const r = mulberry32(seed);
     const g = new Float32Array(gw * (gh + 1));
     for (let i = 0; i < g.length; i++) g[i] = r();
     this.g = g;
   }
   at(u, v) {
+    const gw = this.gw, gh = this.gh;
+    /* Painting a world: near a pole the flat grid's columns all crowd into
+       one point and drag any pattern there into a star of streaks. So toward
+       the poles the pattern is read instead off the same grid laid round the
+       globe turned on its side, where the pole sits on the equator and
+       nothing is crowded — blended in between 55° and 65° of latitude. (A
+       pattern stretched one way, like a gas giant's bands, would turn with
+       it, so those take 3-D noise at the point of the globe instead.) */
+    let polar = 0;
+    if (Lattice.sphere) {
+      polar = clamp((Math.abs(0.5 - clamp(v, 0, 1)) * 180 - 55) / 10, 0, 1);
+      if (polar > 0) {
+        const r = sideways(u, v);
+        let n2;
+        if (gw <= gh * 4 && gh * 2 <= gw * 2) n2 = this.flat(r[0], r[1]);
+        else {
+          const fu = gw / TAU, fv = gh / Math.PI;
+          n2 = noise3(this.seed, r[2] * fu, r[3] * fv, r[4] * fu);
+        }
+        if (polar >= 1) return n2;
+        this._n3 = n2;
+      }
+    }
+    const flat = this.flat(u, v);
+    return polar > 0 ? lerp(flat, this._n3, smoothstep(polar)) : flat;
+  }
+  flat(u, v) {
     const gw = this.gw, gh = this.gh;
     const x = u * gw, y = clamp(v, 0, 1) * gh;
     let x0 = Math.floor(x), y0 = Math.floor(y);
@@ -750,6 +796,14 @@ class Lattice {
     const c = g[y1 * gw + x0], d = g[y1 * gw + x1];
     return lerp(lerp(a, b, tx), lerp(c, d, tx), ty);
   }
+}
+
+/** Run `make` with every noise lattice reading off the globe (see Lattice.at). */
+Lattice.sphere = false;
+function onSphere(make) {
+  const was = Lattice.sphere;
+  Lattice.sphere = true;
+  try { return make(); } finally { Lattice.sphere = was; }
 }
 
 /** Fractal brownian motion built from wrapping lattices. Returns f(u,v) → 0..1 */
@@ -825,7 +879,15 @@ function worley(seed, gw, gh) {
   const n = gw * (gh + 1);
   const px = new Float32Array(n), py = new Float32Array(n);
   for (let i = 0; i < n; i++) { px[i] = r(); py[i] = r(); }
-  return function (u, v) {
+  // Near a pole the cells are read off the globe turned on its side, as
+  // Lattice.at does, so they do not crowd into a star there.
+  const atPole = (u, v) => {
+    const polar = Lattice.sphere ? clamp((Math.abs(0.5 - clamp(v, 0, 1)) * 180 - 55) / 10, 0, 1) : 0;
+    if (polar <= 0) return flat(u, v);
+    const r2 = sideways(u, v), side = flat(r2[0], r2[1]);
+    return polar >= 1 ? side : lerp(flat(u, v), side, smoothstep(polar));
+  };
+  const flat = function (u, v) {
     const x = u * gw, y = clamp(v, 0, 1) * gh;
     const xi = Math.floor(x), yi = Math.floor(y);
     const sx = Math.max(0.25, Math.cos((0.5 - v) * Math.PI));
@@ -843,6 +905,7 @@ function worley(seed, gw, gh) {
     }
     return Math.sqrt(f2) - Math.sqrt(f1);
   };
+  return atPole;
 }
 
 /* ======================================================= texture primitives */
@@ -919,18 +982,46 @@ function craters(ctx, W, H, rng, count, rMin, rMax, tint) {
 
 /** Glowing fracture lines — lava rifts, ice crevasses, diamond veins. */
 function cracks(ctx, W, H, rng, count, color, width, glow) {
+  /* Each crack wanders over the globe itself, a short way along a great
+     circle at a time, turning a little at every step, and is then drawn onto
+     the map. Walked on the flat map instead, its steps shrink to nothing near
+     a pole on the globe, and every crack up there was squeezed into a fan of
+     lines all meeting at the pole. */
   ctx.save();
   ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const P = new THREE.Vector3(), T = new THREE.Vector3(), Q = new THREE.Vector3();
+  const toMap = (p) => {
+    let u = Math.atan2(p.z, -p.x) / TAU;
+    if (u < 0) u += 1;
+    return [u * W, Math.acos(clamp(p.y, -1, 1)) / Math.PI * H];
+  };
   for (let i = 0; i < count; i++) {
-    let x = rng() * W, y = 0.1 * H + rng() * 0.8 * H;
-    let ang = rng() * TAU;
+    // anywhere on the globe, evenly
+    const y0 = rng() * 2 - 1, ph0 = rng() * TAU, r0 = Math.sqrt(1 - y0 * y0);
+    P.set(-Math.cos(ph0) * r0, y0, Math.sin(ph0) * r0);
+    // a starting heading along the ground
+    T.set(rng() - 0.5, rng() - 0.5, rng() - 0.5).cross(P).normalize();
     const seg = 6 + (rng() * 14) | 0;
-    const pts = [[x, y]];
+    let [x, yy] = toMap(P);
+    const pts = [[x, yy]];
     for (let s = 0; s < seg; s++) {
-      ang += (rng() - 0.5) * 1.1;
-      const len = W * (0.008 + rng() * 0.03);
-      x += Math.cos(ang) * len; y += Math.sin(ang) * len;
-      pts.push([x, y]);
+      T.applyAxisAngle(P, (rng() - 0.5) * 1.1);                  // turn a little
+      const len = TAU * (0.008 + rng() * 0.03);                   // as far as the old steps went at the equator
+      const sub = 6;
+      for (let k = 0; k < sub; k++) {
+        const d = len / sub, c = Math.cos(d), sn = Math.sin(d);
+        Q.copy(P).multiplyScalar(c).addScaledVector(T, sn);       // along the great circle
+        T.multiplyScalar(c).addScaledVector(P, -sn).normalize();
+        P.copy(Q).normalize();
+        const m = toMap(P);
+        // keep the line continuous across the map's left and right edges
+        let mx = m[0];
+        while (mx - x > W / 2) mx -= W;
+        while (x - mx > W / 2) mx += W;
+        x = mx; yy = m[1];
+        pts.push([x, yy]);
+      }
     }
     for (const off of [-W, 0, W]) {
       ctx.beginPath();
@@ -1731,7 +1822,10 @@ const SURFACE = {
         // Central differences on the height field, lit from the upper left.
         // A slope that tips towards the light gets brighter; the far wall of
         // each granule falls into its own shadow.
-        const gx = h[row + (x + 1) % W] - h[row + (x - 1 + W) % W];
+        // (east–west neighbours crowd together toward a pole, so their
+        // difference is scaled up to the real slope, or the shading turns
+        // into rays round the pole)
+        const gx = (h[row + (x + 1) % W] - h[row + (x - 1 + W) % W]) / Math.max(Math.sin((y + 0.5) / H * Math.PI), 0.08);
         const gy = h[rowD + x] - h[rowU + x];
         const shade = clamp(1 - (gx + gy) * 1.35, 0.66, 1.42);
         const hv = h[i];
@@ -1839,7 +1933,10 @@ const SURFACE = {
     for (let y = 0, i = 0, p = 0; y < H; y++) {
       const rowU = Math.max(0, y - 1) * W, rowD = Math.min(H - 1, y + 1) * W, row = y * W;
       for (let x = 0; x < W; x++, i++, p += 4) {
-        const gx = h[row + (x + 1) % W] - h[row + (x - 1 + W) % W];
+        // (east–west neighbours crowd together toward a pole, so their
+        // difference is scaled up to the real slope, or the shading turns
+        // into rays round the pole)
+        const gx = (h[row + (x + 1) % W] - h[row + (x - 1 + W) % W]) / Math.max(Math.sin((y + 0.5) / H * Math.PI), 0.08);
         const gy = h[rowD + x] - h[rowU + x];
         const shade = clamp(1 - (gx + gy) * 1.9, 0.68, 1.34);
         const c = mix(pale, hot, h[i] * 0.5);
@@ -7400,8 +7497,10 @@ const STAR_VERT = `
   varying vec2 vUv;
   varying vec3 vSN;
   varying vec3 vVP;
+  varying vec3 vLP;
   void main() {
     vUv = uv;
+    vLP = position;
     // The *sphere* normal, not the displaced one: granulation relief must not
     // be allowed to make the limb darkening blotchy.
     vSN = normalize(mat3(modelMatrix) * normalize(position));
@@ -7419,6 +7518,7 @@ const STAR_FRAG = `
   varying vec2 vUv;
   varying vec3 vSN;
   varying vec3 vVP;
+  varying vec3 vLP;
   void main() {
     vec3 V = normalize(-vVP);
     vec3 N = normalize((viewMatrix * vec4(vSN, 0.0)).xyz);
@@ -7426,7 +7526,18 @@ const STAR_FRAG = `
     // Quadratic limb-darkening law. The solar coefficients put the very edge
     // at about 30% of central brightness — this is not a subtle effect.
     float d = uLimb.x + uLimb.y * mu + uLimb.z * mu * mu;
-    vec3 t = texture2D(uMap, vUv).rgb;
+    // Where on the map, worked out for this very pixel. Interpolating the
+    // mesh's own uv does near the equator, but every triangle round a pole
+    // meets at one point holding one u, so each smears a single column of
+    // the map into a ray. Same layout as SphereGeometry's uv.
+    vec3 P = normalize(vLP);
+    float u = atan(P.z, -P.x) / 6.2831853;
+    float v = 1.0 - acos(clamp(P.y, -1.0, 1.0)) / 3.1415927;
+    // u jumps from 1 back to 0 on the seam; take whichever of the two
+    // wrappings is smooth here so the mip choice is not thrown off.
+    float u1 = fract(u), u2 = fract(u + 0.5) - 0.5;
+    u = fwidth(u1) <= fwidth(u2) + 1e-6 ? u1 : u2;
+    vec3 t = texture2D(uMap, vec2(u, v)).rgb;
     // A banded star is painted its band colour outright rather than tinted, so
     // the photosphere is flattened to its own relief first and uTint supplies
     // every bit of the hue. All the granulation survives; only the colour goes.
@@ -7454,14 +7565,16 @@ function surfaceTexture(type, seed) {
   const cv = newCanvas(W, H);
   const rng = mulberry32(hashStr(key));
   const opts = Object.assign({ temp: def.temp, spots: def.spots }, def.opts || {});
-  const hgt = SURFACE[def.surf](cv.getContext('2d'), W, H, rng, opts);
+  const hgt = onSphere(() => SURFACE[def.surf](cv.getContext('2d'), W, H, rng, opts));
   // A painter may hand back the height field it shaded from, so the same
   // relief can also be pushed into the mesh. See reliefGeometry().
   if (hgt) heightCache.set(key, { W: W, H: H, d: hgt });
 
   const t = new THREE.CanvasTexture(cv);
   t.encoding = THREE.sRGBEncoding;
-  t.anisotropy = 4;
+  // as sharp as the graphics card allows: toward a pole the map is squeezed
+  // round and stretched along, and plain filtering blurs it into a fan
+  t.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
   texCache.set(key, t);
   return t;
 }
@@ -7525,9 +7638,10 @@ function displaceSphere(field, amount, base) {
     // is eased to the average of its own row — the same for every column, so
     // the copies of the pole vertex agree — rather than to the world's average,
     // which sank the poles and let the sea show through in a round hole.
-    // (only in the last sliver at the pole itself: wider than that, a ridge
-    // near the pole — Greenland's tip — gets smeared into a ring all round)
-    const fade = clamp(Math.sin(Math.PI * clamp(vv, 0, 1)) / Math.sin(Math.PI * 1.5 / H), 0, 1);
+    // (only within 6° of the pole: there a sphere's mesh is long thin
+    // triangles that shade any bumps into rays; wider, a ridge near the pole —
+    // Greenland's tip — gets smeared into a ring all round)
+    const fade = poleFade(vv);
     const s = 1 + (lerp(rowMean(field, y), d[y * W + x], fade) - mean) * amount;
     if (s < rlo) rlo = s;
     if (s > rhi) rhi = s;
@@ -7592,8 +7706,14 @@ function groundAt(b, n) {
   if (u < 0) u += 1;
   const x = ((Math.round(u * W - 0.5) % W) + W) % W;
   const y = clamp(Math.round(vv * H - 0.5), 0, H - 1);
-  const fade = clamp(Math.sin(Math.PI * clamp(vv, 0, 1)) / Math.sin(Math.PI * 1.5 / H), 0, 1);
+  const fade = poleFade(vv);
   return 1 + (lerp(rowMean(field, y), d[y * W + x], fade) - field.mean) * amount;
+}
+
+/** How much of the landscape stands at a point (v = 0 at the north pole, 1
+    at the south): all of it, easing away over the last 6° to each pole. */
+function poleFade(v) {
+  return smoothstep(clamp((90 - Math.abs(0.5 - clamp(v, 0, 1)) * 180) / 6, 0, 1));
 }
 
 /** The average height of one row of a height field (cached). */
@@ -7911,7 +8031,8 @@ function buildWorld(b, def, grp) {
         uEdge: { value: new THREE.Vector3(1.0, 0.80, 0.58) },
         uLimb: { value: new THREE.Vector3(0.30, 0.93, -0.23) }
       },
-      vertexShader: STAR_VERT, fragmentShader: STAR_FRAG
+      vertexShader: STAR_VERT, fragmentShader: STAR_FRAG,
+      extensions: { derivatives: true }
     });
   } else if (def.star) {
     mat = new THREE.MeshBasicMaterial({ map: tex });
@@ -7951,7 +8072,7 @@ function buildWorld(b, def, grp) {
        the eye reads three separate distances instead of one skin. */
     const warm = (def.opts && def.opts.warm) || 0;
     const chromo = new THREE.Mesh(SPHERE, new THREE.MeshBasicMaterial({
-      map: cachedTexture('chromo:' + b.type, () => chromoTexture(hashStr('chromo' + b.type), 512, 256, def.temp, warm)),
+      map: cachedTexture('chromo:' + b.type, () => onSphere(() => chromoTexture(hashStr('chromo' + b.type), 512, 256, def.temp, warm))),
       blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.40
     }));
     chromo.scale.setScalar(1.012);
@@ -7959,7 +8080,7 @@ function buildWorld(b, def, grp) {
     b.parts.chromo = chromo;
 
     const corona = new THREE.Mesh(SPHERE, new THREE.MeshBasicMaterial({
-      map: cachedTexture('corona:' + b.type, () => coronaTexture(hashStr('corona' + b.type), 512, 256, def.temp, warm)),
+      map: cachedTexture('corona:' + b.type, () => onSphere(() => coronaTexture(hashStr('corona' + b.type), 512, 256, def.temp, warm))),
       blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
       side: THREE.DoubleSide, opacity: 0.30
     }));
@@ -7973,10 +8094,10 @@ function buildWorld(b, def, grp) {
     // weather you can fly down to needs real resolution, or it turns to blocks
     const CW = swirled ? 2048 : 512, CH = swirled ? 1024 : 256;
     const ct = cachedTexture('cloud:' + b.type + ':' + (b.seed % 3), () => def.cloudStyle === 'venus'
-      ? venusCloudTexture(hashStr(b.type + b.seed % 3), 1024, 512)
-      : def.cloudStyle === 'titan' ? titanHazeTexture(hashStr(b.type + b.seed % 3), 1024, 512)
-      : cloudTexture(hashStr(b.type + b.seed % 3), CW, CH, def.clouds, [255, 255, 255], swirled ? 1 : 0, def.cloudCover || 0));
-    if (swirled) ct.anisotropy = 4;
+      ? onSphere(() => venusCloudTexture(hashStr(b.type + b.seed % 3), 1024, 512))
+      : def.cloudStyle === 'titan' ? onSphere(() => titanHazeTexture(hashStr(b.type + b.seed % 3), 1024, 512))
+      : onSphere(() => cloudTexture(hashStr(b.type + b.seed % 3), CW, CH, def.clouds, [255, 255, 255], swirled ? 1 : 0, def.cloudCover || 0)));
+    ct.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
     const cm = new THREE.MeshStandardMaterial({ map: ct, transparent: true, depthWrite: false, roughness: 1 });
     // a touch of their own brightness, so cloud tops stay white, not grey, where the light is low
     if (swirled || def.cloudStyle) { cm.emissive = new THREE.Color(1, 1, 1); cm.emissiveMap = ct; cm.emissiveIntensity = 0.14; }
@@ -8059,7 +8180,7 @@ function buildTerraLayer(b, grp) {
   const sv = b.seed % 3;
   const skinTex = cachedTexture('terraskin:' + sv, () => {
     const cv = newCanvas(512, 256);
-    SURFACE.terran(cv.getContext('2d'), 512, 256, mulberry32(hashStr('terraskin' + sv)), { sea: 0.02, caps: 0.1 });
+    onSphere(() => SURFACE.terran(cv.getContext('2d'), 512, 256, mulberry32(hashStr('terraskin' + sv)), { sea: 0.02, caps: 0.1 }));
     return cv;
   });
   const skin = new THREE.Mesh(reliefGeometry(b.type, b.seed), new THREE.MeshStandardMaterial({
@@ -8071,7 +8192,7 @@ function buildTerraLayer(b, grp) {
   b.parts.terraSkin = skin;
 
   const ct = cachedTexture('cloud:terra:' + (b.seed % 3),
-    () => cloudTexture(hashStr('terra' + (b.seed % 3)), 512, 256, 0.7, [255, 255, 255], 1));
+    () => onSphere(() => cloudTexture(hashStr('terra' + (b.seed % 3)), 512, 256, 0.7, [255, 255, 255], 1)));
   const cloud = new THREE.Mesh(SPHERE, new THREE.MeshStandardMaterial({
     map: ct, transparent: true, opacity: 0, depthWrite: false, roughness: 1
   }));
