@@ -606,7 +606,7 @@
     <div class="an-tools panel">
       <button id="an-btn-systems" title="Load a ready-made system">&#9733; <span>Systems</span></button>
       <button id="an-btn-settings" title="Simulation settings">&#9881; <span>Settings</span></button>
-      <button id="an-btn-music" title="Music on / off (M)">&#9835;</button>
+      <button id="an-btn-music" title="Music: Synth &mdash; click for Organ (M)">&#9835;</button>
       <button id="an-btn-help" title="How to play">?</button>
     </div>
   </div>
@@ -18278,7 +18278,7 @@ function openHelp() {
     '<div><kbd>Del</kbd></div><span>Remove the selected body</span>' +
     '<div><kbd>T</kbd> <kbd>L</kbd></div><span>Toggle trails / labels</span>' +
     '<div><kbd>Ctrl</kbd>+<kbd>R</kbd></div><span>Tools — switch on <b>Swipe to clear particles</b>, then swipe across the screen to sweep away every particle. Press it again to stop.</span>' +
-    '<div><kbd>M</kbd></div><span>Music on / off (or the &#9835; button)</span>' +
+    '<div><kbd>M</kbd></div><span>Music: Synth &rarr; Organ &rarr; off (or the &#9835; button)</span>' +
     '</div>' +
     '<p style="margin-top:8px">On a touch screen: one finger rotates, two fingers pinch to zoom and drag to pan.</p>' +
     '<h3>LANDING ON A WORLD</h3>' +
@@ -18408,9 +18408,16 @@ function showPanel(which) {
 
 /* ==================================================================== music */
 /*
- * Background music: an original piece for a huge church organ, in the spirit
- * of the big space-film scores. Nothing is downloaded — every note is played
- * live through Web Audio, so it never repeats exactly.
+ * Background music: two original pieces, both played live through Web Audio —
+ * nothing is downloaded. The ♫ button (or M) steps Synth → Organ → off.
+ *
+ * SYNTH (the default) is an 80s analogue-synth piece in E minor: a pulsing
+ * arpeggio of sawtooths through a resonant filter, a square-wave bass on
+ * quavers, a slow detuned pad, all through a dotted-quaver echo. The filter
+ * opens as the music swells, so it starts dark and murky and grows bright.
+ *
+ * ORGAN is a piece for a huge church organ, in the spirit of the big
+ * space-film scores:
  *
  *   PEDAL      the root of each chord, two octaves down, held the whole bar
  *   OSTINATO   a patient figure of quavers climbing through the chord
@@ -18419,9 +18426,12 @@ function showPanel(which) {
  * The loudness breathes on a slow wave of a few minutes, so the layers arrive
  * one by one, build to a full organ, and fall back to just the pedal.
  * Browsers will not play sound until the page is touched, so it starts on the
- * first click or key. The ♫ button (or M) turns it off, and that is remembered.
+ * first click or key. The choice (including off) is remembered.
  */
-const music = { ctx: null, on: true, started: false, next: 0, step: 0, t0: 0, timer: 0, out: null, filt: null, wave: null };
+const music = { ctx: null, on: true, mode: 'synth', started: false, next: 0, step: 0, t0: 0, timer: 0,
+                out: null, filt: null, wave: null, bus: {}, synthOut: null };
+const MUSIC_MODES = ['synth', 'organ', 'off'];
+const MUSIC_NAMES = { synth: 'Synth', organ: 'Organ', off: 'off' };
 const MUSIC_KEY = 'astronomia.music';
 const MUSIC_BEAT = 60 / 66 / 2;          // a quaver at 66 beats a minute
 // D minor: i – VI – iv – V, then i – III – VII – V. (MIDI note numbers.)
@@ -18432,15 +18442,28 @@ const MUSIC_CHORDS = [
 const MUSIC_FIGURE = [0, 1, 2, 4, 3, 2, 1, 2];    // indexes into the chord, spread over two octaves
 const midiHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
 
+const SYNTH_BEAT = 60 / 104 / 4;         // a semiquaver at 104 beats a minute
+// E minor: i – VI – iv – V, then i – III – VII – V. A bar of semiquavers each.
+const SYNTH_CHORDS = [
+  [52, 55, 59], [48, 52, 55], [45, 48, 52], [47, 51, 54],
+  [52, 55, 59], [43, 47, 50], [50, 54, 57], [47, 51, 54]
+];
+// indexes into the chord spread over two octaves (0-2 low, 3-5 high)
+const SYNTH_FIGURE = [0, 2, 4, 2, 3, 1, 5, 4, 0, 2, 3, 5, 4, 2, 3, 1];
+
 function initMusic() {
-  try { music.on = localStorage.getItem(MUSIC_KEY) !== 'off'; } catch (e) {}
+  try {
+    const v = localStorage.getItem(MUSIC_KEY);
+    music.mode = v === 'off' || v === 'organ' ? v : 'synth';     // an old 'on' means the new default
+  } catch (e) {}
+  music.on = music.mode !== 'off';
+  showMusicMode();
   const btn = $('an-btn-music');
-  btn.classList.toggle('off', !music.on);
-  btn.addEventListener('click', (e) => { e.stopPropagation(); setMusic(!music.on); });
+  btn.addEventListener('click', (e) => { e.stopPropagation(); nextMusic(); });
   const kick = () => { if (music.on && !music.started) startMusic(); };
   window.addEventListener('pointerdown', kick, true);
   window.addEventListener('keydown', (e) => {
-    if ((e.key === 'm' || e.key === 'M') && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) setMusic(!music.on);
+    if ((e.key === 'm' || e.key === 'M') && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) nextMusic();
     else kick();
   }, true);
   document.addEventListener('visibilitychange', () => {
@@ -18449,12 +18472,35 @@ function initMusic() {
   });
 }
 
-function setMusic(on) {
-  music.on = on;
-  try { localStorage.setItem(MUSIC_KEY, on ? 'on' : 'off'); } catch (e) {}
-  $('an-btn-music').classList.toggle('off', !on);
-  if (on) { if (!music.started) startMusic(); else music.ctx.resume(); }
-  else if (music.ctx) music.ctx.suspend();
+function showMusicMode() {
+  const btn = $('an-btn-music');
+  const nxt = MUSIC_MODES[(MUSIC_MODES.indexOf(music.mode) + 1) % MUSIC_MODES.length];
+  btn.classList.toggle('off', music.mode === 'off');
+  btn.title = 'Music: ' + MUSIC_NAMES[music.mode] + ' \u2014 click for ' + (nxt === 'off' ? 'silence' : MUSIC_NAMES[nxt]) + ' (M)';
+}
+
+/** Step Synth → Organ → off → Synth. */
+function nextMusic() {
+  setMusic(MUSIC_MODES[(MUSIC_MODES.indexOf(music.mode) + 1) % MUSIC_MODES.length]);
+  toast(music.mode === 'off' ? 'Music off' : '\u266B ' + MUSIC_NAMES[music.mode] + ' music');
+}
+
+function setMusic(mode) {
+  const was = music.mode;
+  music.mode = mode;
+  music.on = mode !== 'off';
+  try { localStorage.setItem(MUSIC_KEY, mode); } catch (e) {}
+  showMusicMode();
+  if (!music.on) { if (music.ctx) music.ctx.suspend(); return; }
+  if (!music.started) { startMusic(); return; }
+  music.ctx.resume();
+  if (mode !== was) {
+    // the old piece's last notes ring out; the new one starts from its quiet beginning
+    const now = music.ctx.currentTime;
+    for (const k in music.bus) music.bus[k].gain.setTargetAtTime(k === mode ? 1 : 0, now, 0.4);
+    music.t0 = music.next = now + 0.15;
+    music.step = 0;
+  }
 }
 
 function startMusic() {
@@ -18475,9 +18521,25 @@ function startMusic() {
   const master = ctx.createGain(); master.gain.value = 0;
   master.gain.linearRampToValueAtTime(0.32, ctx.currentTime + 6);   // fade in
   music.filt = ctx.createBiquadFilter(); music.filt.type = 'lowpass'; music.filt.frequency.value = 1400;
+  music.bus.organ = ctx.createGain();
+  music.bus.organ.gain.value = music.mode === 'organ' ? 1 : 0;
   music.out = music.filt;
-  music.filt.connect(dry); music.filt.connect(verb); verb.connect(wet);
+  music.filt.connect(music.bus.organ);
+  music.bus.organ.connect(dry); music.bus.organ.connect(verb); verb.connect(wet);
   dry.connect(comp); wet.connect(comp); comp.connect(master); master.connect(ctx.destination);
+  // The synth: dry, a little of the hall, and a dotted-quaver echo.
+  music.bus.synth = ctx.createGain();
+  music.bus.synth.gain.value = music.mode === 'synth' ? 1 : 0;
+  music.synthOut = ctx.createGain();
+  music.synthOut.connect(music.bus.synth);
+  const echo = ctx.createDelay(1); echo.delayTime.value = SYNTH_BEAT * 3;
+  const fb = ctx.createGain(); fb.gain.value = 0.38;
+  const echoTone = ctx.createBiquadFilter(); echoTone.type = 'lowpass'; echoTone.frequency.value = 2200;
+  const send = ctx.createGain(); send.gain.value = 0.18;
+  music.bus.synth.connect(comp);
+  music.bus.synth.connect(echo); echo.connect(echoTone); echoTone.connect(fb); fb.connect(echo);
+  echoTone.connect(comp);
+  music.bus.synth.connect(send); send.connect(verb);
   // An organ pipe: a handful of harmonics, the octaves strongest.
   const re = new Float32Array([0, 1, 0.55, 0.22, 0.32, 0.06, 0.14, 0, 0.09]);
   music.wave = ctx.createPeriodicWave(re, new Float32Array(re.length));
@@ -18511,9 +18573,91 @@ function organNote(midi, at, dur, vol) {
   }
 }
 
+/** One sawtooth arpeggio note: two saws a hair apart through a resonant
+    filter that snaps open and closes again — the 80s "pluck". */
+function synthPluck(midi, at, dur, vol, bright) {
+  const ctx = music.ctx;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 9;
+  f.frequency.setValueAtTime(bright, at);
+  f.frequency.exponentialRampToValueAtTime(Math.max(180, bright * 0.18), at + dur * 1.6);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(vol, at + 0.005);
+  g.gain.setTargetAtTime(vol * 0.35, at + 0.01, dur * 0.6);
+  g.gain.setTargetAtTime(0, at + dur, 0.05);
+  f.connect(g); g.connect(music.synthOut);
+  for (const det of [-7, 7]) {
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.value = midiHz(midi); o.detune.value = det;
+    o.connect(f); o.start(at); o.stop(at + dur + 0.4);
+  }
+}
+
+/** Square-wave bass, rounded off so it thumps rather than buzzes. */
+function synthBass(midi, at, dur, vol) {
+  const ctx = music.ctx;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 3;
+  f.frequency.setValueAtTime(900, at);
+  f.frequency.exponentialRampToValueAtTime(260, at + dur);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(vol, at + 0.01);
+  g.gain.setTargetAtTime(0, at + dur * 0.7, 0.04);
+  f.connect(g); g.connect(music.synthOut);
+  const o = ctx.createOscillator(); o.type = 'square';
+  o.frequency.value = midiHz(midi);
+  o.connect(f); o.start(at); o.stop(at + dur + 0.3);
+}
+
+/** A slow pad: three detuned saws per note, fading in over a couple of seconds. */
+function synthPad(notes, at, dur, vol, bright) {
+  const ctx = music.ctx;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 1;
+  f.frequency.value = bright;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(vol, at + Math.min(2, dur * 0.5));
+  g.gain.setValueAtTime(vol, at + dur - 0.2);
+  g.gain.linearRampToValueAtTime(0, at + dur + 1.2);
+  f.connect(g); g.connect(music.synthOut);
+  for (const n of notes) for (const det of [-12, 0, 12]) {
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.value = midiHz(n); o.detune.value = det;
+    o.connect(f); o.start(at); o.stop(at + dur + 1.3);
+  }
+}
+
+function scheduleSynth() {
+  const ctx = music.ctx;
+  while (music.next < ctx.currentTime + 0.6) {
+    const at = music.next, st = music.step;
+    const bar = Math.floor(st / 16), q = st % 16;
+    const chord = SYNTH_CHORDS[bar % SYNTH_CHORDS.length];
+    const sw = musicSwell(at);
+    const bright = 420 + sw * 3600;                 // dark and murky, opening up as it swells
+    if (q === 0) {
+      synthPad(chord.map(n => n + 12), at, SYNTH_BEAT * 16, 0.016 + sw * 0.02, 500 + sw * 1500);
+    }
+    if (q % 2 === 0) {                               // bass on every quaver, octave jump on the off-beats
+      synthBass(chord[0] - 12 + (q % 4 === 2 && sw > 0.3 ? 12 : 0), at, SYNTH_BEAT * 1.8, 0.11 + sw * 0.05);
+    }
+    if (sw > 0.08 || bar > 0) {                      // the arpeggio comes in after the first bar
+      const i = SYNTH_FIGURE[q], n = chord[i % 3] + 12 + (i >= 3 ? 12 : 0);
+      synthPluck(n, at, SYNTH_BEAT * 0.9, (0.045 + sw * 0.03) * (q % 4 === 0 ? 1.3 : 1), bright);
+    }
+    if (sw > 0.5 && q === 0) {                       // a high lead, only when it is loud
+      synthPluck(chord[(bar >> 1) % 3] + 36, at, SYNTH_BEAT * 12, 0.02 * sw, 1200 + sw * 2000);
+    }
+    music.next += SYNTH_BEAT;
+    music.step++;
+  }
+}
+
 function scheduleMusic() {
   const ctx = music.ctx;
   if (!ctx || ctx.state !== 'running') return;
+  if (music.mode === 'synth') { scheduleSynth(); return; }
+  if (music.mode !== 'organ') return;
   while (music.next < ctx.currentTime + 0.6) {
     const at = music.next, st = music.step;
     const bar = Math.floor(st / 16), q = st % 16;          // two bars of quavers per chord
