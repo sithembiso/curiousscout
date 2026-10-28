@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>AstroNomia &mdash; Space Sandbox</title>
+<title>AstroNomia: Next Gen &mdash; Space Sandbox</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%23090616'/%3E%3Ccircle cx='30' cy='30' r='13' fill='%23ff6fd8'/%3E%3Ccircle cx='25' cy='25' r='4' fill='%23ffc2f0' opacity='.6'/%3E%3Cellipse cx='30' cy='30' rx='24' ry='7' fill='none' stroke='%238be0ff' stroke-width='2.6' transform='rotate(-24 30 30)'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -493,6 +493,14 @@
   @keyframes an-spin { to { transform: rotate(360deg); } }
 
   .an-boot .an-title { font-size: clamp(15px, 5vw, 26px); animation: an-fade .8s .9s both; }
+  .an-boot-gen {
+    margin-top: -6px;
+    font-family: "Orbitron", sans-serif; font-weight: 900; font-size: clamp(12px, 3.6vw, 17px);
+    letter-spacing: 6px; text-transform: uppercase; color: #8be0ff;
+    text-shadow: 0 0 12px rgba(77,150,255,.9), 0 0 28px rgba(179,136,255,.6);
+    animation: an-fade .8s 1s both;
+  }
+  .an-boot-gen b { color: #ffd166; text-shadow: 0 0 12px rgba(255,209,102,.8); }
   .an-boot-bar {
     width: min(260px, 70vw); height: 10px; padding: 2px; border-radius: 6px;
     border: 1px solid rgba(139,224,255,.45); box-shadow: 0 0 12px rgba(77,150,255,.3);
@@ -584,7 +592,7 @@
   <div class="an-top">
     <div class="an-brand">
       <a class="an-back" href="../" title="Back to CuriousScout" aria-label="Back to CuriousScout">&#9664;</a>
-      <div class="an-title">AstroNomia <span>1.0.6</span></div>
+      <div class="an-title">AstroNomia <span>Next Gen 2.0.0</span></div>
     </div>
 
     <div class="an-time panel">
@@ -655,7 +663,8 @@
     <div class="orbit o2"><i></i></div>
     <div class="orbit o3"><i></i></div>
   </div>
-  <div class="an-title">AstroNomia <span>1.0.6</span></div>
+  <div class="an-title">AstroNomia</div>
+  <div class="an-boot-gen">Next Gen <b>2.0.0</b></div>
   <div class="an-boot-bar"><b id="an-boot-bar"></b></div>
   <p id="an-boot-msg">FORMING THE UNIVERSE&hellip;</p>
   <div class="an-boot-by">By Lunga Khumalo</div>
@@ -664,7 +673,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 /* ==========================================================================
-   AstroNomia 1.0.6 — a space sandbox
+   AstroNomia: Next Gen 2.0.0 — a space sandbox
    --------------------------------------------------------------------------
    Units used everywhere in the simulation:
      mass   = Earth masses      (M⊕ = 5.972e24 kg)
