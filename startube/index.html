@@ -294,6 +294,14 @@
   const seg = (t, a, b) => clamp((t - a) / (b - a), 0, 1);
 
   const VIDEOS = [
+    /* Trailers are real video files kept next to the Preview report, not drawn
+       on the canvas: `file` plays in the <video> player and `thumbImg` is the
+       picture on the tile. */
+    {
+      id: 'fr3d-gameplay', title: 'Football Rivals 3D: Gameplay Trailer 🎮', channel: 'curious', dur: 32, cat: 'Games', views: 0, days: 1,
+      file: '../preview/trailer-gameplay.mp4', thumbImg: '../preview/img/poster-gameplay.jpg',
+      desc: 'See how Football Rivals 3D plays: pick a club, run, pass, jump and tackle, take a half-time break, and watch out for own goals! Vote in Preview on the CuriousScout home page.'
+    },
     {
       id: 'solar', title: 'A Tour of the Solar System 🪐', channel: 'cosmo', dur: 64, cat: 'Space', views: 48210, days: 12,
       desc: 'Fly past all eight planets, from tiny hot Mercury to cold windy Neptune — and find out what makes each one special.',
@@ -686,9 +694,10 @@
     cosmo: { name: 'Cosmo Kids', av: '🚀', col: '#3a2a8a', banner: 'linear-gradient(120deg,#1a0f4a,#3a2a8a,#6d5dfc)', about: 'Rockets, planets and everything in space!' },
     wild: { name: 'Wild Wonders', av: '🐾', col: '#2f8a4a', banner: 'linear-gradient(120deg,#0f4a2a,#2f8a4a,#8ad43a)', about: 'Amazing animals, big and small.' },
     spark: { name: 'Science Sparks', av: '⚗️', col: '#c0502a', banner: 'linear-gradient(120deg,#5a1a10,#c0502a,#ffb020)', about: 'Big science questions with simple answers.' },
+    curious: { name: 'CuriousScout', av: '🎮', col: '#c99a1e', banner: 'linear-gradient(120deg,#120e2e,#2a1f5e,#FFD66B)', about: 'Trailers for games coming to the CuriousScout arcade.' },
     doodle: { name: 'Doodle Dance', av: '🎨', col: '#b0306a', banner: 'linear-gradient(120deg,#5a1040,#b0306a,#ff7ac6)', about: 'Shapes, letters, numbers — and lots of dancing.' }
   };
-  const CATS = ['All'].concat(SERVER ? ['Made by kids'] : [], ['Space', 'Animals', 'Science', 'Learning', 'Uploads']);
+  const CATS = ['All'].concat(SERVER ? ['Made by kids'] : [], ['Space', 'Animals', 'Science', 'Learning', 'Games', 'Uploads']);
 
   /* ======================================================= what we remember */
   /* Likes, comments, subscriptions, playlists and history: small, so
@@ -757,6 +766,7 @@
   const thumbs = {};
   function thumbOf(v) {
     if (v.mine) return v.thumb;
+    if (v.thumbImg) return v.thumbImg;
     if (v.pub) return SERVER + '/api/videos/' + v.sid + '/thumb';
     if (!thumbs[v.id]) {
       const cv = document.createElement('canvas'); cv.width = 480; cv.height = 270;
@@ -1040,6 +1050,7 @@
     // ---- the player
     let src = null;
     if (v.pub) src = SERVER + '/api/videos/' + v.sid + '/file';
+    else if (v.file) src = v.file;
     else if (v.mine) {
       try { const rec = await idb('readonly', st => st.get(id)); src = rec && rec.blob; } catch (e) {}
       if (!src) { $('#st-player').innerHTML = '<div class="st-empty">This video couldn\'t be loaded.</div>'; return; }

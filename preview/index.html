@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Preview: Football Rivals 3D Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  /* A formal report set in the CuriousScout arcade: one readable column, figures that break wider. */
+  :root {
+    --bg: #07060f; --panel: rgba(22, 18, 48, 0.72); --ink: #e9e9ff; --soft: #b9b6e0; --dim: #8784b4;
+    --gold: #FFD66B; --pitch: #1f8a43; --line: rgba(185, 182, 224, 0.2); --yes: #4de1a0; --no: #ff6b8a;
+    --head: "Orbitron", "Segoe UI", sans-serif; --pixel: "Press Start 2P", monospace;
+    --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; color: var(--ink); font: 400 1.05rem/1.7 var(--body);
+    background: radial-gradient(circle at 50% -10%, #2a1f5e 0%, #120e2e 45%, #07060f 100%) fixed, var(--bg);
+    padding: 48px max(18px, env(safe-area-inset-right, 0px)) 64px max(18px, env(safe-area-inset-left, 0px));
+  }
+  [hidden] { display: none !important; }
+  .report { max-width: 760px; margin: 0 auto; }
+  .back { font: 9px/1 var(--pixel); letter-spacing: 1px; color: var(--soft); text-decoration: none; }
+  .back:hover, .back:focus-visible { color: var(--gold); outline: none; }
+  header { margin: 28px 0 34px; padding-bottom: 26px; border-bottom: 2px solid var(--gold); }
+  .eyebrow { font: 9px/1.6 var(--pixel); letter-spacing: 2px; color: var(--gold); text-transform: uppercase; margin: 0; }
+  h1 { font: 900 clamp(2rem, 6.5vw, 3.2rem)/1.05 var(--head); margin: 14px 0 12px; letter-spacing: .5px; text-wrap: balance; }
+  .standfirst { font-size: 1.2rem; color: var(--soft); margin: 0 0 16px; max-width: 60ch; }
+  .meta { font: 700 .78rem/1.6 var(--head); letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); margin: 0; }
+  h2 { font: 700 1.45rem/1.25 var(--head); margin: 52px 0 12px; color: #fff; scroll-margin-top: 20px; }
+  h2 .n { color: var(--gold); margin-right: .4em; }
+  h3 { font: 700 1.05rem/1.3 var(--head); margin: 28px 0 6px; color: var(--soft); }
+  p { margin: 0 0 14px; max-width: 68ch; }
+  .toc { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px; }
+  .toc b { font: 9px var(--pixel); letter-spacing: 2px; color: var(--gold); }
+  .toc ol { margin: 10px 0 0; padding-left: 1.3em; columns: 2 230px; column-gap: 28px; }
+  .toc a { color: var(--ink); text-decoration: none; border-bottom: 1px solid transparent; }
+  .toc a:hover, .toc a:focus-visible { color: var(--gold); border-color: var(--gold); outline: none; }
+  figure { margin: 22px 0 26px; }
+  figure img, figure video { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; border: 1px solid var(--line); background: #000; }
+  figcaption { font-size: .88rem; color: var(--dim); margin-top: 8px; }
+  figcaption b { color: var(--soft); font-weight: 600; }
+  .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .pair figure { margin: 0; }
+  .facts { background: var(--panel); border: 2px solid color-mix(in srgb, var(--gold) 55%, transparent); border-radius: 14px; padding: 18px 22px; margin: 24px 0; }
+  .facts h3 { margin: 0 0 10px; color: var(--gold); }
+  .facts dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; }
+  .facts dt { color: var(--dim); }
+  .facts dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .table { overflow-x: auto; margin: 16px 0 22px; border: 1px solid var(--line); border-radius: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  th { text-align: left; font: 700 .72rem/1.3 var(--head); letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); padding: 10px 14px; background: rgba(255,255,255,.03); }
+  td { padding: 8px 14px; border-top: 1px solid var(--line); vertical-align: middle; }
+  td.mono { font: 700 .8rem var(--head); letter-spacing: 1px; color: var(--soft); }
+  .kit { display: inline-block; width: 18px; height: 18px; border-radius: 4px; margin-right: 10px; vertical-align: -3px; background: linear-gradient(135deg, var(--a) 55%, var(--b) 55%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); }
+  kbd { font: 600 .82rem var(--body); padding: 1px 7px; border-radius: 5px; border: 1px solid var(--line); background: rgba(255,255,255,.05); white-space: nowrap; }
+  .st-link { display: inline-block; margin-top: 6px; font: 9px/1 var(--pixel); letter-spacing: 1px; color: #FF3D6E; text-decoration: none; }
+  .st-link:hover, .st-link:focus-visible { text-decoration: underline; outline: none; }
+  .vote { background: var(--panel); border: 2px solid var(--gold); border-radius: 16px; padding: 24px 22px; margin-top: 18px; box-shadow: 0 0 26px rgba(255,214,107,.18); }
+  .vote h3 { margin: 0 0 8px; color: #fff; font-size: 1.2rem; }
+  .vote-btns { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
+  .vote-btns button { font: 10px/1 var(--pixel); letter-spacing: 1px; padding: 14px 18px; border-radius: 999px; cursor: pointer; border: 2px solid; background: transparent; color: var(--ink); }
+  .vote-btns .y { border-color: var(--yes); color: var(--yes); }
+  .vote-btns .y:hover, .vote-btns .y:focus-visible { background: var(--yes); color: #07060f; outline: none; }
+  .vote-btns .n { border-color: var(--no); color: var(--no); }
+  .vote-btns .n:hover, .vote-btns .n:focus-visible { background: var(--no); color: #07060f; outline: none; }
+  .vote-btns button:disabled { opacity: .5; cursor: wait; }
+  .results { margin-top: 16px; display: grid; gap: 10px; }
+  .bar { display: grid; grid-template-columns: 5.5em 1fr 6.5em; gap: 12px; align-items: center; font-variant-numeric: tabular-nums; }
+  .bar .track { height: 14px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
+  .bar .fill { height: 100%; width: 0; border-radius: 999px; transition: width .6s ease; }
+  .bar.y .fill { background: var(--yes); } .bar.n .fill { background: var(--no); }
+  .bar .num { text-align: right; color: var(--soft); font-size: .9rem; }
+  .vote-msg { margin: 12px 0 0; color: var(--soft); font-size: .95rem; min-height: 1.5em; }
+  .glossary dt { font-weight: 700; color: #fff; margin-top: 12px; }
+  .glossary dd { margin: 2px 0 0; color: var(--soft); max-width: 66ch; }
+  footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line); font: 8px/1.8 var(--pixel); letter-spacing: 1px; color: var(--dim); text-align: center; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .bar .fill { transition: none; } }
+</style>
+<script defer src="../analytics.js"></script>
+</head>
+<body>
+<div id="pw-lock" role="dialog" aria-modal="true" aria-labelledby="pw-lock-title" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto;background:radial-gradient(circle at 50% -10%,#2a1f5e 0%,#120e2e 50%,#07060f 100%)">
+  <div style="width:100%;max-width:380px;display:flex;flex-direction:column;gap:12px">
+    <form id="pw-lock-form" autocomplete="off" style="display:flex;flex-direction:column;gap:12px">
+      <p class="eyebrow">CuriousScout Preview</p>
+      <h1 id="pw-lock-title" style="margin:0;font-size:1.7rem">Preview is locked</h1>
+      <p style="margin:0;color:var(--soft)">Type this device&rsquo;s password to read the report.</p>
+      <input id="pw-lock-input" type="password" aria-label="Password" placeholder="Password" autocapitalize="characters" spellcheck="false" style="padding:12px;font-size:1rem;letter-spacing:2px;color:#fff;background:rgba(7,6,15,.7);border:1.5px solid rgba(255,214,107,.5);border-radius:10px">
+      <p id="pw-lock-err" role="alert" style="margin:0;min-height:1.3em;color:#ff8fa3"></p>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <button type="submit" style="font:10px/1 var(--pixel);letter-spacing:1px;padding:13px 18px;border:0;border-radius:999px;background:var(--gold);color:#120e2e;cursor:pointer">Unlock</button>
+        <button type="button" id="pw-lock-forgot" style="padding:0;border:0;background:none;color:var(--gold);font-size:.95rem;text-decoration:underline;text-underline-offset:3px;cursor:pointer">Forgot password?</button>
+      </div>
+    </form>
+    <p id="pw-lock-reveal" role="status" hidden style="margin:0;padding:8px 10px;border-radius:8px;background:rgba(255,214,107,.1)"></p>
+    <div id="pw-lock-grown" hidden style="padding:8px 10px;border-radius:8px;background:rgba(255,214,107,.1)">
+      <p style="margin:0 0 8px">Grown-ups only: what is <strong id="pw-lock-q"></strong>?</p>
+      <div style="display:flex;gap:8px"><input id="pw-lock-ans" inputmode="numeric" aria-label="Answer" style="flex:1;min-width:0;padding:10px;font-size:1rem;color:#fff;background:rgba(7,6,15,.7);border:1.5px solid rgba(255,214,107,.5);border-radius:10px"><button type="button" id="pw-lock-ans-ok" style="font:10px/1 var(--pixel);padding:10px 14px;border:0;border-radius:999px;background:var(--gold);color:#120e2e;cursor:pointer">Show</button></div>
+      <p id="pw-lock-ans-err" role="alert" style="margin:6px 0 0;min-height:1.2em;color:#ff8fa3"></p>
+    </div>
+    <a class="back" href="../">&#9664; BACK TO THE ARCADE</a>
+  </div>
+</div>
+<script>
+/* Preview password: every device makes its own code. "Forgot password?" tells you it;
+   on a TV a grown-up has to answer a times-table question first. */
+(function () {
+  var lock = document.getElementById('pw-lock');
+  var ok = false; try { ok = sessionStorage.getItem('cs-preview') === 'ok'; } catch (x) {}
+  if (ok) { lock.remove(); return; }
+  var ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', CODE = null;
+  try { CODE = localStorage.getItem('cs-preview-code'); } catch (x) {}
+  if (!/^[A-Z2-9]{6}$/.test(CODE || '')) {
+    CODE = '';
+    for (var i = 0; i < 6; i++) {
+      var n = window.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 1e9);
+      CODE += ABC[n % ABC.length];
+    }
+    try { localStorage.setItem('cs-preview-code', CODE); } catch (x) {}
+  }
+  var isTV = /smart-?tv|tizen|web0s|webos|netcast|hbbtv|bravia|viera|vidaa|philipstv|aft[a-z]|crkey|roku|appletv|googletv|android ?tv|;\s?tv\b|large screen|opera tv/i.test(navigator.userAgent);
+  var $ = function (id) { return document.getElementById('pw-lock-' + id); };
+  var input = $('input'), reveal = $('reveal'), grown = $('grown'), ans = $('ans'), sum = 0;
+  input.focus();
+  function tell() { reveal.innerHTML = 'This device&rsquo;s password is <strong style="letter-spacing:2px">' + CODE + '</strong>'; reveal.hidden = false; grown.hidden = true; input.focus(); }
+  $('forgot').addEventListener('click', function () {
+    if (!isTV) { tell(); return; }
+    var a = 6 + Math.floor(Math.random() * 4), b = 6 + Math.floor(Math.random() * 4); sum = a * b;
+    $('q').textContent = a + ' × ' + b; $('ans-err').textContent = ''; ans.value = '';
+    reveal.hidden = true; grown.hidden = false; ans.focus();
+  });
+  function checkSum() { if (+ans.value === sum) tell(); else { $('ans-err').textContent = 'Not quite. Ask a grown-up.'; ans.select(); } }
+  $('ans-ok').addEventListener('click', checkSum);
+  ans.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); checkSum(); } });
+  $('form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (input.value.trim().toUpperCase() !== CODE) { $('err').textContent = 'That’s not this device’s password. Try again.'; input.select(); return; }
+    try { sessionStorage.setItem('cs-preview', 'ok'); } catch (x) {}
+    lock.remove();
+  });
+})();
+</script>
+
+<article class="report">
+  <a class="back" href="../">&#9664; BACK TO THE ARCADE</a>
+  <header>
+    <p class="eyebrow">CuriousScout Preview &middot; Report</p>
+    <h1>Football Rivals 3D</h1>
+    <p class="standfirst">A report on the next game planned for CuriousScout: what it is, how it is played, and what it will add to the arcade.</p>
+    <p class="meta">Prepared by CuriousScout &middot; November 2026 &middot; Status: proposed</p>
+  </header>
+
+  <nav class="toc" aria-label="Contents">
+    <b>CONTENTS</b>
+    <ol>
+      <li><a href="#introduction">Introduction</a></li>
+      <li><a href="#overview">What the game is</a></li>
+      <li><a href="#ground">The ground and the pitch</a></li>
+      <li><a href="#clubs">The clubs</a></li>
+      <li><a href="#players">The players</a></li>
+      <li><a href="#playing">How the game is played</a></li>
+      <li><a href="#matchday">Matchday features</a></li>
+      <li><a href="#trailers">Trailers</a></li>
+      <li><a href="#vote">Have your say</a></li>
+      <li><a href="#conclusion">Conclusion</a></li>
+      <li><a href="#glossary">Glossary</a></li>
+    </ol>
+  </nav>
+
+  <section id="introduction">
+    <h2><span class="n">1</span>Introduction</h2>
+    <p>CuriousScout is a small arcade of homemade browser games. This report describes a game that is planned for the arcade, Football Rivals 3D, so that players can find out about it before it is added.</p>
+    <p>The report explains what the game is, where it takes place, who plays in it and how it is controlled. It also describes the features that happen around a match, such as commentary and cutscenes. A trailer shows the game in motion, and the final sections ask readers to vote on whether it should be added.</p>
+  </section>
+
+  <section id="overview">
+    <h2><span class="n">2</span>What the game is</h2>
+    <p>Football Rivals 3D is a five-a-side football game shown in three dimensions. Each team has a goalkeeper, two defenders, a midfielder and a forward. The player controls one footballer at a time, and the computer controls everybody else on both teams.</p>
+    <p>A match is played against a computer-controlled rival at one of three levels of difficulty: Amateur, Pro or Legend. On higher levels the rival players run faster, react sooner, win more tackles and have better goalkeepers.</p>
+    <figure>
+      <img src="img/gameplay.jpg" alt="A match seen from the side of the pitch, with players in teal and orange shirts and the scoreboard at the top of the screen." loading="lazy">
+      <figcaption><b>Figure 1.</b> A match in progress, seen from the broadcast camera beside the pitch.</figcaption>
+    </figure>
+    <aside class="facts" aria-label="Key facts">
+      <h3>Key facts</h3>
+      <dl>
+        <dt>Type of game</dt><dd>Five-a-side football in 3D</dd>
+        <dt>Clubs</dt><dd>20, each with five named players</dd>
+        <dt>Pitch</dt><dd>60 m long and 40 m wide</dd>
+        <dt>Goals</dt><dd>7 m wide and 2.44 m high</dd>
+        <dt>Match lengths</dt><dd>5 minutes, 20 minutes, 1 hour or a full 90 minutes</dd>
+        <dt>Difficulty</dt><dd>Amateur, Pro or Legend</dd>
+        <dt>Devices</dt><dd>Computers, tablets and phones</dd>
+      </dl>
+    </aside>
+  </section>
+
+  <section id="ground">
+    <h2><span class="n">3</span>The ground and the pitch</h2>
+    <p>Every match takes place at Riverside Ground, a floodlit stadium with stands on all four sides. The stands are filled with supporters in the colours of the two clubs that are playing, and each club&rsquo;s fans sit behind the goal it defends.</p>
+    <p>The pitch is surrounded by advertising boards. The ball bounces off these boards rather than going out of play, as it does in many indoor five-a-side games, so play only stops for goals, half time and full time.</p>
+    <figure>
+      <img src="img/stadium.jpg" alt="A wide view of the floodlit stadium with packed stands around a green pitch." loading="lazy">
+      <figcaption><b>Figure 2.</b> Riverside Ground under its floodlights, from the opening cutscene.</figcaption>
+    </figure>
+  </section>
+
+  <section id="clubs">
+    <h2><span class="n">4</span>The clubs</h2>
+    <p>The game contains twenty clubs. Each club has its own name, nickname, colours, crest and squad of five players. All of the clubs are invented for the game. Before a match, the player chooses a club to control and a club to play against.</p>
+    <p>When two clubs with similar shirts meet, the visiting club changes into an away kit so that the teams can be told apart. The best-known fixture is the Estuary Derby between Harbor City and Ironvale, which has its own introduction.</p>
+    <div class="table" role="region" aria-label="The twenty clubs" tabindex="0">
+      <table>
+        <thead><tr><th scope="col">Club</th><th scope="col">Nickname</th><th scope="col">Code</th></tr></thead>
+        <tbody>
+          <tr><td><span class="kit" style="--a:#16aaa6;--b:#f0f3ec"></span>Harbor City</td><td>The Gulls</td><td class="mono">HBR</td></tr>
+          <tr><td><span class="kit" style="--a:#d65a28;--b:#2a2d33"></span>Ironvale</td><td>The Forge</td><td class="mono">IRV</td></tr>
+          <tr><td><span class="kit" style="--a:#1f3a7a;--b:#f0f3ec"></span>Northgate Rovers</td><td>The Wardens</td><td class="mono">NGR</td></tr>
+          <tr><td><span class="kit" style="--a:#6cb6e8;--b:#1b2a4a"></span>Saltmarsh Athletic</td><td>The Waders</td><td class="mono">SMA</td></tr>
+          <tr><td><span class="kit" style="--a:#b3202f;--b:#f0f3ec"></span>Kestrel Park</td><td>The Kestrels</td><td class="mono">KSP</td></tr>
+          <tr><td><span class="kit" style="--a:#6e7378;--b:#1d1f24"></span>Ashdown Borough</td><td>The Embers</td><td class="mono">ASH</td></tr>
+          <tr><td><span class="kit" style="--a:#b8733a;--b:#1d1f24"></span>Coppermill United</td><td>The Millers</td><td class="mono">CMU</td></tr>
+          <tr><td><span class="kit" style="--a:#1f7a3d;--b:#f0f3ec"></span>Thornbury Vale</td><td>The Thorns</td><td class="mono">THV</td></tr>
+          <tr><td><span class="kit" style="--a:#f1b81c;--b:#1d1f24"></span>Lanternside</td><td>The Lamplighters</td><td class="mono">LNT</td></tr>
+          <tr><td><span class="kit" style="--a:#6d1f2f;--b:#6cb6e8"></span>Brackwater Town</td><td>The Eels</td><td class="mono">BWT</td></tr>
+          <tr><td><span class="kit" style="--a:#f0f3ec;--b:#1d1f24"></span>Westcliff Albion</td><td>The Cliffs</td><td class="mono">WCA</td></tr>
+          <tr><td><span class="kit" style="--a:#d8312b;--b:#d8312b"></span>Redwharf Dockers</td><td>The Dockers</td><td class="mono">RWD</td></tr>
+          <tr><td><span class="kit" style="--a:#15a05a;--b:#f0f3ec"></span>Glenmoor</td><td>The Heather</td><td class="mono">GLM</td></tr>
+          <tr><td><span class="kit" style="--a:#1a1b1f;--b:#d9a92c"></span>Port Sable</td><td>The Sables</td><td class="mono">PSB</td></tr>
+          <tr><td><span class="kit" style="--a:#2552c9;--b:#f0f3ec"></span>Highfield Wanderers</td><td>The Wanderers</td><td class="mono">HFW</td></tr>
+          <tr><td><span class="kit" style="--a:#6b3fa0;--b:#f0f3ec"></span>Marrow Quay</td><td>The Quaymen</td><td class="mono">MRQ</td></tr>
+          <tr><td><span class="kit" style="--a:#4b6177;--b:#f0f3ec"></span>Stonebridge Rangers</td><td>The Masons</td><td class="mono">SBR</td></tr>
+          <tr><td><span class="kit" style="--a:#e2558c;--b:#1d1f24"></span>Vellmouth City</td><td>The Flamingos</td><td class="mono">VLM</td></tr>
+          <tr><td><span class="kit" style="--a:#f28a1c;--b:#1d1f24"></span>Old Carrick</td><td>The Carricks</td><td class="mono">OCK</td></tr>
+          <tr><td><span class="kit" style="--a:#d9c28f;--b:#6b4a2a"></span>Duneholm</td><td>The Dunes</td><td class="mono">DUN</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figure>
+      <img src="img/clubs.jpg" alt="The game's menu, showing the club pickers and a grid of twenty club crests." loading="lazy">
+      <figcaption><b>Figure 3.</b> The menu, where both clubs are chosen from the crest grid.</figcaption>
+    </figure>
+  </section>
+
+  <section id="players">
+    <h2><span class="n">5</span>The players</h2>
+    <p>Each footballer is a jointed figure about 1.83 m tall, with bending knees and elbows. Players have one of seven skin tones and one of seven hairstyles, so teammates do not look identical. Every player wears the club&rsquo;s kit, with their surname and number printed on the back of the shirt. Goalkeepers wear long sleeves and gloves.</p>
+    <p>The players are animated. They lean forward and pump their arms when they run, swing a leg back before they kick, and stretch out when they dive or slide in for a tackle.</p>
+    <div class="pair">
+      <figure>
+        <img src="img/lineup.jpg" alt="A close view of players lined up in their kits before kick-off." loading="lazy">
+        <figcaption><b>Figure 4.</b> A squad lines up before kick-off.</figcaption>
+      </figure>
+      <figure>
+        <img src="img/action.jpg" alt="Players challenging for the ball during a match, with the on-screen controls showing." loading="lazy">
+        <figcaption><b>Figure 5.</b> A tackle in a match on a touch screen.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="playing">
+    <h2><span class="n">6</span>How the game is played</h2>
+    <p>The game can be played with a keyboard or with buttons on the screen. On phones and tablets, a joystick on the left moves the player and buttons on the right carry out each action. When the player&rsquo;s team wins the ball, control passes to whichever footballer has it.</p>
+    <div class="table" role="region" aria-label="Controls" tabindex="0">
+      <table>
+        <thead><tr><th scope="col">Action</th><th scope="col">Keyboard</th><th scope="col">Touch screen</th></tr></thead>
+        <tbody>
+          <tr><td>Move</td><td><kbd>W A S D</kbd> or arrow keys</td><td>Joystick</td></tr>
+          <tr><td>Sprint</td><td><kbd>Shift</kbd></td><td>SPRINT, or push the joystick to its edge</td></tr>
+          <tr><td>Pass</td><td><kbd>J</kbd></td><td>PASS</td></tr>
+          <tr><td>Kick (hold for power)</td><td><kbd>K</kbd></td><td>KICK</td></tr>
+          <tr><td>Lob pass</td><td><kbd>L</kbd></td><td>LOB</td></tr>
+          <tr><td>Jump or header</td><td><kbd>Space</kbd></td><td>JUMP</td></tr>
+          <tr><td>Tackle</td><td><kbd>E</kbd></td><td>TACKLE</td></tr>
+          <tr><td>Switch player</td><td><kbd>Q</kbd></td><td>SWITCH</td></tr>
+          <tr><td>Pause</td><td><kbd>P</kbd> or <kbd>Esc</kbd></td><td>Pause button</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Sprinting uses stamina, which is shown as a bar and refills when the player stops sprinting. Holding the kick button builds up power, so a longer press produces a harder shot. Jumping lets a player head the ball and hop over a tackle while dribbling.</p>
+    <figure>
+      <img src="img/controls.jpg" alt="A match with the joystick on the left of the screen and action buttons on the right." loading="lazy">
+      <figcaption><b>Figure 6.</b> The on-screen joystick and buttons, used on phones and tablets.</figcaption>
+    </figure>
+  </section>
+
+  <section id="matchday">
+    <h2><span class="n">7</span>Matchday features</h2>
+    <p>Several features take place around the football itself. Together, they are intended to make each match feel like a televised game.</p>
+
+    <h3>Commentary</h3>
+    <p>A commentator describes the match aloud, using the voice built into the player&rsquo;s browser. Each line also appears as a caption beneath the scoreboard. The commentator reacts to goals, shots, saves, tackles, headers and near misses, and uses the real names of the players and clubs. Commentary can be switched off during a match.</p>
+
+    <h3>Cutscenes</h3>
+    <p>Short cinematic sequences, known as cutscenes, play at three points. Before kick-off, the camera sweeps around the stadium and follows both teams out of the tunnel. After a goal, the ball is shown hitting the net in slow motion before the camera circles the scorer. At full time, the winners celebrate while the losing team stands with their hands on their heads. Every cutscene can be skipped, and they can be turned off in the menu.</p>
+
+    <h3>Half time</h3>
+    <p>Every match has a twenty-second half-time break. The break screen shows the score and statistics for the first half, including possession, shots, saves and tackles won. When the second half begins, the teams change ends, as they do in a real match.</p>
+    <figure>
+      <img src="img/halftime.jpg" alt="The half-time screen showing the score, statistics and a countdown to the second half." loading="lazy">
+      <figcaption><b>Figure 7.</b> The half-time break screen.</figcaption>
+    </figure>
+
+    <h3>Own goals</h3>
+    <p>As in real football, a team can score in its own net. This can happen when a fast shot deflects off a defender, when a goalkeeper fumbles the ball, or when a defender slices a hurried clearance. Own goals are announced with their own banner and commentary, and they are counted in the match statistics.</p>
+    <figure>
+      <img src="img/owngoal.jpg" alt="An own goal banner across the pitch during a match." loading="lazy">
+      <figcaption><b>Figure 8.</b> An own goal, announced with its own banner.</figcaption>
+    </figure>
+  </section>
+
+  <section id="trailers">
+    <h2><span class="n">8</span>Trailers</h2>
+    <p>A trailer has been made from real footage of the game. The Gameplay Trailer shows the club picker, the controls, half time and an own goal. It can also be watched on StarTube.</p>
+    <figure>
+      <video controls preload="metadata" playsinline poster="img/poster-gameplay.jpg" src="trailer-gameplay.mp4"></video>
+      <figcaption><b>Trailer 1.</b> Football Rivals 3D, Gameplay Trailer.</figcaption>
+      <a class="st-link" href="../startube/#/watch/fr3d-gameplay">WATCH ON STARTUBE &#9654;</a>
+    </figure>
+  </section>
+
+  <section id="vote">
+    <h2><span class="n">9</span>Have your say</h2>
+    <p>Football Rivals 3D has not yet been added to CuriousScout. Readers are invited to vote on whether it should be. Each device can vote once, and the totals are shared by everyone who reads this report.</p>
+    <div class="vote" id="vote-box">
+      <h3>Should Football Rivals 3D be added to CuriousScout?</h3>
+      <div class="vote-btns" id="vote-btns">
+        <button class="y" data-v="yes">YES, ADD IT</button>
+        <button class="n" data-v="no">NO, NOT YET</button>
+      </div>
+      <div class="results" id="vote-results" hidden>
+        <div class="bar y"><span>Yes</span><div class="track"><div class="fill" id="vote-yes-bar"></div></div><span class="num" id="vote-yes"></span></div>
+        <div class="bar n"><span>No</span><div class="track"><div class="fill" id="vote-no-bar"></div></div><span class="num" id="vote-no"></span></div>
+      </div>
+      <p class="vote-msg" id="vote-msg" role="status"></p>
+    </div>
+  </section>
+
+  <section id="conclusion">
+    <h2><span class="n">10</span>Conclusion</h2>
+    <p>Football Rivals 3D is a complete five-a-side football game with twenty clubs, animated players, spoken commentary, cutscenes and a half-time break. It runs in a web browser on computers, tablets and phones, and it can be played with a keyboard or a touch screen.</p>
+    <p>If it is added, it will join Football Rivals (World Cup) as a second football game in the arcade. Whether it is added will depend partly on the results of the vote above.</p>
+  </section>
+
+  <section id="glossary">
+    <h2><span class="n">11</span>Glossary</h2>
+    <dl class="glossary">
+      <dt>Away kit</dt><dd>A second set of colours that a club wears when its usual shirts are too similar to its opponent&rsquo;s.</dd>
+      <dt>Commentary</dt><dd>A spoken description of a match as it happens.</dd>
+      <dt>Cutscene</dt><dd>A short sequence in a game, like a scene from a film, in which the player watches rather than plays.</dd>
+      <dt>Deflection</dt><dd>When the ball glances off a player and changes direction.</dd>
+      <dt>Derby</dt><dd>A match between two rival clubs from the same area.</dd>
+      <dt>Five-a-side</dt><dd>A form of football with five players in each team, usually played on a smaller pitch.</dd>
+      <dt>Fixture</dt><dd>A match between two named clubs.</dd>
+      <dt>Letterbox bars</dt><dd>Black bars at the top and bottom of the screen that make a scene look like a cinema film.</dd>
+      <dt>Own goal</dt><dd>A goal that a player accidentally scores in their own team&rsquo;s net. It counts for the other team.</dd>
+      <dt>Stamina</dt><dd>How much energy a player has left for sprinting.</dd>
+      <dt>Trailer</dt><dd>A short video that shows what a game or film is like before it is released.</dd>
+    </dl>
+  </section>
+
+  <footer>CuriousScout Preview &middot; By Lunga Khumalo</footer>
+</article>
+
+<script>
+/* The vote. Totals are kept by the same public counter service as the arcade's play
+   counts (two counters, nothing else is sent). Each device can vote once. */
+(function () {
+  var SERVER = 'https://abacus.jasoncameron.dev', NS = 'curiousscout', KEY = 'vote-football-rivals-3d';
+  var DEV = location.protocol === 'file:' || /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/.test(location.hostname) || /\.local$/.test(location.hostname);
+  var LIVE = !DEV || /[?&]analytics=live\b/.test(location.search);
+  var $ = function (id) { return document.getElementById(id); };
+  var mine = null; try { mine = localStorage.getItem('cs-vote-fr3d'); } catch (e) {}
+  var test = { yes: 0, no: 0 };   // local development never touches the real totals
+
+  function get(v) {
+    if (!LIVE) return Promise.resolve(test[v]);
+    return fetch(SERVER + '/get/' + NS + '/' + KEY + '-' + v).then(function (r) {
+      if (r.status === 404) return 0;          // nobody has voted this way yet
+      if (!r.ok) throw new Error('counter');
+      return r.json().then(function (d) { return +d.value || 0; });
+    });
+  }
+  function hit(v) {
+    if (!LIVE) { test[v]++; return Promise.resolve(); }
+    return fetch(SERVER + '/hit/' + NS + '/' + KEY + '-' + v).then(function (r) { if (!r.ok) throw new Error('counter'); });
+  }
+  function show(y, n) {
+    var total = y + n, py = total ? Math.round(y / total * 100) : 0, pn = total ? 100 - py : 0;
+    $('vote-yes').textContent = y + (y === 1 ? ' vote' : ' votes');
+    $('vote-no').textContent = n + (n === 1 ? ' vote' : ' votes');
+    $('vote-yes-bar').style.width = py + '%'; $('vote-no-bar').style.width = pn + '%';
+    $('vote-results').hidden = false;
+  }
+  function refresh() { return Promise.all([get('yes'), get('no')]).then(function (r) { show(r[0], r[1]); }); }
+  function done(v) {
+    $('vote-btns').hidden = true;
+    $('vote-msg').textContent = 'You voted ' + (v === 'yes' ? 'yes' : 'no') + '. Thank you for having your say.' + (LIVE ? '' : ' (Test mode: votes from this computer are not counted.)');
+  }
+  if (mine === 'yes' || mine === 'no') {
+    done(mine);
+    refresh().catch(function () { $('vote-msg').textContent += ' The totals could not be loaded right now.'; });
+  }
+  [].forEach.call(document.querySelectorAll('#vote-btns button'), function (b) {
+    b.addEventListener('click', function () {
+      var v = b.getAttribute('data-v');
+      [].forEach.call(document.querySelectorAll('#vote-btns button'), function (x) { x.disabled = true; });
+      $('vote-msg').textContent = 'Counting your vote…';
+      hit(v).then(function () {
+        try { localStorage.setItem('cs-vote-fr3d', v); } catch (e) {}
+        if (typeof window.track === 'function') window.track('preview_vote', { choice: v });
+        done(v);
+        return refresh();
+      }).catch(function () {
+        [].forEach.call(document.querySelectorAll('#vote-btns button'), function (x) { x.disabled = false; });
+        $('vote-msg').textContent = 'Your vote could not be counted. Check the internet connection and try again.';
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>
