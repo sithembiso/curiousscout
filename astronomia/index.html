@@ -3213,6 +3213,7 @@ const settings = {
   trails: true,
   labels: true,
   lensing: true,
+  smooth: true,          // lower the drawing resolution while frames are slow, raise it again after
   hzone: false,
   autoOrbit: true,
   grid: true,            // draw a measuring grid while something is armed
@@ -7506,7 +7507,7 @@ function worldPerPixel(dist) {
 
 function initScene() {
   canvasEl = document.getElementById('an-canvas');
-  renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
+  renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: (window.devicePixelRatio || 1) < 1.5, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
   renderer.setClearColor(0x03030a, 1);
   renderer.outputEncoding = THREE.sRGBEncoding;
 
@@ -13543,12 +13544,38 @@ function landedHUD() {
     '&middot; drag to look &middot; <kbd>Esc</kbd> take off';
 }
 
+/*
+ * Smooth mode. Nearly all of a frame is the graphics card shading pixels, so when
+ * frames run slow the drawing resolution steps down, and it steps back up once
+ * there is room. A step that doesn't help (a screen capped at 30 Hz, say) is
+ * undone, and the scale is then left alone for a while.
+ */
+const PERF = { scale: 1, acc: 0, n: 0, calm: 0, tried: 0, hold: 0 };
+const PERF_MIN_DPR = 0.6;   // never draw coarser than this many pixels per CSS pixel
+function perfTick(dt) {
+  if (!settings.smooth || !dt || document.hidden) return;
+  PERF.acc += dt; PERF.n++;
+  if (PERF.acc < 1) return;                       // judge about once a second
+  const avg = PERF.acc / PERF.n; PERF.acc = 0; PERF.n = 0;
+  if (PERF.hold > 0) { PERF.hold--; return; }
+  const base = Math.min(window.devicePixelRatio || 1, 2);
+  if (PERF.tried) {                               // did the last step down help?
+    if (avg > PERF.tried * 0.9) { PERF.scale = Math.min(1, PERF.scale / 0.8); PERF.hold = 30; resize(); }
+    PERF.tried = 0; return;
+  }
+  if (avg > 1 / 40 && base * PERF.scale * 0.8 >= PERF_MIN_DPR) {
+    PERF.tried = avg; PERF.scale *= 0.8; PERF.calm = 0; resize();
+  } else if (avg < 1 / 52 && PERF.scale < 1) {
+    if (++PERF.calm >= 4) { PERF.scale = Math.min(1, PERF.scale / 0.8); PERF.calm = 0; resize(); }
+  } else PERF.calm = 0;
+}
+
 function resize() {
   // Never let the viewport reach zero: a hidden or collapsed window reports
   // 0×0, and every worldPerPixel() division downstream would become Infinity.
   const w = Math.max(window.innerWidth, 1), h = Math.max(window.innerHeight, 1);
   VIEW.w = w; VIEW.h = h;
-  VIEW.dpr = Math.min(window.devicePixelRatio || 1, 2);
+  VIEW.dpr = Math.min(window.devicePixelRatio || 1, 2) * (settings.smooth ? PERF.scale : 1);
   renderer.setPixelRatio(VIEW.dpr);
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
@@ -16024,6 +16051,7 @@ function openSettings() {
     tgl('st-trails', 'Orbit trails', 'Trace the paths of the 28 most massive bodies.') +
     tgl('st-labels', 'Name labels', '') +
     tgl('st-lens', 'Gravitational lensing', 'Bend light around black holes. Costs a little performance.') +
+    tgl('st-smooth', 'Smooth mode', 'If the game starts to lag, it draws at a slightly lower resolution until it runs smoothly again. Turn off for the sharpest picture.') +
     tgl('st-grid', 'Placement grid', 'Show a measuring grid on the drop plane whenever something is armed.') +
     tgl('st-snap', 'Snap to the grid', 'Drop points land exactly on grid intersections, for laying things out neatly.') +
 
@@ -16141,6 +16169,7 @@ function openSettings() {
   bindTgl('st-trails', 'trails', clearTrails);
   bindTgl('st-labels', 'labels');
   bindTgl('st-lens', 'lensing');
+  bindTgl('st-smooth', 'smooth', () => { PERF.scale = 1; PERF.tried = 0; PERF.hold = 0; resize(); });
   bindTgl('st-grid', 'grid');
   bindTgl('st-snap', 'gridSnap');
   bindTgl('st-slowmo', 'slowmo', () => { if (!settings.slowmo) slowmoLeft = 0; });
@@ -16342,7 +16371,7 @@ function syncSettings() {
   const map = {
     'st-tidal': 'tidal', 'st-strip': 'strip', 'st-tideheat': 'tideHeat',
     'st-auto': 'autoOrbit', 'st-trails': 'trails', 'st-labels': 'labels',
-    'st-lens': 'lensing', 'st-grid': 'grid', 'st-snap': 'gridSnap'
+    'st-lens': 'lensing', 'st-smooth': 'smooth', 'st-grid': 'grid', 'st-snap': 'gridSnap'
   };
   for (const id in map) { const el = $(id); if (el) el.classList.toggle('on', !!settings[map[id]]); }
 }
@@ -18728,6 +18757,7 @@ function loop(now) {
   updateBarycentres();
   if (barys.length) updateBarys(simDt);
   renderFrame();
+  perfTick(realDt);
   updateHud(realDt);
 
   if (++statTick % 10 === 0) updateInspectorStats();
