@@ -154,13 +154,18 @@
     .pw-box p { font-size: 0.95rem; color: #c8c6e6; line-height: 1.5; margin-bottom: 10px; }
     .pw-hint { padding: 8px 10px; border-radius: 8px; background: rgba(255,214,107,0.1); }
     .pw-hint strong { color: #fff; letter-spacing: 2px; font-family: "Orbitron", sans-serif; }
-    #pw-input {
+    .pw-input {
       width: 100%; margin-top: 4px; padding: 11px 12px; font-size: 1rem; letter-spacing: 2px;
       color: #fff; background: rgba(7, 6, 15, 0.7); border: 1.5px solid rgba(255,214,107,0.5); border-radius: 10px;
     }
-    #pw-input:focus { outline: none; border-color: #FFD66B; box-shadow: 0 0 12px rgba(255,214,107,0.4); }
+    .pw-input:focus { outline: none; border-color: #FFD66B; box-shadow: 0 0 12px rgba(255,214,107,0.4); }
     .pw-err { min-height: 1.4em; margin: 8px 0 0; color: #ff8fa3 !important; font-size: 0.9rem !important; }
-    .pw-row { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+    .pw-row { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 10px; }
+    .pw-link { margin-right: auto; padding: 0; border: 0; background: none; cursor: pointer; color: #FFD66B; font-size: 0.85rem; text-decoration: underline; text-underline-offset: 3px; }
+    .pw-link:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    .pw-hint { margin-top: 12px; }
+    #pw-grown p { margin-bottom: 6px; }
+    #pw-ans { flex: 1; min-width: 0; margin-top: 0; }
     .pw-ok, .pw-ghost {
       font-family: "Press Start 2P", monospace; font-size: 9px; letter-spacing: 1px; padding: 11px 14px;
       border-radius: 999px; cursor: pointer; text-decoration: none;
@@ -475,13 +480,17 @@
     <div class="pw-box">
       <form id="pw-form" autocomplete="off">
         <h2 id="pw-title">Preview is locked</h2>
-        <p>Type the password to try Football Rivals 3D.</p>
-        <p class="pw-hint" id="pw-hint" hidden>Password for this device: <strong>FLOODLIGHT</strong></p>
-        <p class="pw-hint" id="pw-tv" hidden>Ask a grown-up for the password.</p>
-        <input id="pw-input" type="password" aria-label="Password" placeholder="Password" autocapitalize="characters" spellcheck="false">
+        <p>Type this device&rsquo;s password to try Football Rivals 3D.</p>
+        <input class="pw-input" id="pw-input" type="password" aria-label="Password" placeholder="Password" autocapitalize="characters" spellcheck="false">
         <p class="pw-err" id="pw-err" role="alert"></p>
-        <div class="pw-row"><button type="button" class="pw-ghost" id="pw-cancel">Cancel</button><button type="submit" class="pw-ok">Unlock</button></div>
+        <div class="pw-row"><button type="button" class="pw-link" id="pw-forgot">Forgot password?</button><button type="button" class="pw-ghost" id="pw-cancel">Cancel</button><button type="submit" class="pw-ok">Unlock</button></div>
       </form>
+      <p class="pw-hint" id="pw-reveal" role="status" hidden></p>
+      <div class="pw-hint" id="pw-grown" hidden>
+        <p>Grown-ups only: what is <strong id="pw-q"></strong>?</p>
+        <div class="pw-row"><input class="pw-input" id="pw-ans" inputmode="numeric" aria-label="Answer"><button type="button" class="pw-ok" id="pw-ans-ok">Show</button></div>
+        <p class="pw-err" id="pw-ans-err" role="alert"></p>
+      </div>
       <div id="pw-done" hidden>
         <h2>Unlocked!</h2>
         <p>Have fun with the preview.</p>
@@ -490,27 +499,50 @@
     </div>
   </div>
   <script>
-  /* Preview password. Phones, tablets and computers are shown it; TVs have to be told it. */
+  /* Preview password: every device makes its own code. "Forgot password?" tells you it;
+     on a TV a grown-up has to answer a times-table question first. */
   (function () {
-    var PASSWORD = 'FLOODLIGHT';
+    var ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', CODE = null;
+    try { CODE = localStorage.getItem('cs-preview-code'); } catch (x) {}
+    if (!/^[A-Z2-9]{6}$/.test(CODE || '')) {
+      CODE = '';
+      for (var i = 0; i < 6; i++) {
+        var n = window.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 1e9);
+        CODE += ABC[n % ABC.length];
+      }
+      try { localStorage.setItem('cs-preview-code', CODE); } catch (x) {}
+    }
     var isTV = /smart-?tv|tizen|web0s|webos|netcast|hbbtv|bravia|viera|vidaa|philipstv|aft[a-z]|crkey|roku|appletv|googletv|android ?tv|;\s?tv\b|large screen|opera tv/i.test(navigator.userAgent);
-    var gate = document.getElementById('pw-gate'), form = document.getElementById('pw-form'),
-        input = document.getElementById('pw-input'), err = document.getElementById('pw-err'),
-        done = document.getElementById('pw-done'), go = document.getElementById('pw-go'), dest = null;
-    document.getElementById(isTV ? 'pw-tv' : 'pw-hint').hidden = false;
+    var $ = function (id) { return document.getElementById(id); };
+    var gate = $('pw-gate'), form = $('pw-form'), input = $('pw-input'), err = $('pw-err'),
+        reveal = $('pw-reveal'), grown = $('pw-grown'), ans = $('pw-ans'), done = $('pw-done'), go = $('pw-go'),
+        dest = null, sum = 0;
     function open(href) {
       dest = href; err.textContent = ''; input.value = '';
-      form.hidden = false; done.hidden = true; gate.hidden = false; input.focus();
+      form.hidden = false; done.hidden = true; reveal.hidden = true; grown.hidden = true; gate.hidden = false; input.focus();
     }
     function close() { gate.hidden = true; }
+    function tell() {
+      reveal.innerHTML = 'This device&rsquo;s password is <strong>' + CODE + '</strong>';
+      reveal.hidden = false; grown.hidden = true; input.focus();
+    }
+    $('pw-forgot').addEventListener('click', function () {
+      if (!isTV) { tell(); return; }
+      var a = 6 + Math.floor(Math.random() * 4), b = 6 + Math.floor(Math.random() * 4); sum = a * b;
+      $('pw-q').textContent = a + ' × ' + b; $('pw-ans-err').textContent = ''; ans.value = '';
+      reveal.hidden = true; grown.hidden = false; ans.focus();
+    });
+    function checkSum() { if (+ans.value === sum) tell(); else { $('pw-ans-err').textContent = 'Not quite. Ask a grown-up.'; ans.select(); } }
+    $('pw-ans-ok').addEventListener('click', checkSum);
+    ans.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); checkSum(); } });
     form.addEventListener('submit', function (e) {
       e.preventDefault();
-      if (input.value.trim().toUpperCase() !== PASSWORD) { err.textContent = 'That’s not the password. Try again.'; input.select(); return; }
+      if (input.value.trim().toUpperCase() !== CODE) { err.textContent = 'That’s not this device’s password. Try again.'; input.select(); return; }
       try { sessionStorage.setItem('cs-preview', 'ok'); } catch (x) {}
-      if (/^https?:/.test(dest)) { go.href = dest; form.hidden = true; done.hidden = false; go.focus(); }
+      if (/^https?:/.test(dest)) { go.href = dest; form.hidden = true; reveal.hidden = true; grown.hidden = true; done.hidden = false; go.focus(); }
       else location.href = dest;
     });
-    document.getElementById('pw-cancel').addEventListener('click', close);
+    $('pw-cancel').addEventListener('click', close);
     gate.addEventListener('click', function (e) { if (e.target === gate) close(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !gate.hidden) close(); });
     var btn = document.querySelector('.preview-btn');

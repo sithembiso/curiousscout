@@ -168,30 +168,61 @@ body.pad #power { bottom: calc(env(safe-area-inset-bottom, 0px) + 180px); }
 <script defer src="../analytics.js"></script>
 </head>
 <body>
-<div id="pw-lock" role="dialog" aria-modal="true" aria-labelledby="pw-lock-title" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:#08130f;color:#eef3ea;font-family:Barlow,'Segoe UI',system-ui,sans-serif">
-  <form id="pw-lock-form" autocomplete="off" style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px">
-    <p style="margin:0;font:700 14px 'Saira Condensed','Arial Narrow',sans-serif;letter-spacing:.24em;text-transform:uppercase;color:#ffd66b">Preview</p>
-    <h1 id="pw-lock-title" style="margin:0;font:800 italic clamp(36px,9vw,56px)/.9 'Saira Condensed','Arial Narrow',sans-serif">Football Rivals 3D</h1>
-    <p style="margin:0;color:#a9b8ad">Type the password to play.</p>
-    <p id="pw-lock-hint" hidden style="margin:0;padding:8px 10px;border-radius:6px;background:rgba(255,214,107,.12)">Password for this device: <strong style="letter-spacing:2px">FLOODLIGHT</strong></p>
-    <p id="pw-lock-tv" hidden style="margin:0;padding:8px 10px;border-radius:6px;background:rgba(255,214,107,.12)">Ask a grown-up for the password.</p>
-    <input id="pw-lock-input" type="password" aria-label="Password" placeholder="Password" autocapitalize="characters" spellcheck="false" style="padding:12px;font-size:17px;letter-spacing:2px;color:#eef3ea;background:#10221b;border:1.5px solid rgba(255,214,107,.5);border-radius:6px">
-    <p id="pw-lock-err" role="alert" style="margin:0;min-height:1.3em;color:#ff8fa3"></p>
-    <button type="submit" style="align-self:flex-start;padding:10px 28px;border:0;border-radius:4px;background:#ffd66b;color:#08130f;font:800 italic 22px 'Saira Condensed','Arial Narrow',sans-serif;cursor:pointer">Unlock</button>
-  </form>
+<div id="pw-lock" role="dialog" aria-modal="true" aria-labelledby="pw-lock-title" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto;background:#08130f;color:#eef3ea;font-family:Barlow,'Segoe UI',system-ui,sans-serif">
+  <div style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px">
+    <form id="pw-lock-form" autocomplete="off" style="display:flex;flex-direction:column;gap:12px">
+      <p style="margin:0;font:700 14px 'Saira Condensed','Arial Narrow',sans-serif;letter-spacing:.24em;text-transform:uppercase;color:#ffd66b">Preview</p>
+      <h1 id="pw-lock-title" style="margin:0;font:800 italic clamp(36px,9vw,56px)/.9 'Saira Condensed','Arial Narrow',sans-serif">Football Rivals 3D</h1>
+      <p style="margin:0;color:#a9b8ad">Type this device&rsquo;s password to play.</p>
+      <input id="pw-lock-input" type="password" aria-label="Password" placeholder="Password" autocapitalize="characters" spellcheck="false" style="padding:12px;font-size:17px;letter-spacing:2px;color:#eef3ea;background:#10221b;border:1.5px solid rgba(255,214,107,.5);border-radius:6px">
+      <p id="pw-lock-err" role="alert" style="margin:0;min-height:1.3em;color:#ff8fa3"></p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button type="submit" style="padding:10px 28px;border:0;border-radius:4px;background:#ffd66b;color:#08130f;font:800 italic 22px 'Saira Condensed','Arial Narrow',sans-serif;cursor:pointer">Unlock</button>
+        <button type="button" id="pw-lock-forgot" style="padding:0;border:0;background:none;color:#ffd66b;font-size:15px;text-decoration:underline;text-underline-offset:3px;cursor:pointer">Forgot password?</button>
+      </div>
+    </form>
+    <p id="pw-lock-reveal" role="status" hidden style="margin:0;padding:8px 10px;border-radius:6px;background:rgba(255,214,107,.12)"></p>
+    <div id="pw-lock-grown" hidden style="margin:0;padding:8px 10px;border-radius:6px;background:rgba(255,214,107,.12);display:flex;flex-direction:column;gap:8px">
+      <p style="margin:0">Grown-ups only: what is <strong id="pw-lock-q"></strong>?</p>
+      <div style="display:flex;gap:8px"><input id="pw-lock-ans" inputmode="numeric" aria-label="Answer" style="padding:12px;font-size:17px;letter-spacing:2px;color:#eef3ea;background:#10221b;border:1.5px solid rgba(255,214,107,.5);border-radius:6px;flex:1;min-width:0"><button type="button" id="pw-lock-ans-ok" style="padding:10px 28px;border:0;border-radius:4px;background:#ffd66b;color:#08130f;font:800 italic 22px 'Saira Condensed','Arial Narrow',sans-serif;cursor:pointer;font-size:18px;padding:8px 16px">Show</button></div>
+      <p id="pw-lock-ans-err" role="alert" style="margin:0;min-height:1.2em;color:#ff8fa3"></p>
+    </div>
+  </div>
 </div>
 <script>
-/* Preview password. Phones, tablets and computers are shown it; TVs have to be told it. */
+/* Preview password: every device makes its own code. "Forgot password?" tells you it;
+   on a TV a grown-up has to answer a times-table question first. */
 (function () {
-  var PASSWORD = 'FLOODLIGHT', lock = document.getElementById('pw-lock');
+  var lock = document.getElementById('pw-lock');
   var ok = false; try { ok = sessionStorage.getItem('cs-preview') === 'ok'; } catch (x) {}
   if (ok) { lock.remove(); return; }
+  var ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', CODE = null;
+  try { CODE = localStorage.getItem('cs-preview-code'); } catch (x) {}
+  if (!/^[A-Z2-9]{6}$/.test(CODE || '')) {
+    CODE = '';
+    for (var i = 0; i < 6; i++) {
+      var n = window.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 1e9);
+      CODE += ABC[n % ABC.length];
+    }
+    try { localStorage.setItem('cs-preview-code', CODE); } catch (x) {}
+  }
   var isTV = /smart-?tv|tizen|web0s|webos|netcast|hbbtv|bravia|viera|vidaa|philipstv|aft[a-z]|crkey|roku|appletv|googletv|android ?tv|;\s?tv\b|large screen|opera tv/i.test(navigator.userAgent);
-  document.getElementById(isTV ? 'pw-lock-tv' : 'pw-lock-hint').hidden = false;
-  var input = document.getElementById('pw-lock-input'); input.focus();
-  document.getElementById('pw-lock-form').addEventListener('submit', function (e) {
+  var $ = function (id) { return document.getElementById('pw-lock-' + id); };
+  var input = $('input'), reveal = $('reveal'), grown = $('grown'), ans = $('ans'), sum = 0;
+  input.focus();
+  function tell() { reveal.innerHTML = 'This device&rsquo;s password is <strong style="letter-spacing:2px">' + CODE + '</strong>'; reveal.hidden = false; grown.hidden = true; input.focus(); }
+  $('forgot').addEventListener('click', function () {
+    if (!isTV) { tell(); return; }
+    var a = 6 + Math.floor(Math.random() * 4), b = 6 + Math.floor(Math.random() * 4); sum = a * b;
+    $('q').textContent = a + ' \u00d7 ' + b; $('ans-err').textContent = ''; ans.value = '';
+    reveal.hidden = true; grown.hidden = false; ans.focus();
+  });
+  function checkSum() { if (+ans.value === sum) tell(); else { $('ans-err').textContent = 'Not quite. Ask a grown-up.'; ans.select(); } }
+  $('ans-ok').addEventListener('click', checkSum);
+  ans.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); checkSum(); } });
+  $('form').addEventListener('submit', function (e) {
     e.preventDefault();
-    if (input.value.trim().toUpperCase() !== PASSWORD) { document.getElementById('pw-lock-err').textContent = 'That\u2019s not the password. Try again.'; input.select(); return; }
+    if (input.value.trim().toUpperCase() !== CODE) { $('err').textContent = 'That\u2019s not this device\u2019s password. Try again.'; input.select(); return; }
     try { sessionStorage.setItem('cs-preview', 'ok'); } catch (x) {}
     lock.remove();
   });
