@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>AstroNomia: Next Gen &mdash; Space Sandbox</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%23090616'/%3E%3Ccircle cx='30' cy='30' r='13' fill='%23ff6fd8'/%3E%3Ccircle cx='25' cy='25' r='4' fill='%23ffc2f0' opacity='.6'/%3E%3Cellipse cx='30' cy='30' rx='24' ry='7' fill='none' stroke='%238be0ff' stroke-width='2.6' transform='rotate(-24 30 30)'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Press+Start+2P&display=swap" rel="stylesheet">
@@ -464,6 +464,10 @@
   @keyframes an-fade { from { opacity: 0; transform: translateY(6px); } }
 
   /* a little solar system: a sun with three worlds going round it */
+  .an-boot-planet {
+    width: 150px; height: 150px; margin: 8px 0 2px; border-radius: 50%; object-fit: cover;
+    box-shadow: 0 0 40px 6px rgba(139,224,255,.28); animation: an-fade .8s .7s both;
+  }
   .an-boot-orrery { position: relative; width: 150px; height: 150px; margin: 8px 0 2px; animation: an-fade .8s .7s both; }
   .an-boot-orrery .sun {
     position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%;
@@ -657,12 +661,7 @@
 <div class="an-boot" id="an-boot">
   <div class="an-boot-logo">CuriousScout</div>
   <div class="an-boot-presents">presents</div>
-  <div class="an-boot-orrery" aria-hidden="true">
-    <div class="sun"></div>
-    <div class="orbit o1"><i></i></div>
-    <div class="orbit o2"><i></i></div>
-    <div class="orbit o3"><i></i></div>
-  </div>
+  <img class="an-boot-planet" src="logo.png" alt="" width="150" height="150">
   <div class="an-title">AstroNomia</div>
   <div class="an-boot-gen">Next Gen <b>2.0.0</b></div>
   <div class="an-boot-bar"><b id="an-boot-bar"></b></div>
