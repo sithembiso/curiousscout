@@ -168,6 +168,35 @@ body.pad #power { bottom: calc(env(safe-area-inset-bottom, 0px) + 180px); }
 <script defer src="../analytics.js"></script>
 </head>
 <body>
+<div id="pw-lock" role="dialog" aria-modal="true" aria-labelledby="pw-lock-title" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:#08130f;color:#eef3ea;font-family:Barlow,'Segoe UI',system-ui,sans-serif">
+  <form id="pw-lock-form" autocomplete="off" style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px">
+    <p style="margin:0;font:700 14px 'Saira Condensed','Arial Narrow',sans-serif;letter-spacing:.24em;text-transform:uppercase;color:#ffd66b">Preview</p>
+    <h1 id="pw-lock-title" style="margin:0;font:800 italic clamp(36px,9vw,56px)/.9 'Saira Condensed','Arial Narrow',sans-serif">Football Rivals 3D</h1>
+    <p style="margin:0;color:#a9b8ad">Type the password to play.</p>
+    <p id="pw-lock-hint" hidden style="margin:0;padding:8px 10px;border-radius:6px;background:rgba(255,214,107,.12)">Password for this device: <strong style="letter-spacing:2px">FLOODLIGHT</strong></p>
+    <p id="pw-lock-tv" hidden style="margin:0;padding:8px 10px;border-radius:6px;background:rgba(255,214,107,.12)">Ask a grown-up for the password.</p>
+    <input id="pw-lock-input" type="password" aria-label="Password" placeholder="Password" autocapitalize="characters" spellcheck="false" style="padding:12px;font-size:17px;letter-spacing:2px;color:#eef3ea;background:#10221b;border:1.5px solid rgba(255,214,107,.5);border-radius:6px">
+    <p id="pw-lock-err" role="alert" style="margin:0;min-height:1.3em;color:#ff8fa3"></p>
+    <button type="submit" style="align-self:flex-start;padding:10px 28px;border:0;border-radius:4px;background:#ffd66b;color:#08130f;font:800 italic 22px 'Saira Condensed','Arial Narrow',sans-serif;cursor:pointer">Unlock</button>
+  </form>
+</div>
+<script>
+/* Preview password. Phones, tablets and computers are shown it; TVs have to be told it. */
+(function () {
+  var PASSWORD = 'FLOODLIGHT', lock = document.getElementById('pw-lock');
+  var ok = false; try { ok = sessionStorage.getItem('cs-preview') === 'ok'; } catch (x) {}
+  if (ok) { lock.remove(); return; }
+  var isTV = /smart-?tv|tizen|web0s|webos|netcast|hbbtv|bravia|viera|vidaa|philipstv|aft[a-z]|crkey|roku|appletv|googletv|android ?tv|;\s?tv\b|large screen|opera tv/i.test(navigator.userAgent);
+  document.getElementById(isTV ? 'pw-lock-tv' : 'pw-lock-hint').hidden = false;
+  var input = document.getElementById('pw-lock-input'); input.focus();
+  document.getElementById('pw-lock-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (input.value.trim().toUpperCase() !== PASSWORD) { document.getElementById('pw-lock-err').textContent = 'That\u2019s not the password. Try again.'; input.select(); return; }
+    try { sessionStorage.setItem('cs-preview', 'ok'); } catch (x) {}
+    lock.remove();
+  });
+})();
+</script>
 <div id="stage"></div>
 
 <div id="hud" hidden>
