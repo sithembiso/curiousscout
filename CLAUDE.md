@@ -11,7 +11,7 @@ There is **no package.json, bundler, test runner, linter, or CI**. Everything is
 ## Layout
 
 - `index.html` — the landing page. Contains a `<main>` of game cards.
-- `<game name>/index.html` — each game is **one fully self-contained file** (all CSS and JS inline) in its own directory: `astronomia/`, `balloon pop/`, `claudecraft/`, `cluckdown/`, `football rivals/`, `geo-jump/`, `math mine/`, `startube/`, `toon studio/`. Directory names may contain spaces.
+- `<game name>/index.html` — each game is **one fully self-contained file** (all CSS and JS inline) in its own directory: `astronomia/`, `balloon pop/`, `claudecraft/`, `cluckdown/`, `football rivals/`, `football rivals 3d/`, `geo-jump/`, `math mine/`, `startube/`, `toon studio/`. Directory names may contain spaces.
 
 - `startube/` is a YouTube-style video app. Its built-in videos are canvas animations drawn from the playback clock (each video's `draw(ctx, t)` is a pure function of time, so seeking is instant); uploads, likes, comments and playlists live in the viewer's browser (IndexedDB / localStorage). Kids (ages 3–10) can also **share** a video with everyone via `startube-server/` — but only through a strict path: a grown-up gate on the device, made-up channel names (never typed), no comments (emoji cheers only), one report hides a video, and **nothing is public until the site owner approves it** in the hidden review room at `startube/#/review`. Sharing is switched off while the `SERVER` constant in `startube/index.html` is empty. Keep these safeguards when editing.
 
