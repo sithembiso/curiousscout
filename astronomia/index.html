@@ -7912,33 +7912,98 @@ const STAR_FRAG = `
 
 /* ------------------------------------------------------------------ textures */
 
-function surfaceTexture(type, seed) {
+/* ------------------------------------------------------------ painting later */
+/*
+ * Painting a world's surface and its clouds is the slowest thing the game
+ * does (well over a second for Earth or Mars), and a system like the Solar
+ * System has dozens of worlds, nearly all of them dots when it opens. So a
+ * texture can be handed out before it is painted: a tiny stand-in, with the
+ * real painting queued under the same key. It is done the first time a body
+ * using it is big enough on screen to be seen (see updateVisuals and
+ * realiseVisible), or at once if anything needs the real ground (a call to
+ * surfaceTexture without `later`). A body too small to see is drawn as a dot,
+ * so the stand-in is never actually on screen.
+ */
+const paintJobs = new Map();          // key -> paints the real picture into its texture
+
+function laterTexture(key, paint, clear) {
+  if (texCache.has(key)) return texCache.get(key);
+  const cv = newCanvas(2, 2);
+  if (!clear) { const c = cv.getContext('2d'); c.fillStyle = '#7a7670'; c.fillRect(0, 0, 2, 2); }
+  const t = new THREE.CanvasTexture(cv);
+  t.encoding = THREE.sRGBEncoding;
+  texCache.set(key, t);
+  paintJobs.set(key, () => paint(t));
+  return t;
+}
+
+/** Paint a queued texture now, and give the bodies waiting on it their real shape. */
+function realise(key) {
+  const job = paintJobs.get(key);
+  if (!job) return false;
+  paintJobs.delete(key);
+  job();
+  for (const b of sim.bodies) {
+    if (b.cloudKey === key) b.cloudKey = null;
+    if (b.surfKey !== key) continue;
+    b.surfKey = null;
+    const p = b.parts;
+    if (!p || !p.surf || b.ownGeo) continue;
+    // mountains, basins and the sea level all come from the height field it painted
+    const g = baseGeometryFor(b);
+    if (g !== p.surf.geometry) p.surf.geometry = g;
+    b.groundCol = null;
+    scaleVisual(b);
+    if (b.scars && b.scars.length) buildScars(b);
+  }
+  return true;
+}
+
+/** Paint whatever is already big enough on screen — called before the first frame is shown. */
+function realiseVisible() {
+  for (const b of sim.bodies) {
+    if (!b.surfKey && !b.cloudKey) continue;
+    if (apparentPx(b) < 1.7) continue;
+    if (b.surfKey) realise(b.surfKey);
+    if (b.cloudKey) realise(b.cloudKey);
+  }
+}
+
+function surfaceTexture(type, seed, later) {
   const def = TYPES[type];
   if (!def.surf) return null;
   const variant = seed % 3;
   const key = type + ':' + variant;
-  if (texCache.has(key)) return texCache.get(key);
+  if (texCache.has(key)) {
+    if (!later) realise(key);
+    return texCache.get(key);
+  }
 
-  // Granulation is fine-grained by nature: at 512 wide a granule is only a
-  // dozen pixels across and the relief shading has nothing to bite on, so
-  // photosphere stars get twice the resolution of everything else.
-  const small = def.group === 'MOONS & DEBRIS' || def.lumpy;
-  const fine = def.surf === 'star';
-  const W = def.texW || (small ? 256 : fine ? 1024 : 512), H = W / 2;
-  const cv = newCanvas(W, H);
-  const rng = mulberry32(hashStr(key));
-  const opts = Object.assign({ temp: def.temp, spots: def.spots }, def.opts || {});
-  const hgt = onSphere(() => SURFACE[def.surf](cv.getContext('2d'), W, H, rng, opts));
-  // A painter may hand back the height field it shaded from, so the same
-  // relief can also be pushed into the mesh. See reliefGeometry().
-  if (hgt) heightCache.set(key, { W: W, H: H, d: hgt });
-
-  const t = new THREE.CanvasTexture(cv);
+  const paint = (t) => {
+    // Granulation is fine-grained by nature: at 512 wide a granule is only a
+    // dozen pixels across and the relief shading has nothing to bite on, so
+    // photosphere stars get twice the resolution of everything else.
+    const small = def.group === 'MOONS & DEBRIS' || def.lumpy;
+    const fine = def.surf === 'star';
+    const W = def.texW || (small ? 256 : fine ? 1024 : 512), H = W / 2;
+    const cv = newCanvas(W, H);
+    const rng = mulberry32(hashStr(key));
+    const opts = Object.assign({ temp: def.temp, spots: def.spots }, def.opts || {});
+    const hgt = onSphere(() => SURFACE[def.surf](cv.getContext('2d'), W, H, rng, opts));
+    // A painter may hand back the height field it shaded from, so the same
+    // relief can also be pushed into the mesh. See reliefGeometry().
+    if (hgt) heightCache.set(key, { W: W, H: H, d: hgt });
+    t.image = cv;
+    // as sharp as the graphics card allows: toward a pole the map is squeezed
+    // round and stretched along, and plain filtering blurs it into a fan
+    t.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
+    t.needsUpdate = true;
+  };
+  if (later) return laterTexture(key, paint);
+  const t = new THREE.CanvasTexture(newCanvas(2, 2));
   t.encoding = THREE.sRGBEncoding;
-  // as sharp as the graphics card allows: toward a pole the map is squeezed
-  // round and stretched along, and plain filtering blurs it into a fan
-  t.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
   texCache.set(key, t);
+  paint(t);
   return t;
 }
 
@@ -8375,11 +8440,16 @@ function buildCraft(b, grp) {
 
 function buildWorld(b, def, grp) {
   const photo = def.surf === 'star';
-  const geo = baseGeometryFor(b);
+  // The surface may only be queued (see paintJobs): until it is painted there
+  // is no height field yet, so the body waits on a plain sphere.
+  const key = b.type + ':' + (b.seed % 3);
+  const tex = surfaceTexture(b.type, b.seed, true);
+  b.surfKey = paintJobs.has(key) ? key : null;
+  const ownShape = def.lumpy || (b.rubble && b.m < 0.05 && !def.star);
+  const geo = b.surfKey && !ownShape ? SPHERE : baseGeometryFor(b);
   // Only the lumpy geometry is per-body; star geometry is shared from geoCache
   // and must never be disposed with the body that happened to build it.
   b.ownGeo = def.lumpy ? geo : null;
-  const tex = surfaceTexture(b.type, b.seed);
 
   let mat;
   if (photo) {
@@ -8448,11 +8518,17 @@ function buildWorld(b, def, grp) {
     const swirled = def.surf === 'terran' || def.surf === 'earth' || def.surf === 'ocean';
     // weather you can fly down to needs real resolution, or it turns to blocks
     const CW = swirled ? 2048 : 512, CH = swirled ? 1024 : 256;
-    const ct = cachedTexture('cloud:' + b.type + ':' + (b.seed % 3), () => def.cloudStyle === 'venus'
-      ? onSphere(() => venusCloudTexture(hashStr(b.type + b.seed % 3), 1024, 512))
-      : def.cloudStyle === 'titan' ? onSphere(() => titanHazeTexture(hashStr(b.type + b.seed % 3), 1024, 512))
-      : onSphere(() => cloudTexture(hashStr(b.type + b.seed % 3), CW, CH, def.clouds, [255, 255, 255], swirled ? 1 : 0, def.cloudCover || 0)));
-    ct.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
+    const cloudKey = 'cloud:' + b.type + ':' + (b.seed % 3);
+    // (a clear stand-in until it is painted: see paintJobs)
+    const ct = laterTexture(cloudKey, (t) => {
+      t.image = def.cloudStyle === 'venus'
+        ? onSphere(() => venusCloudTexture(hashStr(b.type + b.seed % 3), 1024, 512))
+        : def.cloudStyle === 'titan' ? onSphere(() => titanHazeTexture(hashStr(b.type + b.seed % 3), 1024, 512))
+        : onSphere(() => cloudTexture(hashStr(b.type + b.seed % 3), CW, CH, def.clouds, [255, 255, 255], swirled ? 1 : 0, def.cloudCover || 0));
+      t.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
+      t.needsUpdate = true;
+    }, true);
+    b.cloudKey = paintJobs.has(cloudKey) ? cloudKey : null;
     const cm = new THREE.MeshStandardMaterial({ map: ct, transparent: true, depthWrite: false, roughness: 1 });
     // a touch of their own brightness, so cloud tops stay white, not grey, where the light is low
     if (swirled || def.cloudStyle) { cm.emissive = new THREE.Color(1, 1, 1); cm.emissiveMap = ct; cm.emissiveIntensity = 0.14; }
@@ -9376,6 +9452,7 @@ function buildScars(b) {
     mark weathers back to. */
 function groundColour(b) {
   if (b.groundCol) return b.groundCol;
+  if (b.surfKey) realise(b.surfKey);
   let c = [90, 84, 78];
   const map = b.parts && b.parts.surf && b.parts.surf.material && b.parts.surf.material.map;
   const img = map && map.image;
@@ -10409,7 +10486,13 @@ function seedGalaxyStars(b) {
       clumps.push([Math.cos(a) * d, Math.sin(a) * d, gauss() * 0.10 * R, 0.10 + rng() * 0.16]);
     }
   }
-  const BULGE_SHARE = { spiral: 0.24, barred: 0.18, ring: 0.16, elliptical: 1, irregular: 0.08, dwarf: 0.06 }[shape];
+  const BULGE_SHARE = { spiral: 0.14, barred: 0.18, ring: 0.16, elliptical: 1, irregular: 0.08, dwarf: 0.06 }[shape];
+  // A plain spiral (an Andromeda) has a wide golden inner disc round its core,
+  // wound into the same spiral as the arms, with dark dust lanes between.
+  const INNER_SHARE = shape === 'spiral' ? 0.28 : 0;
+  // Its arms are many and wound tight, so they wrap the disc round and round
+  // like the rings of an Andromeda rather than sweeping out as two.
+  const SPIRAL_WIND = 6.0, SPIRAL_ARMS = Math.max(arms, 4);
 
   const want = Math.min(b.galN || GAL_STARS, galx.free.length);
   const mine = [];
@@ -10444,6 +10527,22 @@ function seedGalaxyStars(b) {
       c = [c[0] * 0.45, c[1] * 0.45, c[2] * 0.45];
       s = R * (0.05 + rng() * 0.07);
       hot = true; disp = 0.34;
+    } else if (INNER_SHARE && i < want * (BULGE_SHARE + INNER_SHARE)) {
+      // The inner disc: old golden stars with brown dust among them, laid
+      // along the spiral so the gaps between its windings show as dark lanes.
+      const t = 0.05 + Math.pow(rng(), 0.85) * 0.50;
+      const r = t * R;
+      const spread = gauss() * 0.55;
+      const th = Math.log(t / 0.10) * SPIRAL_WIND + ((rng() * SPIRAL_ARMS) | 0) * (TAU / SPIRAL_ARMS) + spread;
+      lx = Math.cos(th) * r; ly = Math.sin(th) * r;
+      lz = gauss() * (0.015 + t * 0.02) * R;
+      const lane = clamp(1 - Math.abs(spread) / 0.8, 0, 1);
+      // golden near the middle and along the windings, dusty brown between
+      c = mix([0.50, 0.32, 0.20], [1.0, 0.78, 0.48], clamp(lane * 0.55 + (1 - t / 0.55) * 0.45, 0, 1));
+      const dim = 0.15 + 0.20 * lane + 0.16 * (1 - t / 0.55);
+      c = [c[0] * dim, c[1] * dim, c[2] * dim];
+      s = R * (0.045 + rng() * 0.07);             // broad puffs: a haze, not dots
+      old = true; disp = 0.08;
     } else if (shape === 'barred' && i < want * 0.40) {
       // The bar: a straight, crowded box of old stars across the middle.
       lx = (rng() * 2 - 1) * 0.40 * R;
@@ -10478,13 +10577,16 @@ function seedGalaxyStars(b) {
       disp = 0.15;
     } else {
       // Spiral arms; for a barred spiral they start at the ends of the bar.
-      const r0 = shape === 'barred' ? 0.40 : 0.14;
+      // (a plain spiral's arms begin outside its golden inner disc)
+      const r0 = shape === 'barred' ? 0.40 : shape === 'spiral' ? 0.36 : 0.14;
       const r = (r0 + Math.sqrt(rng()) * (1 - r0)) * R;
       const t = r / R;
-      const spread = (0.16 + t * 0.34) * gauss() * 2.2;
+      const spread = (0.16 + t * 0.34) * gauss() * (shape === 'spiral' ? 2.0 : 2.2);
       const th = shape === 'barred'
         ? Math.log(t / r0) * WIND * 0.8 + ((rng() * 2) | 0) * Math.PI + spread
-        : Math.log(Math.max(t, 0.02) / 0.10) * WIND + ((rng() * arms) | 0) * (TAU / arms) + spread;
+        : shape === 'spiral'
+          ? Math.log(t / 0.10) * SPIRAL_WIND + ((rng() * SPIRAL_ARMS) | 0) * (TAU / SPIRAL_ARMS) + spread
+          : Math.log(Math.max(t, 0.02) / 0.10) * WIND + ((rng() * arms) | 0) * (TAU / arms) + spread;
       lx = Math.cos(th) * r; ly = Math.sin(th) * r;
       lz = gauss() * (0.012 + t * 0.020) * R;       // a thin disc
       const onArm = clamp(1 - Math.abs(spread) / (0.2 + t * 0.4), 0, 1);
@@ -14173,6 +14275,9 @@ function updateVisuals(realDt, simDt) {
 
     // ---- level of detail: below a couple of pixels, draw a dot instead
     const tiny = px < 1.7;
+    // big enough to see: paint whatever it is still waiting for
+    if (!tiny && b.surfKey) realise(b.surfKey);
+    if (!tiny && b.cloudKey) realise(b.cloudKey);
     if (p.surf) p.surf.visible = !tiny;
     if (p.cloud) p.cloud.visible = !tiny && px > 5;
     if (p.atmo) p.atmo.visible = !tiny && px > 4;
@@ -19190,6 +19295,8 @@ async function boot() {
   sim.rate = RATES[rateIdx];
   syncRate();
   loadPreset(PRESETS[0]);
+  applyCamera();
+  realiseVisible();
   updateHint();
   renderInspector();
 
