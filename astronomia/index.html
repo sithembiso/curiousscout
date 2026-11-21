@@ -4061,10 +4061,13 @@ function waterDelivered(a, b) {
   return clamp(Math.max(byMass, share * 0.05), 0, 1);
 }
 
-const WATER_LIQUID = new THREE.Color(0.015, 0.075, 0.26);  // deep navy ocean, as seen from orbit
+/* Deep navy, as seen from orbit. Set heavy on blue and light on green on
+   purpose: sunlight glinting off the water and the haze above it both lift
+   the green, and this is what comes out on screen as about rgb(20, 45, 76). */
+const WATER_LIQUID = new THREE.Color(0.005, 0.028, 0.42);
 const WATER_ICE = new THREE.Color(0.84, 0.91, 0.97);
-// Earth's own: the bright marble blue it is drawn in
-const WATER_EARTH = new THREE.Color(0.025, 0.10, 0.46);
+// Earth's seas are the same navy as everyone else's
+const WATER_EARTH = WATER_LIQUID;
 const waterColour = (b) => {
   const sea = TYPES[b.type].sea;
   if (sea) return sea.c || (sea.c = new THREE.Color(sea.col[0], sea.col[1], sea.col[2]));
