@@ -32,6 +32,8 @@
   #an-canvas { position: fixed; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
 
   /* Soft vignette (no scanlines: they striped every planet) */
+  /* Movie mode's lens flares, painted over the scene but under the interface */
+  #an-flare { position: fixed; inset: 0; z-index: 2; pointer-events: none; width: 100%; height: 100%; display: none; }
   #an-vignette {
     position: fixed; inset: 0; z-index: 2; pointer-events: none;
     background:
@@ -597,6 +599,7 @@
   </g>
 </svg>
 <div id="an-vignette"></div>
+<canvas id="an-flare"></canvas>
 
 <div id="an-app">
 
@@ -3201,6 +3204,7 @@ const settings = {
   tideHeat: true,        // …and let the kneading raise the body's internal temperature
   trails: true,
   labels: true,
+  movie: false,          // Movie mode: city lights, lens flares, sharper picture, no labels or trails
   lensing: true,
   smooth: true,          // lower the drawing resolution while frames are slow, raise it again after
   hzone: false,
@@ -14002,12 +14006,221 @@ function setFpsCap(c) {
   PERF.ceil = 1; PERF.ceilHold = 0; PERF.tried = 0; PERF.hold = 0; PERF.calm = 0; PERF.downFails = 0; PERF.upFails = 0;
 }
 
+/* ================================================================ movie mode */
+/*
+ * Movie mode is for watching rather than building: the labels and orbit trails
+ * go, the picture is drawn sharper, the night side of every living world is
+ * dotted with city lights, and bright stars throw lens flares across the
+ * screen the way a camera's would. Switching it off puts labels, trails and
+ * smooth mode back exactly as they were.
+ */
+const MOVIE = { saved: null };
+
+function applyMovie() {
+  if (settings.movie && !MOVIE.saved) {
+    MOVIE.saved = { labels: settings.labels, trails: settings.trails, smooth: settings.smooth };
+    settings.labels = false; settings.trails = false; settings.smooth = false;
+    clearTrails();
+  } else if (!settings.movie && MOVIE.saved) {
+    Object.assign(settings, MOVIE.saved);
+    MOVIE.saved = null;
+    PERF.scale = 1;
+  }
+  $('an-flare').style.display = settings.movie ? 'block' : 'none';
+  if (!settings.movie) for (const b of sim.bodies) if (b.parts && b.parts.city) b.parts.city.visible = false;
+  resize();
+  syncSettings();
+}
+
+/** Worlds that have people on them, or could: the living ones. */
+const hasCities = (b) => b.kind === 'body' && (isLivingSurf(TYPES[b.type]) || (b.terra || 0) > 0.5) && (b.water || 0) > 0;
+
+/**
+ * The lights of a world's cities, as a map: sparse warm specks over the land,
+ * crowded along the coasts and thinning towards the poles, with nothing on the
+ * sea or on high ice. Read off the world's own ground and sea level, so it
+ * follows the real continents on Earth and the invented ones anywhere else.
+ */
+function cityTexture(b) {
+  const W = 1024, H = 512, GW = 384, GH = 192;
+  const cv = newCanvas(W, H), ctx = cv.getContext('2d');
+  const sea = seaRadius(b);
+  const land = new Uint8Array(GW * GH);
+  const n = new THREE.Vector3();
+  for (let y = 0; y < GH; y++) {
+    const th = (y + 0.5) / GH * Math.PI;
+    for (let x = 0; x < GW; x++) {
+      const ph = (x + 0.5) / GW * TAU;
+      n.set(-Math.cos(ph) * Math.sin(th), Math.cos(th), Math.sin(ph) * Math.sin(th));
+      land[y * GW + x] = groundAt(b, n) > sea * 1.0004 ? 1 : 0;
+    }
+  }
+  const rng = mulberry32(b.seed ^ 0x51ce);
+  ctx.globalCompositeOperation = 'lighter';
+  for (let y = 1; y < GH - 1; y++) {
+    const lat = Math.abs(90 - (y + 0.5) / GH * 180);
+    if (lat > 66) continue;                                  // ice and tundra: nobody home
+    const cool = 1 - Math.pow(lat / 66, 2);
+    for (let x = 0; x < GW; x++) {
+      if (!land[y * GW + x]) continue;
+      // a coast within a couple of cells: that is where people live
+      let coast = false;
+      for (let dy = -2; dy <= 2 && !coast; dy++) for (let dx = -2; dx <= 2; dx++) {
+        if (!land[clamp(y + dy, 0, GH - 1) * GW + ((x + dx + GW) % GW)]) { coast = true; break; }
+      }
+      if (rng() > (coast ? 0.30 : 0.06) * cool) continue;
+      // a town: a bright middle and a few dimmer specks round it
+      const cx = (x + rng()) / GW * W, cy = (y + rng()) / GH * H;
+      const stretch = 1 / Math.max(Math.cos((90 - (cy / H) * 180) * Math.PI / 180), 0.3);
+      const big = rng() < (coast ? 0.12 : 0.05);
+      const rad = (big ? 2.6 : 1.3) * stretch;
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
+      glow.addColorStop(0, big ? 'rgba(255,230,165,0.9)' : 'rgba(255,212,138,0.6)');
+      glow.addColorStop(1, 'rgba(255,170,80,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(cx, cy, rad, 0, TAU); ctx.fill();
+      // a city sprawls: a few fainter specks round a big one
+      for (let k = big ? 5 : 1; k > 0; k--) {
+        ctx.fillStyle = 'rgba(255,220,150,' + (0.25 + rng() * 0.35) + ')';
+        ctx.fillRect(cx + (rng() - 0.5) * 7 * stretch, cy + (rng() - 0.5) * 7, 1, 1);
+      }
+    }
+  }
+  return cv;
+}
+
+const CITY_VERT = `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  varying vec2 vUv;
+  varying vec3 vN;
+  void main() {
+    vUv = uv;
+    vN = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    #include <logdepthbuf_vertex>
+  }`;
+const CITY_FRAG = `
+  #include <logdepthbuf_pars_fragment>
+  uniform sampler2D uMap;
+  uniform vec3 uL;        // towards the star, world axes
+  varying vec2 vUv;
+  varying vec3 vN;
+  void main() {
+    #include <logdepthbuf_fragment>
+    // only where the sun has set, coming on through dusk
+    float night = smoothstep(0.10, -0.20, dot(normalize(vN), uL));
+    vec4 t = texture2D(uMap, vUv);
+    gl_FragColor = vec4(t.rgb * t.a * night * 1.1, 1.0);
+  }`;
+
+const _cityL = new THREE.Vector3();
+function updateCities(b, px) {
+  const p = b.parts;
+  const want = settings.movie && px > 6 && hasCities(b) && p.surf && !b.surfKey && b.parts.surf.isMesh;
+  if (!want) { if (p.city) p.city.visible = false; return; }
+  const key = 'city:' + b.id + ':' + Math.round((b.water || 0) * 20) + ':' + (b.terra > 0.5 ? 1 : 0);
+  if (!p.city || p.city.userData.key !== key) {
+    if (p.city) { p.city.parent && p.city.parent.remove(p.city); p.city.material.uniforms.uMap.value.dispose(); p.city.material.dispose(); }
+    const tex = new THREE.CanvasTexture(cityTexture(b));
+    tex.encoding = THREE.sRGBEncoding;
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { uMap: { value: tex }, uL: { value: new THREE.Vector3(1, 0, 0) } },
+      vertexShader: CITY_VERT, fragmentShader: CITY_FRAG,
+      blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+    });
+    p.city = new THREE.Mesh(p.surf.geometry, mat);
+    p.city.renderOrder = 1.5;        // over the sea, under the clouds
+    p.city.userData.key = key;
+    p.surf.add(p.city);              // turns with the ground
+  }
+  p.city.geometry = p.surf.geometry;
+  p.city.visible = true;
+  const star = nearestStar(b);
+  if (star) p.city.material.uniforms.uL.value.copy(_cityL.subVectors(star.p, b.p).normalize());
+}
+
+/* Lens flares: what a camera does with a bright light — a glow, a long
+   horizontal streak, and a string of coloured ghosts reflected along the line
+   from the light through the middle of the frame. Only for stars that are
+   actually in view and not hidden behind something. */
+const _fl = new THREE.Vector3(), _flD = new THREE.Vector3(), _flO = new THREE.Vector3();
+const FLARE_GHOSTS = [[0.35, 0.06, [255, 210, 150]], [0.62, 0.03, [150, 210, 255]], [0.9, 0.09, [190, 160, 255]],
+  [1.25, 0.05, [140, 255, 200]], [1.55, 0.12, [255, 170, 120]], [1.9, 0.04, [170, 200, 255]]];
+function drawFlares() {
+  const cv = $('an-flare');
+  if (!settings.movie) return;
+  const w = VIEW.w, h = VIEW.h;
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'lighter';
+  const cam = camera.position;
+  for (const s of sim.starCache) {
+    if (!s.alive || s.kind !== 'body') continue;
+    const def = TYPES[s.type];
+    if (!def.star || def.dead || !(s.lum > 1e-4)) continue;
+    const dist = cam.distanceTo(s.p);
+    // how bright it looks from here, 0 to 1: the Sun from Earth is about 0.67
+    const I = clamp((Math.log10(s.lum) - 2 * Math.log10(Math.max(dist, 1e-9) / AU) + 4) / 6, 0, 1);
+    if (I < 0.05) continue;
+    // in front of the camera at all? (asked of the direction, not of projected
+    // depth, which rounds to the far plane for anything this far away)
+    camera.getWorldDirection(_flO);
+    if (_flD.subVectors(s.p, cam).dot(_flO) <= 0) continue;
+    _fl.copy(s.p).project(camera);
+    if (Math.abs(_fl.x) > 1.3 || Math.abs(_fl.y) > 1.3) continue;
+    // hidden behind a world?
+    _flD.subVectors(s.p, cam).normalize();
+    let hidden = false;
+    for (const o of sim.bodies) {
+      if (o === s || !o.alive || o.kind !== 'body' || TYPES[o.type].star) continue;
+      const r = visRadius(o);
+      _flO.subVectors(o.p, cam);
+      const along = _flO.dot(_flD);
+      if (along <= 0 || along > dist) continue;
+      if (_flO.lengthSq() - along * along < r * r) { hidden = true; break; }
+    }
+    if (hidden) continue;
+    const sx = (_fl.x * 0.5 + 0.5) * w, sy = (-_fl.y * 0.5 + 0.5) * h;
+    const edge = clamp(1.3 - Math.max(Math.abs(_fl.x), Math.abs(_fl.y)), 0, 0.3) / 0.3;   // fades off the edges
+    const a = I * edge;
+    const col = s.lightColor ? [s.lightColor.r * 255, s.lightColor.g * 255, s.lightColor.b * 255] : [255, 240, 220];
+    const tint = mix(col, [255, 255, 255], 0.5);
+    // the glow
+    const R = (60 + 160 * I) * Math.min(w, h) / 900;
+    let g = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
+    g.addColorStop(0, rgba(tint, 0.55 * a)); g.addColorStop(0.25, rgba(tint, 0.18 * a)); g.addColorStop(1, rgba(tint, 0));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, R, 0, TAU); ctx.fill();
+    // the anamorphic streak
+    ctx.save(); ctx.translate(sx, sy); ctx.scale(1, 0.018);
+    const L = w * (0.25 + 0.45 * I);
+    g = ctx.createRadialGradient(0, 0, 0, 0, 0, L);
+    g.addColorStop(0, rgba(mix(col, [170, 200, 255], 0.5), 0.5 * a)); g.addColorStop(1, rgba(col, 0));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, L, 0, TAU); ctx.fill();
+    ctx.restore();
+    // the ghosts, along the line through the middle of the frame
+    const cx = w / 2, cy = h / 2;
+    for (const [k, rr, gc] of FLARE_GHOSTS) {
+      const gx = sx + (cx - sx) * k, gy = sy + (cy - sy) * k;
+      const gr = rr * Math.min(w, h) * (0.6 + I * 0.6);
+      g = ctx.createRadialGradient(gx, gy, gr * 0.55, gx, gy, gr);
+      g.addColorStop(0, rgba(gc, 0.05 * a)); g.addColorStop(0.85, rgba(gc, 0.13 * a)); g.addColorStop(1, rgba(gc, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(gx, gy, gr, 0, TAU); ctx.fill();
+    }
+  }
+}
+
 function resize() {
   // Never let the viewport reach zero: a hidden or collapsed window reports
   // 0×0, and every worldPerPixel() division downstream would become Infinity.
   const w = Math.max(window.innerWidth, 1), h = Math.max(window.innerHeight, 1);
   VIEW.w = w; VIEW.h = h;
-  VIEW.dpr = Math.min(window.devicePixelRatio || 1, 2) * (settings.smooth ? PERF.scale : 1);
+  // Movie mode draws half as many pixels again in each direction and never
+  // steps down: a sharper picture, paid for in frame rate.
+  VIEW.dpr = settings.movie ? Math.min(Math.min(window.devicePixelRatio || 1, 2) * 1.5, 3)
+    : Math.min(window.devicePixelRatio || 1, 2) * (settings.smooth ? PERF.scale : 1);
   renderer.setPixelRatio(VIEW.dpr);
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
@@ -14278,6 +14491,7 @@ function updateVisuals(realDt, simDt) {
     // big enough to see: paint whatever it is still waiting for
     if (!tiny && b.surfKey) realise(b.surfKey);
     if (!tiny && b.cloudKey) realise(b.cloudKey);
+    if (p.city || (settings.movie && !tiny)) updateCities(b, px);
     if (p.surf) p.surf.visible = !tiny;
     if (p.cloud) p.cloud.visible = !tiny && px > 5;
     if (p.atmo) p.atmo.visible = !tiny && px > 4;
@@ -16491,6 +16705,7 @@ function openSettings() {
     '<div class="an-toggle"><div>Collisions<small id="st-col-d"></small></div><div class="an-row" style="margin:0;flex:none">' +
     '<button id="st-col-merge" style="padding:6px 8px">MERGE</button><button id="st-col-bounce" style="padding:6px 8px">BOUNCE</button><button id="st-col-off" style="padding:6px 8px">OFF</button></div></div>' +
     tgl('st-auto', 'Auto-orbit', 'A body placed with a plain click gets a circular orbit for free.') +
+    tgl('st-movie', 'Movie mode', 'For watching: city lights on the night side of living worlds, lens flares from bright stars and a sharper picture, with the labels and orbit trails hidden. Switch it off to get them back.') +
     tgl('st-trails', 'Orbit trails', 'Trace the paths of the 28 most massive bodies.') +
     tgl('st-labels', 'Name labels', '') +
     tgl('st-lens', 'Gravitational lensing', 'Bend light around black holes. Costs a little performance.') +
@@ -16621,6 +16836,7 @@ function openSettings() {
   bindTgl('st-strip', 'strip');
   bindTgl('st-tideheat', 'tideHeat');
   bindTgl('st-auto', 'autoOrbit');
+  bindTgl('st-movie', 'movie', applyMovie);
   bindTgl('st-trails', 'trails', clearTrails);
   bindTgl('st-labels', 'labels');
   bindTgl('st-lens', 'lensing');
@@ -16826,7 +17042,7 @@ function syncSettings() {
   const map = {
     'st-tidal': 'tidal', 'st-strip': 'strip', 'st-tideheat': 'tideHeat',
     'st-auto': 'autoOrbit', 'st-trails': 'trails', 'st-labels': 'labels',
-    'st-lens': 'lensing', 'st-smooth': 'smooth', 'st-grid': 'grid', 'st-snap': 'gridSnap'
+    'st-lens': 'lensing', 'st-smooth': 'smooth', 'st-grid': 'grid', 'st-snap': 'gridSnap', 'st-movie': 'movie'
   };
   for (const id in map) { const el = $(id); if (el) el.classList.toggle('on', !!settings[map[id]]); }
 }
@@ -19222,6 +19438,7 @@ function loop(now) {
   updateBarycentres();
   if (barys.length) updateBarys(simDt);
   renderFrame();
+  if (settings.movie) drawFlares();
   perfTick(realDt);
   updateHud(realDt);
 
