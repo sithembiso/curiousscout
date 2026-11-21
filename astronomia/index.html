@@ -1221,6 +1221,62 @@ function vortex(ctx, W, H, s) {
   }
 }
 
+/**
+ * Juno's polar cyclones: at each of Jupiter's poles one great cyclone sits on
+ * the pole itself, ringed by a tight cluster of others (five round the south,
+ * eight round the north), packed edge to edge and steady for years. Painted
+ * from each pixel's real place on the globe rather than its spot on the flat
+ * map, which crowds into a point at the poles, so every cyclone stays round.
+ * `c` is a list of { pole: 1 north / -1 south, ring, ringLat (degrees),
+ * r (angular radius, degrees), col, dark }.
+ */
+function polarCyclones(ctx, W, H, list) {
+  const centres = [];
+  for (const P of list) {
+    const r = P.r * Math.PI / 180;
+    // the one on the pole, and the ring round it
+    centres.push({ c: [0, P.pole, 0], r: r * 1.1, P });
+    const th = (90 - P.ringLat) * Math.PI / 180;              // polar angle of the ring
+    for (let k = 0; k < P.ring; k++) {
+      const ph = (k + 0.5) / P.ring * TAU + (P.pole > 0 ? 0.2 : 0.9);
+      centres.push({ c: [-Math.cos(ph) * Math.sin(th), Math.cos(th), Math.sin(ph) * Math.sin(th)], r, P });
+    }
+  }
+  const reach = Math.max(...list.map(P => Math.abs(P.ringLat))) - Math.max(...list.map(P => P.r)) * 2.2;
+  const img = ctx.getImageData(0, 0, W, H), d = img.data;
+  for (let y = 0; y < H; y++) {
+    const th = (y + 0.5) / H * Math.PI, lat = 90 - th * 180 / Math.PI;
+    if (Math.abs(lat) < reach) continue;
+    const st = Math.sin(th), cy = Math.cos(th);
+    for (let x = 0; x < W; x++) {
+      const ph = (x + 0.5) / W * TAU;
+      const px = -Math.cos(ph) * st, pz = Math.sin(ph) * st;
+      for (const C of centres) {
+        const dot = px * C.c[0] + cy * C.c[1] + pz * C.c[2];
+        const ang = Math.acos(clamp(dot, -1, 1));
+        if (ang > C.r * 1.25) continue;
+        const t = ang / C.r;
+        // a frame on the sphere round the centre, to spiral in
+        let ex = [C.c[2], 0, -C.c[0]];
+        let el = Math.hypot(ex[0], ex[2]);
+        if (el < 1e-6) { ex = [1, 0, 0]; el = 1; }
+        ex = [ex[0] / el, 0, ex[2] / el];
+        const ey = [C.c[1] * ex[2] - C.c[2] * ex[1], C.c[2] * ex[0] - C.c[0] * ex[2], C.c[0] * ex[1] - C.c[1] * ex[0]];
+        const a = Math.atan2(px * ey[0] + cy * ey[1] + pz * ey[2], px * ex[0] + cy * ex[1] + pz * ex[2]);
+        // arms winding inwards, turning the way cyclones do in each hemisphere
+        const arm = 0.5 + 0.5 * Math.sin(a * 3 + C.P.pole * t * 11);
+        const body = Math.pow(clamp(1 - t, 0, 1), 0.6);
+        const edge = smoothstep(clamp((1.25 - t) / 0.35, 0, 1));
+        const k = (x + y * W) * 4;
+        const col = mix(C.P.dark, C.P.col, 0.35 + 0.65 * arm);
+        const w = clamp(edge * (0.35 + 0.6 * body), 0, 1);
+        d[k] = lerp(d[k], col[0], w); d[k + 1] = lerp(d[k + 1], col[1], w); d[k + 2] = lerp(d[k + 2], col[2], w);
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
 /** Elongated cyclonic ovals, as seen on gas giants. */
 function storms(ctx, W, H, rng, count, palette, strength) {
   const k = strength != null ? strength : 1;
@@ -1922,6 +1978,7 @@ const SURFACE = {
     });
     storms(ctx, W, H, rng, o.storms != null ? o.storms : 2, o.stormPal || [[176, 150, 128], [214, 208, 192], [140, 116, 98]], 0.45);
     if (o.vortices) for (const v of o.vortices) vortex(ctx, W, H, v);
+    if (o.polar) polarCyclones(ctx, W, H, o.polar);
   },
 
   /* Smooth methane haze with a lonely dark vortex. */
@@ -2976,6 +3033,11 @@ const TYPES = {
         // dark brown "barges" in the north
         { u: 0.28, lat: 15, w: 0.03, h: 0.32, core: [104, 66, 46], mid: [140, 98, 70] },
         { u: 0.78, lat: 17, w: 0.024, h: 0.32, core: [110, 72, 50], mid: [146, 104, 76] }
+      ],
+      // the cyclones Juno found packed round both poles in 2017
+      polar: [
+        { pole: -1, ring: 5, ringLat: -83.5, r: 3.4, col: [238, 230, 214], dark: [92, 96, 108] },
+        { pole: 1, ring: 8, ringLat: 83, r: 2.5, col: [232, 226, 212], dark: [96, 98, 112] }
       ]
     },
     blurb: 'The giant — twice as heavy as everything else in the Solar System put together. Its Great Red Spot is a storm wider than Earth that has been blowing for centuries.'
