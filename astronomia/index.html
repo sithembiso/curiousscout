@@ -3464,13 +3464,28 @@ function captureRadius(b) {
   return isCompact(b) ? Math.max(r, CAPTURE_MIN) : r;
 }
 
+/* Per-body numbers for computeAccel, copied once per pass into flat arrays.
+   The pair loop runs n²/2 times a substep and dozens of substeps a frame;
+   reading them off the body objects in there (captureRadius alone is two
+   calls and a Set lookup per pair) was most of a full Solar System's frame. */
+let _acc = null;
+function accelScratch(n) {
+  if (!_acc || _acc.cap < n) {
+    const cap = Math.max(64, n * 2);
+    const f = () => new Float64Array(cap);
+    _acc = { cap, x: f(), y: f(), z: f(), vx: f(), vy: f(), vz: f(), m: f(), soft: f(), capR: f(),
+             ax: f(), ay: f(), az: f(), sgn: f(), host: new Int32Array(cap), flag: new Uint8Array(cap) };
+  }
+  return _acc;
+}
+const ACC_GAL = 1, ACC_COMPACT = 2;
+
 function computeAccel() {
   const bs = sim.bodies, n = bs.length;
   const gm = G * settings.gravity;
   collisionPairs.length = 0;
   let minT2 = Infinity;
 
-  for (let i = 0; i < n; i++) bs[i].a.set(0, 0, 0);
   for (let i = 0; i < plunging.length; i += 2) {
     if (plunging[i].alive && plunging[i + 1].alive) collisionPairs.push(plunging[i], plunging[i + 1]);
   }
@@ -3481,54 +3496,81 @@ function computeAccel() {
      Without that, two galaxy cores swinging past each other behave like two
      black holes: they slingshot at thousands of km/s and the encounter is over
      before it starts, instead of decaying into a merger. */
-  const softs = new Float64Array(n);
+  const A = accelScratch(n);
+  const X = A.x, Y = A.y, Z = A.z, VX = A.vx, VY = A.vy, VZ = A.vz, M = A.m, SOFT = A.soft, CAP = A.capR;
+  const AX = A.ax, AY = A.ay, AZ = A.az, SGN = A.sgn, HOST = A.host, FLAG = A.flag;
+  for (let i = 0; i < n; i++) bs[i]._ai = i;
   for (let i = 0; i < n; i++) {
     const b = bs[i];
-    softs[i] = b.kind === 'gal' ? Math.max(b.galR, 1) * GAL_SOFT : 0.35 * b.r;
+    X[i] = b.p.x; Y[i] = b.p.y; Z[i] = b.p.z;
+    VX[i] = b.v.x; VY[i] = b.v.y; VZ[i] = b.v.z;
+    M[i] = b.m;
+    SOFT[i] = b.kind === 'gal' ? Math.max(b.galR, 1) * GAL_SOFT : 0.35 * b.r;
+    CAP[i] = captureRadius(b);
+    AX[i] = 0; AY[i] = 0; AZ[i] = 0;
+    SGN[i] = b.kind === 'wh' ? -1 : 1;              // a white hole pushes instead of pulls
+    const h = b.rotHost;
+    HOST[i] = h && bs[h._ai] === h ? h._ai : -1;
+    FLAG[i] = (b.kind === 'gal' ? ACC_GAL : 0) | (isCompact(b) ? ACC_COMPACT : 0);
   }
+  const decay = settings.decay;
+  /* Orbital decay (see below) as a drag on each pair's relative motion: the
+     power a circular orbit of this size radiates, P = 32/5 G⁴ m₁²m₂²(m₁+m₂) /
+     (c⁵ d⁵), taken out of the relative velocity. Its constants, out of the loop: */
+  const gwK = 32 / 5 * Math.pow(gm, 4), gwC5 = Math.pow(C_LIGHT, 5), gwBoost = settings.decayBoost;
+  const gwStep = Math.max(lastStepDt, 1e-12);
 
   for (let i = 0; i < n; i++) {
-    const bi = bs[i], pi = bi.p;
-    const ri = captureRadius(bi);
-    // Hoisted out of the inner loop so the type lookup below is only ever
-    // reached for the handful of compact bodies in a scene.
-    const ci = isCompact(bi);
+    const xi = X[i], yi = Y[i], zi = Z[i], mi = M[i], si = SGN[i], softI = SOFT[i], ri = CAP[i];
+    const hi = HOST[i], fi0 = FLAG[i];
+    const ci = (fi0 & ACC_COMPACT) !== 0, gi = (fi0 & ACC_GAL) !== 0;
+    let axi = AX[i], ayi = AY[i], azi = AZ[i];
     for (let j = i + 1; j < n; j++) {
-      const bj = bs[j], pj = bj.p;
-      const dx = pj.x - pi.x, dy = pj.y - pi.y, dz = pj.z - pi.z;
+      const dx = X[j] - xi, dy = Y[j] - yi, dz = Z[j] - zi;
       const d2 = dx * dx + dy * dy + dz * dz;
+      const fj0 = FLAG[j];
       // A satellite being carried round its host analytically (see
       // carryOrbits) gets that pull from the orbit itself, not from here — and
       // its tight orbit must not drag the step size down either.
       // (They still collide, below — a decaying pair has to be able to meet.)
-      const carriedPair = bi.rotHost === bj || bj.rotHost === bi;
+      const carriedPair = hi === j || HOST[j] === i;
 
       if (!carriedPair) {
         // Keeps the force finite when two objects are overlapping instead of
         // blowing up. For a pair of ordinary bodies this is exactly 0.35·(rᵢ+rⱼ),
         // as it always was.
-        const soft = softs[i] + softs[j];
+        const soft = softI + SOFT[j];
         const dd = d2 + soft * soft;
         const d = Math.sqrt(dd);
         const inv3 = 1 / (dd * d);
+        const mj = M[j], sj = SGN[j];
 
-        // A white hole pushes instead of pulls.
-        const si = bi.kind === 'wh' ? -1 : 1;
-        const sj = bj.kind === 'wh' ? -1 : 1;
+        const fi = gm * mj * inv3 * sj;
+        const fj = gm * mi * inv3 * si;
+        axi += dx * fi; ayi += dy * fi; azi += dz * fi;
+        AX[j] -= dx * fj; AY[j] -= dy * fj; AZ[j] -= dz * fj;
 
-        const fi = gm * bj.m * inv3 * sj;
-        const fj = gm * bi.m * inv3 * si;
-        bi.a.x += dx * fi; bi.a.y += dy * fi; bi.a.z += dz * fi;
-        bj.a.x -= dx * fj; bj.a.y -= dy * fj; bj.a.z -= dz * fj;
-
-        if (settings.decay && si > 0 && sj > 0 && bi.kind !== 'gal' && bj.kind !== 'gal') gwDrag(bi, bj, d);
+        // gravitational-wave drag on the pair
+        if (decay && si > 0 && sj > 0 && !gi && !(fj0 & ACC_GAL) && mi > 0 && mj > 0) {
+          const Mt = mi + mj, mu = mi * mj / Mt;
+          const P = gwK * mi * mi * mj * mj * Mt / gwC5 / (dd * dd * d) * gwBoost;
+          const rvx = VX[j] - VX[i], rvy = VY[j] - VY[i], rvz = VZ[j] - VZ[i];
+          const v = Math.sqrt(rvx * rvx + rvy * rvy + rvz * rvz);
+          if (v > 0 && P > 0) {
+            // never take more than a fifth of the relative speed in one step
+            const acc = Math.min(P / (mu * v), 0.2 * v / gwStep) / v;   // along the relative velocity
+            const ka = acc * mj / Mt, kb = -acc * mi / Mt;
+            axi += rvx * ka; ayi += rvy * ka; azi += rvz * ka;
+            AX[j] += rvx * kb; AY[j] += rvy * kb; AZ[j] += rvz * kb;
+          }
+        }
 
         // local dynamical time, used to pick a safe step size
-        const t2 = (dd * d) / (gm * (bi.m + bj.m) + 1e-12);
+        const t2 = (dd * d) / (gm * (mi + mj) + 1e-12);
         if (t2 < minT2) minT2 = t2;
       }
 
-      let touch = ri + captureRadius(bj);
+      let touch = ri + CAP[j];
       // Falling together, a pair of neutron stars reaches hundreds of Gm per
       // day, and the substep count is capped — so they cross their own capture
       // window inside a single step and tunnel straight through each other,
@@ -3537,15 +3579,17 @@ function computeAccel() {
       // test that catches them properly.
       // (Not for a carried pair: its positions are exact, and its long step
       // would make the window wider than the whole orbit.)
-      if (ci && !carriedPair && isCompact(bj)) {   // see COMPACT_SURF
-        const rvx = bj.v.x - bi.v.x, rvy = bj.v.y - bi.v.y, rvz = bj.v.z - bi.v.z;
+      if (ci && !carriedPair && (fj0 & ACC_COMPACT)) {   // see COMPACT_SURF
+        const rvx = VX[j] - VX[i], rvy = VY[j] - VY[i], rvz = VZ[j] - VZ[i];
         touch += Math.sqrt(rvx * rvx + rvy * rvy + rvz * rvz) * lastStepDt;
       }
       // A galaxy is mostly empty space — things fly through one, they do not
       // hit it — so it never registers a collision.
-      if (d2 < touch * touch && bi.kind !== 'gal' && bj.kind !== 'gal') collisionPairs.push(bi, bj);
+      if (d2 < touch * touch && !gi && !(fj0 & ACC_GAL)) collisionPairs.push(bs[i], bs[j]);
     }
+    AX[i] = axi; AY[i] = ayi; AZ[i] = azi;
   }
+  for (let i = 0; i < n; i++) bs[i].a.set(AX[i], AY[i], AZ[i]);
   lastMinTdyn = Math.sqrt(minT2);
 }
 
@@ -3569,23 +3613,6 @@ const gwBeta = (m1, m2) => {
   const g = G * settings.gravity;
   return 64 / 5 * g * g * g * m1 * m2 * (m1 + m2) / Math.pow(C_LIGHT, 5) * settings.decayBoost;
 };
-const _gv = new THREE.Vector3();
-function gwDrag(a, b, d) {
-  if (!(a.m > 0 && b.m > 0)) return;
-  const M = a.m + b.m, mu = a.m * b.m / M;
-  const g = G * settings.gravity;
-  // power radiated by a circular orbit of this size (the energy E = −G m₁m₂/2a)
-  const P = 32 / 5 * Math.pow(g, 4) * a.m * a.m * b.m * b.m * M / Math.pow(C_LIGHT, 5)
-    / Math.pow(d, 5) * settings.decayBoost;
-  _gv.subVectors(b.v, a.v);
-  const v = _gv.length();
-  if (v <= 0 || P <= 0) return;
-  // never take more than a fifth of the relative speed in one step
-  const acc = Math.min(P / (mu * v), 0.2 * v / Math.max(lastStepDt, 1e-12));
-  _gv.multiplyScalar(acc / v);                      // along the relative velocity
-  a.a.addScaledVector(_gv, b.m / M);
-  b.a.addScaledVector(_gv, -a.m / M);
-}
 
 /* ------------------------------------------------------------- integration */
 
@@ -3614,6 +3641,26 @@ function assignOrbitHosts(dt) {
   carried.length = 0;
   plunging.length = 0;
   for (const b of bs) { b._wasHost = b.rotHost || null; b.rotHost = null; b._depth = -1; }
+  /* Each orbiter's Hill radius round a given host depends only on the two of
+     them, but every body asks for it: worked out once per host, not once per
+     body asking (NaN where the orbiter cannot hold satellites against it). */
+  const hills = new Map();
+  const hillsRound = (host) => {
+    let h = hills.get(host);
+    if (h) return h;
+    h = new Float64Array(bs.length);
+    for (let k = 0; k < bs.length; k++) {
+      const o = bs[k];
+      h[k] = NaN;
+      if (o === host || o.kind === 'wh' || o.kind === 'gal') continue;
+      const dHost = o.p.distanceTo(host.p);
+      if (!(dHost > 0) || o.m >= host.m) continue;
+      // (inside a galaxy, its tide comes from the mass within o's orbit, not all of it)
+      h[k] = dHost * Math.cbrt(o.m / (3 * pullMass(host, dHost)));
+    }
+    hills.set(host, h);
+    return h;
+  };
   for (const b of bs) {
     b.domHost = null;
     if (b.kind === 'gal' || b.kind === 'wh' || b.kind === 'gas') continue;
@@ -3631,14 +3678,12 @@ function assignOrbitHosts(dt) {
        measured against the Sun's tide, wins. So a body deep inside another
        orbiter's Hill sphere belongs to that orbiter instead. */
     let inner = null, innerD = Infinity;
-    for (const o of bs) {
-      if (o === b || o === best || o.m <= b.m || o.kind === 'wh' || o.kind === 'gal') continue;
-      const dHost = o.p.distanceTo(best.p);
-      if (!(dHost > 0) || o.m >= best.m) continue;
-      // (inside a galaxy, its tide comes from the mass within o's orbit, not all of it)
-      const hill = dHost * Math.cbrt(o.m / (3 * pullMass(best, dHost)));
+    const hill = hillsRound(best);
+    for (let k = 0; k < bs.length; k++) {
+      const o = bs[k];
+      if (o === b || !(hill[k] >= 0) || o.m <= b.m) continue;
       const d = b.p.distanceTo(o.p);
-      if (d < hill * 0.5 && d < innerD) { inner = o; innerD = d; }
+      if (d < hill[k] * 0.5 && d < innerD) { inner = o; innerD = d; }
     }
     if (inner) best = inner;
     b.domHost = best;
@@ -3834,7 +3879,10 @@ function advance(frameSeconds) {
   if (target <= 0) return;
   const safe = Math.max(1e-9, 0.025 * lastMinTdyn);
   const n = sim.bodies.length;
-  const budget = clamp(Math.floor(260000 / (n * n + 1)), 1, 64);
+  // The substep budget is per second of play, not per frame: a 120 Hz screen
+  // gets half as many substeps a frame over half as much time, the same
+  // accuracy for the same work. A slow frame never gets more than a 60 Hz one.
+  const budget = clamp(Math.floor(260000 * Math.min(1, frameSeconds * 60) / (n * n + 1)), 1, 64);
   const steps = clamp(Math.ceil(target / safe), 1, budget);
   const dt = target / steps;
   sim.frameSpan = target;              // how much orbit time this frame covers (trails use it)
@@ -7113,9 +7161,34 @@ function tideStress(P, s, d, roche) {
   return clamp((roche - d) / span, 0, 1);
 }
 
+/* Per-body numbers for updateTides' quick test, gathered once per pass. The
+   test asks whether a pair could possibly be inside the Roche limit, using a
+   bound a hair WIDER than the real limit: a pair it rules out is certainly
+   outside, so only the few that pass go on to the exact sums. Nearly every
+   pair in a big system is far apart, and this check runs n² times a substep. */
+let _tide = null;
+function tideScratch(n) {
+  if (!_tide || _tide.cap < n) {
+    const cap = Math.max(64, n * 2), f = () => new Float64Array(cap);
+    _tide = { cap, x: f(), y: f(), z: f(), r: f(), vis: f(), cb: f() };
+  }
+  return _tide;
+}
+function tideFill(T, i, b) {
+  T.r[i] = b.r; T.vis[i] = visRadius(b);
+  T.cb[i] = Math.cbrt(b.m / (b.r * b.r * b.r));      // cube root of the density, as rocheLimit uses it
+}
+const TIDE_SLACK = 1 + 1e-9;   // covers rounding: cbrt(a)/cbrt(b) is not bit-for-bit cbrt(a/b)
+
 function updateTides(dt) {
   const bs = sim.bodies;
   let doomed = null, doomedP = null, doomedD = 0;
+  const T = tideScratch(bs.length);
+  for (let i = 0; i < bs.length; i++) {
+    const b = bs[i];
+    T.x[i] = b.p.x; T.y[i] = b.p.y; T.z[i] = b.p.z;
+    tideFill(T, i, b);
+  }
 
   for (let i = 0; i < bs.length; i++) {
     const s = bs[i];
@@ -7131,9 +7204,13 @@ function updateTides(dt) {
 
     // Find the primary raising the biggest tide on this body.
     let best = null, bestX = 0, bestD = 0;
+    const sx = T.x[i], sy = T.y[i], sz = T.z[i], sVis = T.vis[i], sCb = T.cb[i];
     for (let j = 0; j < bs.length; j++) {
       const P = bs[j];
       if (P === s || !P.alive || P.m < s.m * 12) continue;
+      const dx = T.x[j] - sx, dy = T.y[j] - sy, dz = T.z[j] - sz;
+      const ub = Math.max(2.44 * T.r[j] * (T.cb[j] / sCb), (T.vis[j] + sVis) * 1.5) * TIDE_SLACK;
+      if (dx * dx + dy * dy + dz * dz >= ub * ub) continue;    // certainly outside (NaN falls through)
       const d = s.p.distanceTo(P.p);
       const roche = rocheLimit(P, s);
       if (d >= roche) continue;
@@ -7164,6 +7241,7 @@ function updateTides(dt) {
       s.stripPending += loss;
       s.r = natRadius(s);
       scaleVisual(s);
+      tideFill(T, i, s);          // it is smaller and lighter now, as a primary for the rest
       // Release the dust in bursts rather than one grain per step, so a handful
       // of particles carries a visible amount of matter instead of nothing.
       if (s.stripPending > s.m0 * 0.02) {
@@ -13544,29 +13622,106 @@ function landedHUD() {
 }
 
 /*
- * Smooth mode. Nearly all of a frame is the graphics card shading pixels, so when
- * frames run slow the drawing resolution steps down, and it steps back up once
- * there is room. A step that doesn't help (a screen capped at 30 Hz, say) is
- * undone, and the scale is then left alone for a while.
+ * Frame rate. A browser hands out frames at the screen's own refresh rate and
+ * never faster: 60 a second on most phones, laptops and TVs, 90, 120 or 144 on
+ * newer ones. So the target is that rate, measured from the frames themselves,
+ * except on a phone, where 60 is plenty and the rest of a 120 Hz screen's
+ * frames would only cost battery and heat. Settings can cap it too.
+ *
+ * Smooth mode then holds the target. Nearly all of a frame is the graphics card
+ * shading pixels, so while frames come in late the drawing resolution steps
+ * down, and it steps back up once they are on time again. A step down that
+ * doesn't help (the hold-up is somewhere else) is undone and left alone for a
+ * while; a step up that makes frames late again marks a ceiling for a minute,
+ * so the picture doesn't pump up and down. Each wait doubles every time the
+ * same try fails again, up to five minutes.
  */
-const PERF = { scale: 1, acc: 0, n: 0, calm: 0, tried: 0, hold: 0 };
+const DEVICE = (() => {
+  const ua = navigator.userAgent || '';
+  if (/SMART-?TV|SmartTV|Tizen|Web0S|webOS|NetCast|BRAVIA|AFT[A-Z0-9]|CrKey|GoogleTV|Android TV|HbbTV|Roku|PhilipsTV|VIDAA|Opera TV/i.test(ua)) return 'tv';
+  const coarse = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+  return coarse && Math.min(screen.width, screen.height) < 600 ? 'phone' : 'computer';
+})();
+const FPS_KEY = 'astronomia.fps';
+const FPS_CAPS = ['auto', 30, 60, 120, 'max'];
+const PERF = { scale: 1, acc: 0, n: 0, calm: 0, tried: 0, hold: 0, ceil: 1, ceilHold: 0, justUp: 0, downFails: 0, upFails: 0,
+               hz: 60, reads: [], gaps: new Float64Array(240), gi: 0, gn: 0, lastCb: 0, lastDraw: 0, cap: 'auto' };
 const PERF_MIN_DPR = 0.6;   // never draw coarser than this many pixels per CSS pixel
+const SCREEN_RATES = [24, 30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165, 170, 180, 200, 240, 360];
+try { const c = localStorage.getItem(FPS_KEY); if (c) PERF.cap = /^\d+$/.test(c) ? +c : c; } catch (e) {}
+if (!FPS_CAPS.includes(PERF.cap)) PERF.cap = 'auto';
+
+/** The frame rate aimed for: the screen's, unless the device or Settings cap it. */
+function fpsTarget() {
+  const cap = PERF.cap === 'auto' ? (DEVICE === 'phone' ? 60 : Infinity)
+    : PERF.cap === 'max' ? Infinity : PERF.cap;
+  return Math.min(PERF.hz, cap);
+}
+
+/* The refresh rate is read off the gaps between the browser's frame callbacks:
+   the shortest gaps that keep turning up are one refresh apart (a busy frame
+   only ever makes a gap longer). The quickest reading of the last half minute
+   stands, so a stretch of heavy frames can't talk it down, and it is never
+   taken as under 60: a device that struggles makes long gaps on any screen,
+   and aiming low would stop smooth mode from ever helping it. */
+function perfVsync(now) {
+  const gap = now - PERF.lastCb;
+  PERF.lastCb = now;
+  if (!(gap > 2 && gap < 100)) return;
+  PERF.gaps[PERF.gi] = gap; PERF.gi = (PERF.gi + 1) % PERF.gaps.length;
+  if (++PERF.gn % 60 !== 0) return;
+  const g = Array.from(PERF.gaps.subarray(0, Math.min(PERF.gn, PERF.gaps.length))).sort((a, b) => a - b);
+  const hz = 1000 / g[Math.floor(g.length * 0.05)];
+  let snap = SCREEN_RATES[0];
+  for (const r of SCREEN_RATES) if (Math.abs(r - hz) < Math.abs(snap - hz)) snap = r;
+  PERF.reads.push(Math.abs(snap - hz) < snap * 0.06 ? snap : Math.round(hz));
+  if (PERF.reads.length > 30) PERF.reads.shift();       // ~30 s at 60 fps
+  PERF.hz = Math.max(60, ...PERF.reads);
+}
+
+/** Whether to draw on this callback. A screen faster than the target is given
+    every second (or third) frame, evenly, rather than all of them. */
+function perfPace(now) {
+  const want = fpsTarget();
+  if (PERF.hz <= want * 1.1) { PERF.lastDraw = now; return true; }
+  if (now - PERF.lastDraw < 1000 / want - 500 / PERF.hz) return false;
+  PERF.lastDraw = now;
+  return true;
+}
+
 function perfTick(dt) {
   if (!settings.smooth || !dt || document.hidden) return;
   PERF.acc += dt; PERF.n++;
   if (PERF.acc < 1) return;                       // judge about once a second
   const avg = PERF.acc / PERF.n; PERF.acc = 0; PERF.n = 0;
+  if (PERF.justUp > 0) PERF.justUp--;
+  if (PERF.ceilHold > 0 && --PERF.ceilHold === 0) PERF.ceil = 1;
   if (PERF.hold > 0) { PERF.hold--; return; }
+  const want = fpsTarget();
   const base = Math.min(window.devicePixelRatio || 1, 2);
   if (PERF.tried) {                               // did the last step down help?
-    if (avg > PERF.tried * 0.9) { PERF.scale = Math.min(1, PERF.scale / 0.8); PERF.hold = 30; resize(); }
+    if (avg > PERF.tried * 0.9) {
+      PERF.scale = Math.min(PERF.ceil, PERF.scale / 0.8);
+      PERF.hold = Math.min(300, 30 << PERF.downFails++); resize();
+    } else PERF.downFails = 0;
     PERF.tried = 0; return;
   }
-  if (avg > 1 / 40 && base * PERF.scale * 0.8 >= PERF_MIN_DPR) {
+  const late = avg > 1.12 / want, onTime = avg < 1.05 / want;
+  if (late && base * PERF.scale * 0.8 >= PERF_MIN_DPR) {
+    // late again straight after stepping up: that step was one too many
+    if (PERF.justUp > 0) { PERF.ceil = PERF.scale * 0.8; PERF.ceilHold = Math.min(300, 60 << PERF.upFails++); }
     PERF.tried = avg; PERF.scale *= 0.8; PERF.calm = 0; resize();
-  } else if (avg < 1 / 52 && PERF.scale < 1) {
-    if (++PERF.calm >= 4) { PERF.scale = Math.min(1, PERF.scale / 0.8); PERF.calm = 0; resize(); }
+  } else if (onTime && PERF.scale < PERF.ceil) {
+    if (++PERF.calm >= 4) { PERF.scale = Math.min(PERF.ceil, PERF.scale / 0.8); PERF.calm = 0; PERF.justUp = 3; resize(); }
+  } else if (onTime && PERF.scale >= 1 && PERF.justUp === 0) {
+    PERF.upFails = 0;                             // steady at full sharpness: forget old failures
   } else PERF.calm = 0;
+}
+
+function setFpsCap(c) {
+  PERF.cap = c;
+  try { localStorage.setItem(FPS_KEY, String(c)); } catch (e) {}
+  PERF.ceil = 1; PERF.ceilHold = 0; PERF.tried = 0; PERF.hold = 0; PERF.calm = 0; PERF.downFails = 0; PERF.upFails = 0;
 }
 
 function resize() {
@@ -13847,6 +14002,10 @@ function updateVisuals(realDt, simDt) {
     if (p.atmo) p.atmo.visible = !tiny && px > 4;
     if (p.ring) p.ring.visible = !tiny && !b.chunks;   // Saturn's are drawn as chunks instead
     if (p.disk) p.disk.visible = !tiny;
+    // A star's chromosphere and corona are thin shells just outside its surface:
+    // a few pixels across they cannot be told from the star, only paid for.
+    if (p.chromo) p.chromo.visible = px > 4;
+    if (p.corona) p.corona.visible = px > 4;
 
     const wpp = worldPerPixel(Math.max(camera.position.distanceTo(b.p), 1e-9));
     const hiding = shyFar(b);
@@ -16050,7 +16209,9 @@ function openSettings() {
     tgl('st-trails', 'Orbit trails', 'Trace the paths of the 28 most massive bodies.') +
     tgl('st-labels', 'Name labels', '') +
     tgl('st-lens', 'Gravitational lensing', 'Bend light around black holes. Costs a little performance.') +
-    tgl('st-smooth', 'Smooth mode', 'If the game starts to lag, it draws at a slightly lower resolution until it runs smoothly again. Turn off for the sharpest picture.') +
+    '<div class="an-toggle"><div>Frame rate<small id="st-fps-d"></small></div><div class="an-row" style="margin:0;flex:none">' +
+    FPS_CAPS.map(c => '<button id="st-fps-' + c + '" style="padding:6px 7px">' + String(c).toUpperCase() + '</button>').join('') + '</div></div>' +
+    tgl('st-smooth', 'Smooth mode', 'If the game can\u2019t keep up with the frame rate, it draws at a slightly lower resolution until it can. Turn off for the sharpest picture.') +
     tgl('st-grid', 'Placement grid', 'Show a measuring grid on the drop plane whenever something is armed.') +
     tgl('st-snap', 'Snap to the grid', 'Drop points land exactly on grid intersections, for laying things out neatly.') +
 
@@ -16158,6 +16319,16 @@ function openSettings() {
   for (const k in colBtns) colBtns[k].addEventListener('click', () => { settings.collisions = k; syncCol(); });
   syncCol();
 
+  const syncFps = () => {
+    for (const c of FPS_CAPS) $('st-fps-' + c).classList.toggle('on', PERF.cap === c);
+    const kind = DEVICE === 'phone' ? 'phone' : DEVICE === 'tv' ? 'TV' : 'computer';
+    $('st-fps-d').textContent = 'Aiming for ' + fpsTarget() + ' a second. Your screen shows ' + PERF.hz +
+      (PERF.cap === 'auto' && DEVICE === 'phone' ? '; on a phone AUTO stops at 60 to save battery.'
+        : '; no ' + kind + ' can show more frames than its screen does.');
+  };
+  for (const c of FPS_CAPS) $('st-fps-' + c).addEventListener('click', () => { setFpsCap(c); syncFps(); });
+  syncFps();
+
   bindTgl('st-tidal', 'tidal');
   bindTgl('st-decay', 'decay');
   bindSld('st-decayb', (v) => v < 0.05 ? 'real speed' : '×' + fmtBoost(Math.pow(10, v)),
@@ -16168,7 +16339,7 @@ function openSettings() {
   bindTgl('st-trails', 'trails', clearTrails);
   bindTgl('st-labels', 'labels');
   bindTgl('st-lens', 'lensing');
-  bindTgl('st-smooth', 'smooth', () => { PERF.scale = 1; PERF.tried = 0; PERF.hold = 0; resize(); });
+  bindTgl('st-smooth', 'smooth', () => { PERF.scale = 1; PERF.tried = 0; PERF.hold = 0; PERF.ceil = 1; PERF.ceilHold = 0; resize(); });
   bindTgl('st-grid', 'grid');
   bindTgl('st-snap', 'gridSnap');
   bindTgl('st-slowmo', 'slowmo', () => { if (!settings.slowmo) slowmoLeft = 0; });
@@ -18714,6 +18885,8 @@ function scheduleMusic() {
 let lastFrame = 0;
 
 function loop(now) {
+  perfVsync(now);
+  if (!perfPace(now)) { requestAnimationFrame(loop); return; }
   const realDt = Math.min((now - lastFrame) / 1000, 0.1) || 0;
   lastFrame = now;
 
