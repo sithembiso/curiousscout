@@ -1867,38 +1867,41 @@ const SURFACE = {
   },
 
   /**
-   * Convective granulation, spots and plage on a stellar photosphere.
+   * A stellar photosphere: soft, boiling mottling — bright plumes of rising
+   * gas between darker, cooler drifts — with a few dark starspots.
    *
-   * Stars render on an unlit material, so nothing in the scene will ever shade
-   * them — every bit of relief you can see has to be baked in right here. So
-   * the surface is built as a *height field* first (supergranules carrying
-   * granules carrying fine turbulence), and only coloured afterwards, which
-   * lets the same field be differentiated for relief shading. Convection is
-   * turbulent, so the cell pattern is domain-warped before it is sampled and
-   * the lanes meander instead of sitting in a tidy honeycomb.
+   * The mottling is worked out with 3-D noise at each point of the globe, not
+   * on the flat map, so nothing crowds into a star of streaks at the poles. It
+   * is sampled on a coarser grid and smoothed back up, since it is soft anyway.
+   * Only the brightness pattern matters for most stars: each kind is tinted
+   * its own colour as it is drawn (see STAR_PAINT).
    */
   star(ctx, W, H, rng, o) {
     const seed = (rng() * 1e6) | 0;
-    const warpU = fbm(seed + 101, 10, 5, 3);
-    const warpV = fbm(seed + 202, 10, 5, 3);
-    const superg = worley(seed + 5, 22, 9);      // supergranulation
-    const gran = worley(seed + 9, 72, 30);       // granulation proper
-    const fine = fbm(seed + 31, 70, 30, 3);      // unresolved boiling
-    const mott = fbm(seed + 47, 6, 3, 4);        // slow global brightness drift
-
-    const h = new Float32Array(W * H);
-    for (let y = 0, i = 0; y < H; y++) {
-      const v = (y + 0.5) / H;
-      for (let x = 0; x < W; x++, i++) {
-        const u = (x + 0.5) / W;
-        const wu = u + (warpU(u, v) - 0.5) * 0.04;
-        const wv = clamp(v + (warpV(u, v) - 0.5) * 0.04, 0, 1);
-        h[i] = Math.pow(clamp(gran(wu, wv) * 2.2, 0, 1), 0.50) * 0.55
-             + Math.pow(clamp(superg(wu, wv) * 1.9, 0, 1), 0.80) * 0.24
-             + fine(u, v) * 0.13
-             + mott(u, v) * 0.08;
+    // (3-D frequencies: about 14, 10 and 5 cells round the equator)
+    const gran3 = fbm3(seed, 2.2, 2);                 // the boiling, in big soft blotches
+    const cell3 = ridged3(fbm3(seed + 8, 1.6, 2));    // brighter plumes, in wandering ridges
+    const big3 = fbm3(seed + 31, 0.8, 3);             // slow patches across the whole disc
+    const FW = 512, FH = 256, NC = 3, G = new Float32Array(FW * FH * NC);
+    for (let y = 0, k = 0; y < FH; y++) {
+      const th = (y + 0.5) / FH * Math.PI, st = Math.sin(th), cy = Math.cos(th);
+      for (let x = 0; x < FW; x++, k += NC) {
+        // three.js lays a sphere out as x = -cos(phi)sin(theta), y = cos(theta), z = sin(phi)sin(theta)
+        const ph = (x + 0.5) / FW * TAU, px = -Math.cos(ph) * st, pz = Math.sin(ph) * st;
+        G[k] = gran3(px, cy, pz); G[k + 1] = cell3(px, cy, pz); G[k + 2] = big3(px, cy, pz);
       }
     }
+    const S = new Float32Array(NC);
+    const at = (u, v) => {
+      const fx = u * FW - 0.5, fy = clamp(v * FH - 0.5, 0, FH - 1);
+      const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
+      const xa = ((x0 % FW) + FW) % FW, xb = (xa + 1) % FW, y1 = Math.min(y0 + 1, FH - 1);
+      for (let c = 0; c < NC; c++) {
+        S[c] = lerp(lerp(G[(y0 * FW + xa) * NC + c], G[(y0 * FW + xb) * NC + c], tx),
+                    lerp(G[(y1 * FW + xa) * NC + c], G[(y1 * FW + xb) * NC + c], tx), ty);
+      }
+      return S;
+    };
 
     const T = o.temp || 5778;
     // `warm` nudges a star off its strict blackbody colour. A G star is
@@ -1909,100 +1912,38 @@ const SURFACE = {
     // turns the whole disc down, because a failed star is an ember, not a sun.
     const hot = mix(o.hot || kelvinToRGB(T), [255, 166, 58], o.warm || 0);
     const core = mix(hot, [255, 255, 255], o.hot ? 0.16 : 0.42);
+    // the drifts between the plumes: a soft, greyed shade of the star, not soot
+    const cool = mix(hot, [96, 84, 80], 0.34);
     const dim = o.dim || 1;
-    // Gas draining down an intergranular lane is cooler, so its colour is a
-    // step *down the blackbody curve* rather than a step towards grey. Done
-    // this way a blue giant's lanes stay blue-white and a red dwarf's go deep
-    // orange; mixing everything towards black instead would bleach the chroma
-    // out of the disc and leave it looking like stone, not something on fire.
-    const cool = mix(mix(o.hot ? mix(o.hot, [0, 0, 0], 0.35) : kelvinToRGB(T * 0.80), [236, 116, 30], o.warm || 0), [26, 8, 2], 0.34);
-    const img = ctx.createImageData(W, H);
-    const d = img.data;
-    for (let y = 0, i = 0, p = 0; y < H; y++) {
-      const rowU = Math.max(0, y - 1) * W, rowD = Math.min(H - 1, y + 1) * W, row = y * W;
-      for (let x = 0; x < W; x++, i++, p += 4) {
-        // Central differences on the height field, lit from the upper left.
-        // A slope that tips towards the light gets brighter; the far wall of
-        // each granule falls into its own shadow.
-        // (east–west neighbours crowd together toward a pole, so their
-        // difference is scaled up to the real slope, or the shading turns
-        // into rays round the pole)
-        const gx = (h[row + (x + 1) % W] - h[row + (x - 1 + W) % W]) / Math.max(Math.sin((y + 0.5) / H * Math.PI), 0.08);
-        const gy = h[rowD + x] - h[rowU + x];
-        const shade = clamp(1 - (gx + gy) * 1.35, 0.66, 1.42);
-        const hv = h[i];
-        // Real granulation is only a 10–20% intensity swing, so the ramp is
-        // deliberately shallow and sits well up off zero. The floor also stops
-        // a lane being darkened twice — once here and again by the relief
-        // shading — which is what crazed the disc over like dried mud.
-        let c = mix(cool, core, clamp(hv * 0.98 + 0.20, 0, 1));
-        // Granule centres are the tops of rising columns and run hotter than
-        // the cooled gas draining down the lanes around them.
-        c = mix(c, [255, 255, 255], Math.pow(clamp(hv * 1.5 - 0.62, 0, 1), 1.6) * 0.34);
-        d[p] = clamp(c[0] * shade * 1.05 * dim, 0, 255);
-        d[p + 1] = clamp(c[1] * shade * 1.03 * dim, 0, 255);
-        d[p + 2] = clamp(c[2] * shade * 1.01 * dim, 0, 255);
-        d[p + 3] = 255;
-      }
-    }
-    ctx.putImageData(img, 0, 0);
+    pixelPass(ctx, W, H, (u, v) => {
+      const n = at(u, v);
+      const g = n[0] * 0.8 + n[1] * 0.2;
+      let c = mix(cool, core, clamp(g * 2.0 - 0.45, 0, 1));
+      c = mix(c, core, clamp((n[2] - 0.55) * 1.6, 0, 1) * 0.5);
+      return [Math.min(255, c[0] * 1.06 * dim), Math.min(255, c[1] * 1.04 * dim), Math.min(255, c[2] * 1.02 * dim)];
+    });
 
-    /* Starspots: a near-black umbra sunk inside a lighter penumbra whose
-       filaments comb radially outwards, the whole thing ringed by the bright
-       faculae that crowd around real spots. Every random draw happens before
-       the wrap loop so all three copies of a spot are identical. */
+    // Starspots: dark, soft-edged, and only at middling latitudes (as on the
+    // Sun), where widening each one for its latitude keeps it round.
     const spots = o.spots != null ? o.spots : 7;
     for (let i = 0; i < spots; i++) {
       const u = rng(), v = 0.2 + rng() * 0.6;
       const lat = (0.5 - v) * Math.PI;
       const r = W * (0.012 + Math.pow(rng(), 2) * 0.05);
-      const fil = [];
-      const nf = 30 + ((rng() * 14) | 0);
-      for (let k = 0; k < nf; k++) {
-        fil.push({ a: (k / nf) * TAU + (rng() - 0.5) * 0.09, len: 0.72 + rng() * 0.34, w: 0.45 + rng() * 0.75 });
-      }
       for (const off of [-W, 0, W]) {
         ctx.save();
         ctx.translate(u * W + off, v * H);
         ctx.scale(1 / Math.max(0.25, Math.cos(lat)), 1);
-        const fac = ctx.createRadialGradient(0, 0, r * 0.92, 0, 0, r * 1.5);
-        fac.addColorStop(0, rgba(core, 0));
-        fac.addColorStop(0.35, rgba(mix(core, [255, 255, 255], 0.45), 0.30));
-        fac.addColorStop(1, rgba(core, 0));
-        ctx.fillStyle = fac;
-        ctx.beginPath(); ctx.arc(0, 0, r * 1.5, 0, TAU); ctx.fill();
-
-        const pen = ctx.createRadialGradient(0, 0, r * 0.18, 0, 0, r);
-        pen.addColorStop(0, rgba(mix(cool, [0, 0, 0], 0.50), 0.92));
-        pen.addColorStop(0.62, rgba(mix(cool, [0, 0, 0], 0.24), 0.70));
-        pen.addColorStop(1, rgba(cool, 0));
-        ctx.fillStyle = pen;
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+        g.addColorStop(0, rgba(mix(cool, [0, 0, 0], 0.55), 0.9));
+        g.addColorStop(0.6, rgba(cool, 0.5));
+        g.addColorStop(1, rgba(cool, 0));
+        ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
-
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.strokeStyle = rgba(mix(cool, core, 0.6), 0.15);
-        for (const f of fil) {
-          const ca = Math.cos(f.a), sa = Math.sin(f.a);
-          ctx.lineWidth = Math.max(0.5, r * 0.03 * f.w);
-          ctx.beginPath();
-          ctx.moveTo(ca * r * 0.36, sa * r * 0.36);
-          ctx.lineTo(ca * r * f.len, sa * r * f.len);
-          ctx.stroke();
-        }
-        ctx.globalCompositeOperation = 'source-over';
-
-        const um = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.52);
-        um.addColorStop(0, rgba(mix(cool, [0, 0, 0], 0.86), 0.97));
-        um.addColorStop(0.68, rgba(mix(cool, [0, 0, 0], 0.72), 0.82));
-        um.addColorStop(1, rgba(mix(cool, [0, 0, 0], 0.60), 0));
-        ctx.fillStyle = um;
-        ctx.beginPath(); ctx.arc(0, 0, r * 0.52, 0, TAU); ctx.fill();
         ctx.restore();
       }
     }
-    // Handed back so the same relief can be pushed into the mesh itself —
-    // see reliefGeometry(). Painted shading alone cannot break a silhouette.
-    return h;
+    // no height field: a star is a smooth ball of gas, not cratered ground
   },
 
   /**
@@ -7931,6 +7872,8 @@ const ATMO_FRAG = `
    all the way to the hot gas underneath. That depends on where you are looking
    from, so it cannot be painted into a texture — it has to be done here. */
 const STAR_VERT = `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
   varying vec2 vUv;
   varying vec3 vSN;
   varying vec3 vVP;
@@ -7944,9 +7887,11 @@ const STAR_VERT = `
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     vVP = mv.xyz;
     gl_Position = projectionMatrix * mv;
+    #include <logdepthbuf_vertex>
   }`;
 
 const STAR_FRAG = `
+  #include <logdepthbuf_pars_fragment>
   uniform sampler2D uMap;
   uniform vec3 uTint;
   uniform float uGrey;
@@ -7957,6 +7902,9 @@ const STAR_FRAG = `
   varying vec3 vVP;
   varying vec3 vLP;
   void main() {
+    // the same depth as everything else writes, or the star's own glow
+    // sprites, behind it, would be drawn over its face
+    #include <logdepthbuf_fragment>
     vec3 V = normalize(-vVP);
     vec3 N = normalize((viewMatrix * vec4(vSN, 0.0)).xyz);
     float mu = clamp(dot(N, V), 0.0, 1.0);          // cos(angle to the normal)
@@ -8510,7 +8458,8 @@ function buildWorld(b, def, grp) {
     const warm = (def.opts && def.opts.warm) || 0;
     const chromo = new THREE.Mesh(SPHERE, new THREE.MeshBasicMaterial({
       map: cachedTexture('chromo:' + b.type, () => onSphere(() => chromoTexture(hashStr('chromo' + b.type), 512, 256, def.temp, warm))),
-      blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.40
+      // faint: face-on it is a veil over the mottling, not a pattern of its own
+      blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.14
     }));
     chromo.scale.setScalar(1.012);
     grp.add(chromo);
