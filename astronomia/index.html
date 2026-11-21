@@ -112,8 +112,9 @@
   }
   .an-title span { font-size: 8px; color: var(--accent2); -webkit-text-fill-color: var(--accent2); }
 
+  /* the clock and its speed controls sit in the bottom-left corner */
   .an-time {
-    margin-left: auto;
+    position: fixed; left: 10px; bottom: 10px;
     display: flex; align-items: center; gap: 6px;
     padding: 6px 8px;
   }
@@ -137,15 +138,15 @@
   .an-tools { margin-left: auto; display: flex; gap: 6px; padding: 6px; }
   #an-btn-music.off { opacity: 0.4; text-decoration: line-through; }
 
-  /* ---------- palette (left) ---------- */
+  /* ---------- side panels: Add Body on the right, the selection on the left ---------- */
   .an-side {
-    position: absolute; top: 62px; bottom: 58px;
+    position: absolute; top: 62px; bottom: 70px;   /* (clear of the clock in the corner) */
     width: 214px;
     display: flex; flex-direction: column;
     overflow: hidden;
   }
-  #an-palette { left: 10px; }
-  #an-inspector { right: 10px; width: 232px; }
+  #an-palette { right: 10px; }
+  #an-inspector { left: 10px; width: 232px; }
 
   .an-scroll { overflow-y: auto; overflow-x: hidden; padding: 8px; flex: 1; scrollbar-width: thin; }
   .an-scroll::-webkit-scrollbar { width: 7px; }
@@ -327,7 +328,7 @@
 
   /* ---------- bottom strip ---------- */
   .an-hud {
-    position: absolute; left: 10px; bottom: 10px;
+    position: absolute; right: 10px; bottom: 10px;
     display: flex; align-items: center; gap: 10px;
     padding: 7px 11px;
     font-family: "Press Start 2P", monospace; font-size: 7.5px; letter-spacing: 1px;
@@ -339,7 +340,7 @@
 
   .an-hint {
     position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
-    max-width: min(560px, calc(100vw - 500px));
+    max-width: min(560px, calc(100vw - 760px));
     padding: 9px 15px; text-align: center;
     font-size: 12px; line-height: 1.5; color: #d8d4ff;
     background: var(--panel); border: 1px solid var(--panel-line); border-radius: 11px;
@@ -539,8 +540,14 @@
   /* ---------- responsive ---------- */
   .an-mob { display: none; }
 
+  /* Too narrow for the hint to fit between the clock and the readout: it
+     moves up between the side panels instead. */
+  @media (max-width: 1240px) {
+    .an-hint { bottom: 64px; max-width: min(560px, calc(100vw - 500px)); }
+  }
+
   @media (max-width: 900px) {
-    .an-hint { max-width: calc(100vw - 24px); font-size: 11.5px; }
+    .an-hint { max-width: calc(100vw - 440px); font-size: 11.5px; }
     .an-side { top: 58px; bottom: 84px; width: 190px; }
     #an-inspector { width: 200px; }
     .an-clock { display: none; }
@@ -548,7 +555,7 @@
 
   @media (max-width: 700px) {
     .an-top { flex-wrap: wrap; }
-    .an-time { order: 3; margin-left: 0; width: 100%; justify-content: center; }
+    .an-time { position: static; order: 3; margin-left: 0; width: 100%; justify-content: center; }
     .an-tools button span { display: none; }
     /* Shrink the wordmark just enough that the tool buttons share its row */
     .an-title { font-size: 10px; }
@@ -568,7 +575,7 @@
     .an-mob { display: flex; position: absolute; left: 10px; bottom: 10px; gap: 6px; }
     .an-hud { left: auto; right: 10px; bottom: 10px; font-size: 7px; }
     .an-scalebar { display: none; }
-    .an-hint { bottom: 50px; }
+    .an-hint { bottom: 50px; max-width: calc(100vw - 24px); }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -18608,10 +18615,10 @@ function openHelp() {
     '<div class="an-help">' +
     '<h3>BUILDING</h3>' +
     '<ul>' +
-    '<li>Pick anything from <b>Add Body</b> on the left, then <b>click empty space</b> to drop it there.</li>' +
+    '<li>Pick anything from <b>Add Body</b> on the right, then <b>click empty space</b> to drop it there.</li>' +
     '<li><b>Drag</b> while placing to aim it — the longer the drag, the faster it flies. About 120 pixels of drag equals one circular orbit speed at that spot.</li>' +
     '<li>Just click without dragging and <b>Auto-orbit</b> gives it a clean circular orbit around whatever dominates nearby.</li>' +
-    '<li><b>Click a body</b> to select it. The panel on the right shows its real mass, density, speed and temperature, and lets you resize it.</li>' +
+    '<li><b>Click a body</b> to select it. The panel on the left shows its real mass, density, speed and temperature, and lets you resize it.</li>' +
     '<li><b>Click any value</b> in that panel (the ones with a dotted line under them) to <b>type it in</b> instead of dragging. Units are optional: <b>2.5 M☉</b>, <b>3 Jupiters</b>, <b>6e24 kg</b>, <b>5000 km</b>, <b>10 hours</b>, <b>300 °C</b> — leave one off and it uses the unit already shown. Press Enter to set it, Esc to cancel.</li>' +
     '<li><b>Click its name</b> in that panel to rename it — type anything and press Enter.</li>' +
     '<li>While something is armed a <b>measuring grid</b> appears on the plane you are dropping onto. The hint at the bottom says how wide one square is, so you can space a system out on purpose. Turn on <b>Snap to the grid</b> in Settings and drops land exactly on the crossings.</li>' +
