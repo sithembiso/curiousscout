@@ -271,6 +271,16 @@
     font-size: 10px; text-transform: uppercase; letter-spacing: 1.1px; color: var(--ink-dim); margin-bottom: 5px;
   }
   .an-field label b { font-family: "Orbitron", sans-serif; font-size: 11px; color: var(--accent2); letter-spacing: 0; }
+  /* the elements of a sky */
+  .an-el label > span:first-child { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 11px; }
+  .an-el small { color: var(--ink-dim); font-size: 9px; margin-left: 2px; }
+  .an-sym { display: inline-block; min-width: 20px; padding: 1px 3px; border-radius: 4px; text-align: center;
+    font-family: "Orbitron", sans-serif; font-weight: 700; font-size: 10px; color: #fff;
+    background: rgba(139,224,255,0.16); border: 1px solid rgba(139,224,255,0.35); }
+  .an-el .an-elv { font-family: "Orbitron", sans-serif; font-size: 10.5px; color: var(--accent2); }
+  .an-elx { padding: 0 5px; font-size: 11px; line-height: 16px; margin-left: 4px; }
+  .an-elsel { width: 100%; margin: 8px 0 4px; padding: 6px; border-radius: 7px; font-size: 11.5px;
+    color: var(--ink); background: rgba(40,30,80,0.6); border: 1px solid rgba(150,130,255,0.34); }
   /* a read-out, not a value you can type into */
   .an-field label .an-pct { font-family: "Orbitron", sans-serif; font-size: 11px; font-weight: 700; color: var(--accent2); letter-spacing: 0; }
   /* Inspector values can be clicked and typed into */
@@ -7720,8 +7730,12 @@ function updateTemperatures() {
     const def = TYPES[b.type];
     // A customised sky: thicker air traps more heat, and none at all lets it go.
     if (b.atm) {
-      const base = def.atmo ? 1 : 0.01;
-      eq *= Math.pow((b.atm.on ? b.atm.thick : 0.01) / base, 0.035);
+      // warming grows with the log of the greenhouse elements: Earth's air
+      // keeps it about 13% (33 K) warmer than none would, a Venus about 80%
+      const warm = (g) => 1 + 0.064 * Math.log(1 + 100 * g);
+      const base = def.atmo ? greenhouseOf(defaultMix(b.type)) : 0;
+      const now = b.atm.on && b.atm.mix ? greenhouseOf(b.atm.mix) : 0;
+      eq *= warm(now) / warm(base);
     }
     // `floorT` is for worlds kept warm by something other than starlight — a
     // greenhouse atmosphere on Venus, an open magma ocean on a lava world.
@@ -7742,10 +7756,70 @@ function updateTemperatures() {
  * stands higher off the ground and, customised, traps more heat (see
  * updateTemperatures); it also counts towards Life-Likelihood.
  */
+/*
+ * Air is made of elements. A customised sky is a mix of them, each given as
+ * its share in Earth atmospheres (b.atm.mix, e.g. { N: 0.78, O: 0.21 }), and
+ * everything else comes from that mix: the thickness is the sum, the colour is
+ * the elements' own colours blended by share, and the heat it traps comes
+ * from the greenhouse elements (carbon as CO2 and methane, sulfur as SO2,
+ * fluorine as fluorocarbons, chlorine, hydrogen as water vapour). An element
+ * the table below says nothing about is a faint grey that traps no heat.
+ */
+const ELEMENTS = 'H Hydrogen,He Helium,Li Lithium,Be Beryllium,B Boron,C Carbon,N Nitrogen,O Oxygen,F Fluorine,Ne Neon,Na Sodium,Mg Magnesium,Al Aluminium,Si Silicon,P Phosphorus,S Sulfur,Cl Chlorine,Ar Argon,K Potassium,Ca Calcium,Sc Scandium,Ti Titanium,V Vanadium,Cr Chromium,Mn Manganese,Fe Iron,Co Cobalt,Ni Nickel,Cu Copper,Zn Zinc,Ga Gallium,Ge Germanium,As Arsenic,Se Selenium,Br Bromine,Kr Krypton,Rb Rubidium,Sr Strontium,Y Yttrium,Zr Zirconium,Nb Niobium,Mo Molybdenum,Tc Technetium,Ru Ruthenium,Rh Rhodium,Pd Palladium,Ag Silver,Cd Cadmium,In Indium,Sn Tin,Sb Antimony,Te Tellurium,I Iodine,Xe Xenon,Cs Caesium,Ba Barium,La Lanthanum,Ce Cerium,Pr Praseodymium,Nd Neodymium,Pm Promethium,Sm Samarium,Eu Europium,Gd Gadolinium,Tb Terbium,Dy Dysprosium,Ho Holmium,Er Erbium,Tm Thulium,Yb Ytterbium,Lu Lutetium,Hf Hafnium,Ta Tantalum,W Tungsten,Re Rhenium,Os Osmium,Ir Iridium,Pt Platinum,Au Gold,Hg Mercury,Tl Thallium,Pb Lead,Bi Bismuth,Po Polonium,At Astatine,Rn Radon,Fr Francium,Ra Radium,Ac Actinium,Th Thorium,Pa Protactinium,U Uranium,Np Neptunium,Pu Plutonium,Am Americium,Cm Curium,Bk Berkelium,Cf Californium,Es Einsteinium,Fm Fermium,Md Mendelevium,No Nobelium,Lr Lawrencium,Rf Rutherfordium,Db Dubnium,Sg Seaborgium,Bh Bohrium,Hs Hassium,Mt Meitnerium,Ds Darmstadtium,Rg Roentgenium,Cn Copernicium,Nh Nihonium,Fl Flerovium,Mc Moscovium,Lv Livermorium,Ts Tennessine,Og Oganesson'.split(',').map((e, i) => { const [sym, name] = e.split(' '); return { z: i + 1, sym, name }; });
+const ELEMENT_OF = Object.fromEntries(ELEMENTS.map(e => [e.sym, e]));
+// [colour it lends the sky, greenhouse strength per atmosphere, poisonous?]
+const AIR_EL = {
+  H: [[226, 218, 200], 2], He: [[236, 230, 214], 0], C: [[255, 206, 150], 40], N: [[136, 188, 255], 0],
+  O: [[150, 200, 255], 0], F: [[236, 248, 170], 60, 1], Ne: [[255, 110, 80], 0], Na: [[255, 196, 90], 0],
+  Si: [[210, 200, 190], 0], P: [[230, 230, 200], 0, 1], S: [[255, 222, 100], 20, 1], Cl: [[190, 240, 120], 10, 1],
+  Ar: [[200, 210, 232], 0], K: [[220, 160, 255], 0], Fe: [[230, 150, 100], 0], Kr: [[220, 230, 255], 0],
+  Br: [[200, 90, 50], 8, 1], I: [[170, 80, 200], 4, 1], Xe: [[160, 186, 255], 0], Hg: [[200, 210, 220], 0, 1],
+  Rn: [[255, 120, 120], 0, 1]
+};
+// what each kind of world breathes until you change it
+const AIR_EARTH = { N: 0.78, O: 0.21, Ar: 0.0093, C: 0.0004 };
+function defaultMix(type) {
+  const def = TYPES[type];
+  if (type === 'sol_venus') return { C: 89, N: 3.2, S: 0.015 };
+  if (type === 'sol_mars') return { C: 0.0058, N: 0.00016, Ar: 0.00012, O: 0.00001 };
+  if (type === 'sol_titan') return { N: 1.42, C: 0.07, H: 0.004 };
+  if (def.surf === 'gas' || def.surf === 'puff') return { H: 0.86, He: 0.14 };
+  if (def.surf === 'icegiant') return { H: 0.8, He: 0.19, C: 0.015 };
+  if (def.surf === 'lava') return { O: 0.35, Na: 0.3, Si: 0.2, S: 0.1, K: 0.05 };
+  if (def.surf === 'desert') return { C: 0.9, N: 0.06, Ar: 0.04 };
+  return Object.assign({}, AIR_EARTH);
+}
+const mixTotal = (mix) => Object.values(mix).reduce((a, v) => a + v, 0);
+function mixColour(mix) {
+  const t = mixTotal(mix);
+  if (!(t > 0)) return [180, 180, 180];
+  let c = [0, 0, 0];
+  for (const k in mix) {
+    const col = (AIR_EL[k] && AIR_EL[k][0]) || [190, 190, 190];
+    c = [c[0] + col[0] * mix[k] / t, c[1] + col[1] * mix[k] / t, c[2] + col[2] * mix[k] / t];
+  }
+  return c;
+}
+const greenhouseOf = (mix) => {
+  let g = 0;
+  for (const k in mix) g += mix[k] * ((AIR_EL[k] && AIR_EL[k][1]) || 0);
+  return g + 0.05 * mixTotal(mix);
+};
+const poisonShare = (mix) => {
+  const t = mixTotal(mix);
+  let p = 0;
+  for (const k in mix) if (AIR_EL[k] && AIR_EL[k][2]) p += mix[k];
+  return t > 0 ? p / t : 0;
+};
+
 function atmoOf(b) {
-  if (b.atm) return b.atm.on ? b.atm : null;
+  if (b.atm) {
+    if (!b.atm.on || !b.atm.mix) return null;
+    const thick = mixTotal(b.atm.mix);
+    return thick > 0 ? { on: true, col: mixColour(b.atm.mix), thick, mix: b.atm.mix } : null;
+  }
   const def = TYPES[b.type];
-  return def.atmo ? { on: true, col: def.atmo, thick: 1 } : null;
+  return def.atmo ? { on: true, col: def.atmo, thick: 1, mix: defaultMix(b.type) } : null;
 }
 /** How tall the glowing shell stands, as a share of the usual. */
 const atmoHeight = (A) => clamp(1 + 0.35 * Math.log10(A.thick), 0.35, 1.8);
@@ -15814,7 +15888,9 @@ function lifeLikelihood(b) {
   const lt = A ? Math.log10(A.thick) : 0;
   // best between about a third of Earth's air and five times it
   const thickOk = A ? lerp(0.3, 1, smoothstep(clamp((lt + 2) / 1.5, 0, 1))) * lerp(1, 0.3, smoothstep(clamp((lt - 0.7) / 1.3, 0, 1))) : 1;
-  const air = A ? clamp(b.air != null ? b.air : 1, 0.15, 1) * thickOk : 0.12;
+  // chlorine, fluorine, sulfur and the like: a sky of them is poison
+  const toxic = A ? 1 - Math.min(poisonShare(A.mix) * 3, 0.9) : 1;
+  const air = A ? clamp(b.air != null ? b.air : 1, 0.15, 1) * thickOk * toxic : 0.12;
   const lm = Math.log10(Math.max(b.m, 1e-9));        // too small to hold air, or swollen into a giant
   const mass = smooth(lm, -2, -0.6) * (1 - smooth(lm, 1, 1.6));
   const star = nearestStar(b);
@@ -15822,10 +15898,11 @@ function lifeLikelihood(b) {
   let p = temp * water * Math.sqrt(air) * mass * steady;
   if (GASSY_SURF.has(def.surf)) p *= 0.1;
   // an ocean under the ice, kept liquid by tides (Europa, Enceladus)
-  if (w > 0 && !liquid && (b.coreT || 0) > 600) p = Math.max(p, 0.12);
+  if (w > 0 && T < 273 && (b.coreT || 0) > 600) p = Math.max(p, 0.12);
   // and whatever a recent impact has knocked out of it (see lifeStrike)
-  // (a living surface only counts while there is air over it, and not a crushing amount)
-  return clamp(Math.max(p, A ? (b.terra || 0) * thickOk : 0) * (b.lifeHit != null ? b.lifeHit : 1), 0, 1);
+  // (a living surface only counts while there is air over it — not a crushing or a
+  // poisonous amount — and it is not boiling or frozen solid)
+  return clamp(Math.max(p, A ? (b.terra || 0) * thickOk * toxic * temp : 0) * (b.lifeHit != null ? b.lifeHit : 1), 0, 1);
 }
 
 /* An impact on a world takes a share of its Life-Likelihood, by the size of
@@ -16010,12 +16087,23 @@ function customiseHTML(b) {
     const A = atmoOf(b);
     h += '<div class="an-sub">Atmosphere</div>' + tgl('is-atm-on', 'Has an atmosphere', '');
     if (A) {
-      h += '<div class="an-swatches"><input type="color" id="is-atm-col" value="' + rgbHex(A.col) + '"></div>' +
-        '<div class="an-field"><label>Thickness <b id="is-atm-v"></b></label>' +
-        '<input type="range" id="is-atm-th" min="-2" max="2" step="0.01" value="' + Math.log10(A.thick).toFixed(2) + '"></div>' +
-        '<p class="an-note">The colour of the sky, and how much air there is, in Earth atmospheres. Thicker air glows ' +
-        'brighter, stands higher and traps more heat — Venus has about 90 times Earth\u2019s and is hot enough to melt lead. ' +
-        'Life likes it somewhere between a third of Earth\u2019s and five times it.</p>';
+      const els = Object.keys(A.mix).sort((x, y) => ELEMENT_OF[x].z - ELEMENT_OF[y].z);
+      h += '<p class="an-note" style="margin-top:6px">Total <b id="is-atm-tot"></b> \u00b7 sky ' +
+        '<span id="is-atm-sw" style="display:inline-block;width:26px;height:10px;border-radius:3px;vertical-align:middle;background:' + rgbHex(A.col) + '"></span></p>';
+      for (const k of els) {
+        const e = ELEMENT_OF[k];
+        h += '<div class="an-field an-el"><label><span><span class="an-sym">' + e.sym + '</span> ' + e.name +
+          ' <small>' + e.z + '</small></span><span><span class="an-elv" data-el="' + k + '"></span> ' +
+          '<button class="an-elx" data-el="' + k + '" title="Take ' + e.name + ' out">\u00d7</button></span></label>' +
+          '<input type="range" class="an-elr" data-el="' + k + '" min="-5" max="2.3" step="0.01" value="' +
+          Math.log10(Math.max(A.mix[k], 1e-5)).toFixed(2) + '"></div>';
+      }
+      h += '<select id="is-atm-add" class="an-elsel"><option value="">+ Add an element\u2026</option>' +
+        ELEMENTS.filter(e => !(e.sym in A.mix)).map(e => '<option value="' + e.sym + '">' + e.z + '  ' + e.sym + ' \u2014 ' + e.name + '</option>').join('') +
+        '</select>' +
+        '<p class="an-note">The air, element by element, each in Earth atmospheres. The sky\u2019s colour is theirs ' +
+        'blended; the thickness is the total. Carbon, sulfur, fluorine and chlorine trap heat (Venus is 89 of carbon, as CO\u2082). ' +
+        'Life likes between a third of Earth\u2019s air and five times it, and chlorine, fluorine and sulfur poison it.</p>';
     }
   }
 
@@ -16184,32 +16272,48 @@ function bindCustomise(b) {
     aOn.classList.toggle('on', !!atmoOf(b));
     aOn.addEventListener('click', () => {
       const A = atmoOf(b);
-      b.atm = A ? { on: false, col: A.col.slice(), thick: A.thick }
-        : { on: true, col: (b.atm && b.atm.col) || SKY.slice(), thick: (b.atm && b.atm.thick) || 1 };
+      b.atm = A ? { on: false, mix: Object.assign({}, A.mix) }
+        : { on: true, mix: (b.atm && b.atm.mix && mixTotal(b.atm.mix) > 0) ? b.atm.mix : Object.assign({}, AIR_EARTH) };
       ensureAtmo(b);
       scaleVisual(b);
       updateTemperatures();
       renderInspector();
     });
   }
-  const aTh = $('is-atm-th');
-  if (aTh) {
+  if ($('is-atm-tot')) {
+    // the mix is edited in place: start from whatever the world has now
+    const mine = () => {
+      if (!b.atm || !b.atm.mix) b.atm = { on: true, mix: Object.assign({}, atmoOf(b).mix) };
+      return b.atm.mix;
+    };
+    const fmtAtm = (v) => v >= 10 ? Math.round(v).toLocaleString() : v >= 0.1 ? v.toFixed(2) : v >= 0.001 ? v.toFixed(4) : v.toExponential(1);
     const showA = () => {
-      const t = Math.pow(10, +aTh.value);
-      $('is-atm-v').textContent = (t >= 10 ? Math.round(t) : t >= 1 ? t.toFixed(1) : t.toFixed(2)) + '\u00d7 Earth';
+      const A = atmoOf(b);
+      if (!A) return;
+      $('is-atm-tot').textContent = fmtAtm(mixTotal(A.mix)) + ' \u00d7 Earth';
+      $('is-atm-sw').style.background = rgbHex(A.col);
+      for (const el of document.querySelectorAll('.an-elv')) el.textContent = fmtAtm(A.mix[el.dataset.el] || 0);
     };
     showA();
-    aTh.addEventListener('input', () => {
-      const A = atmoOf(b);
-      b.atm = { on: true, col: A.col.slice(), thick: Math.pow(10, +aTh.value) };
-      scaleVisual(b);
-      updateTemperatures();
-      showA();
-      updateInspectorStats();
-    });
-    on('is-atm-col', 'input', () => {
-      const A = atmoOf(b);
-      b.atm = { on: true, col: hexRgb($('is-atm-col').value), thick: A.thick };
+    const changed = () => { scaleVisual(b); updateTemperatures(); showA(); updateInspectorStats(); };
+    for (const r of document.querySelectorAll('.an-elr')) {
+      r.addEventListener('input', () => { mine()[r.dataset.el] = Math.pow(10, +r.value); changed(); });
+    }
+    for (const x of document.querySelectorAll('.an-elx')) {
+      x.addEventListener('click', () => {
+        const m = mine();
+        delete m[x.dataset.el];
+        if (!(mixTotal(m) > 0)) b.atm.on = false;      // the last one out: no air left
+        changed();
+        renderInspector();
+      });
+    }
+    on('is-atm-add', 'change', () => {
+      const k = $('is-atm-add').value;
+      if (!k) return;
+      mine()[k] = 0.01;                                // a trace, to start with
+      changed();
+      renderInspector();
     });
   }
 
@@ -19047,7 +19151,14 @@ function loadUniverse() {
     if (s.sy) b.shy = s.sy === 1 ? true : s.sy;
     if (s.lk && s.lk !== 1) b.look = s.lk;
     if (s.ai != null) b.air = s.ai;
-    if (s.at) { b.atm = s.at; ensureAtmo(b); }
+    if (s.at) {
+      b.atm = s.at;
+      if (!b.atm.mix) {               // saved before skies were made of elements
+        const k = (b.atm.thick || 1) / mixTotal(AIR_EARTH);
+        b.atm = { on: b.atm.on, mix: Object.fromEntries(Object.entries(AIR_EARTH).map(([e, v]) => [e, v * k])) };
+      }
+      ensureAtmo(b);
+    }
     if (s.m0 != null) b.m0 = s.m0;
     if (s.tn) {
       const c = hexRgb(s.tn);
