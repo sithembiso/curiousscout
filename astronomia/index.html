@@ -2550,9 +2550,10 @@ function starColourTemp(b) {
 }
 /*
  * Each kind of star has its own colour, whatever it is doing — the same set a
- * child would reach for: red for the supergiant and the brown dwarf, orange
- * for the red dwarf, yellow for a Sun, blue for a blue giant and greenish
- * blue for a Wolf–Rayet. (The dead ones keep their own looks: white dwarfs
+ * child would reach for: red for the supergiant and the brown dwarf, ruby for
+ * a carbon star, orange for the red dwarf, light orange for a K star, yellow
+ * for a Sun, yellow-white for an F star, white for an A star, blue for a blue
+ * giant and greenish blue for a Wolf–Rayet. (The dead ones keep their own looks: white dwarfs
  * and neutron stars are white, a black dwarf is black.) Any other star — the
  * Solar System's Sun, a protostar — is still coloured by its temperature.
  */
@@ -2560,7 +2561,11 @@ const STAR_PAINT = {
   red_supergiant: { name: 'red', rgb: [222, 32, 52] },
   brown_dwarf:    { name: 'red', rgb: [222, 32, 52] },
   red_dwarf:      { name: 'orange', rgb: [255, 122, 24] },
+  k_star:         { name: 'light orange', rgb: [255, 150, 40] },
   sun_like:       { name: 'yellow', rgb: [255, 216, 40] },
+  f_star:         { name: 'yellow-white', rgb: [255, 244, 190] },
+  a_star:         { name: 'white', rgb: [236, 242, 255] },
+  carbon_star:    { name: 'ruby red', rgb: [176, 8, 36] },
   blue_giant:     { name: 'blue', rgb: [64, 84, 255] },
   wolf_rayet:     { name: 'greenish blue', rgb: [36, 204, 196] }
 };
@@ -2604,10 +2609,25 @@ const TYPES = {
     opts: { hot: [236, 84, 52] },
     blurb: 'The most common star in the galaxy. Cool, dim, and astonishingly long-lived.'
   },
+  k_star: {
+    label: 'K-type Star', group: 'STARS', mass: 0.75 * M_SUN, rad: 0.74 * R_SUN,
+    surf: 'star', temp: 4600, star: true, spin: 38, spots: 10, opts: { warm: 0.6 },
+    blurb: 'An orange dwarf, a little smaller and cooler than the Sun. Alpha Centauri B and Epsilon Eridani are K stars. They burn steadily for tens of billions of years, which makes them some of the best places to look for life.'
+  },
   sun_like: {
     label: 'Sun-like Star', group: 'STARS', mass: M_SUN, rad: R_SUN,
     surf: 'star', temp: 5778, star: true, spin: 25, spots: 8, opts: { warm: 0.34 },
     blurb: 'A G-type main-sequence star, just like our own Sun.'
+  },
+  f_star: {
+    label: 'F-type Star', group: 'STARS', mass: 1.4 * M_SUN, rad: 1.5 * R_SUN,
+    surf: 'star', temp: 6700, star: true, spin: 4, spots: 4, opts: { warm: 0.15 },
+    blurb: 'A yellow-white star, bigger and hotter than the Sun. Procyon, the Little Dog\u2019s bright eye, is one. It lives about three billion years.'
+  },
+  a_star: {
+    label: 'A-type Star', group: 'STARS', mass: 2.1 * M_SUN, rad: 1.8 * R_SUN,
+    surf: 'star', temp: 9200, star: true, spin: 0.6, spots: 1,
+    blurb: 'A brilliant white star, twice the Sun\u2019s mass. Sirius, Vega and Altair are A stars. They spin fast \u2014 Vega turns once every twelve hours \u2014 and live about a billion years.'
   },
   blue_giant: {
     label: 'Blue Giant', group: 'STARS', mass: 18 * M_SUN, rad: 6.5 * R_SUN,
@@ -2618,6 +2638,11 @@ const TYPES = {
     label: 'Red Supergiant', group: 'STARS', mass: 16 * M_SUN, rad: 760 * R_SUN,
     surf: 'star', temp: 3500, star: true, spin: 2000, spots: 14, aged: 0.985,
     blurb: 'A dying titan. Drop it where the Sun is and it would swallow Jupiter whole. It is already almost out of fuel — switch on Stellar aging and watch.'
+  },
+  carbon_star: {
+    label: 'Carbon Star', group: 'STARS', mass: 1.5 * M_SUN, rad: 250 * R_SUN,
+    surf: 'star', temp: 2800, star: true, spin: 1500, spots: 14, aged: 0.985,
+    blurb: 'A C-type star: an old giant that has dredged carbon up from its core. The soot in its air soaks up blue light, so it glows a deep ruby red \u2014 the reddest stars in the sky, like La Superba and Hind\u2019s Crimson Star. It is near its end; switch on Stellar aging and it puffs off a planetary nebula.'
   },
   wolf_rayet: {
     label: 'Wolf–Rayet Star', group: 'STARS', mass: 20 * M_SUN, rad: 3.1 * R_SUN,
@@ -3108,7 +3133,8 @@ const SWATCH = {
   singularity: '#ffffff', universe: '#c9a6ff', barycentre: '#7fe6ff',
   barred_galaxy: '#cfe0ff', elliptical_galaxy: '#ffd39a', irregular_galaxy: '#9fc4ff',
   ring_galaxy: '#a9c8ff', dwarf_galaxy: '#d9d0ff',
-  red_dwarf: '#ff7a18', sun_like: '#ffd828', blue_giant: '#4054ff', red_supergiant: '#de2034',
+  red_dwarf: '#ff7a18', k_star: '#ff9628', sun_like: '#ffd828', f_star: '#fff4be', a_star: '#ecf2ff',
+  blue_giant: '#4054ff', red_supergiant: '#de2034', carbon_star: '#b00824',
   wolf_rayet: '#24ccc4', white_dwarf: '#ffffff', neutron_star: '#ffffff', brown_dwarf: '#de2034',
   terrestrial: '#4d96ff', super_earth: '#5aa870', ocean_world: '#2bb4d6', desert_world: '#c98a52',
   ice_world: '#dbeaf7', lava_world: '#ff6a2a', gas_giant: '#d9b183', ice_giant: '#5aa8de',
@@ -5039,9 +5065,13 @@ function becomeGasGiant(b) {
   fx.form(b, false);
 }
 
+/** The kind of main-sequence star a given mass (in M☉) is born as. */
+const starKindFor = (mSun) => mSun > 8 ? 'blue_giant' : mSun > 1.7 ? 'a_star' : mSun > 1.1 ? 'f_star'
+  : mSun > 0.85 ? 'sun_like' : mSun > 0.5 ? 'k_star' : 'red_dwarf';
+
 function becomeStar(b) {
   const mSun = b.m / M_SUN;
-  b.type = mSun > 8 ? 'blue_giant' : mSun > 0.5 ? 'sun_like' : 'red_dwarf';
+  b.type = starKindFor(mSun);
   b.kind = 'body';
   b.age = 0;
   b.temp = TYPES[b.type].temp;
@@ -6058,7 +6088,7 @@ function condenseCloud(e) {
   const canIgnite = guess >= IGNITE_MASS;
   const mSun = guess / M_SUN;
   const coreType = canIgnite
-    ? (mSun > 8 ? 'blue_giant' : mSun > 0.5 ? 'sun_like' : 'red_dwarf')
+    ? starKindFor(mSun)
     : discPlanetType(guess, true);
 
   // How wide the disc is depends on how bright the star will be, so work that
@@ -17252,7 +17282,7 @@ function buildSolarSystem(c, v) {
   const side = new THREE.Vector3(0, 1, 0).cross(toAC).normalize();
   const acV = v.clone().addScaledVector(toAC, -22.4 * kms).addScaledVector(side, 23.5 * kms);
   const acA = makeBody('sun_like', ac.clone(), acV, { name: 'Alpha Centauri A', mass: 1.1 * M_SUN });
-  orbitBody('sun_like', acA, 23.4 * AU, { ang: 0.7, ecc: 0.52, over: { name: 'Alpha Centauri B', mass: 0.907 * M_SUN } });
+  orbitBody('k_star', acA, 23.4 * AU, { ang: 0.7, ecc: 0.52, over: { name: 'Alpha Centauri B', mass: 0.907 * M_SUN } });
   const prox = orbitBody('red_dwarf', acA, 13000 * AU, { ang: 2.2, inc: 0.6, over: { name: 'Proxima Centauri', mass: 0.122 * M_SUN } });
   orbitBody('sol_proxima_b', prox, 0.0485 * AU, { ang: 1.0 });
 
@@ -17427,9 +17457,10 @@ function stepHomers(before) {
  * white dwarfs, pulsars and black holes. (Telescopes have catalogued nearly
  * two billion stars; these are the ones with names.)
  *
- * The game has no separate kind for an A-type or a K giant, so each is drawn
- * as the nearest kind it has (blue-white as a blue giant, orange and red
- * giants as red supergiants) with its real mass and real width.
+ * Each is drawn as its own kind where the game has one (A, F, G and K stars,
+ * carbon stars) and otherwise as the nearest (B stars as blue giants, the
+ * orange and red giants as red supergiants), always with its real mass and
+ * real width.
  *
  * Row: name, RA (hours), Dec (°), distance (ly), kind, mass (M☉), radius (R☉),
  * and optionally a companion: [name, kind, mass, separation (AU), eccentricity].
@@ -17441,18 +17472,18 @@ const KNOWN_STARS = [
   ['WISE 0855−0714', 8.917, -7.24, 7.4, 'brown_dwarf', 0.006, 0.09],
   ['Wolf 359', 10.944, 7.01, 7.86, 'red_dwarf', 0.11, 0.14],
   ['Lalande 21185', 11.055, 35.97, 8.31, 'red_dwarf', 0.39, 0.39],
-  ['Sirius', 6.752, -16.72, 8.60, 'blue_giant', 2.06, 1.71, ['Sirius B', 'white_dwarf', 1.02, 20, 0.59]],
+  ['Sirius', 6.752, -16.72, 8.60, 'a_star', 2.06, 1.71, ['Sirius B', 'white_dwarf', 1.02, 20, 0.59]],
   ['Luyten 726-8', 1.648, -17.95, 8.7, 'red_dwarf', 0.10, 0.14],
   ['Ross 154', 18.828, -23.84, 9.7, 'red_dwarf', 0.17, 0.20],
   ['Ross 248', 23.698, 44.17, 10.3, 'red_dwarf', 0.14, 0.16],
-  ['Epsilon Eridani', 3.549, -9.46, 10.5, 'red_dwarf', 0.82, 0.74],
+  ['Epsilon Eridani', 3.549, -9.46, 10.5, 'k_star', 0.82, 0.74],
   ['Lacaille 9352', 23.097, -35.85, 10.7, 'red_dwarf', 0.48, 0.47],
   ['Ross 128', 11.795, 0.80, 11.0, 'red_dwarf', 0.17, 0.20],
-  ['61 Cygni A', 21.115, 38.75, 11.4, 'red_dwarf', 0.70, 0.67, ['61 Cygni B', 'red_dwarf', 0.63, 84, 0.40]],
-  ['Procyon', 7.655, 5.22, 11.46, 'sun_like', 1.50, 2.05, ['Procyon B', 'white_dwarf', 0.60, 15, 0.41]],
+  ['61 Cygni A', 21.115, 38.75, 11.4, 'k_star', 0.70, 0.67, ['61 Cygni B', 'k_star', 0.63, 84, 0.40]],
+  ['Procyon', 7.655, 5.22, 11.46, 'f_star', 1.50, 2.05, ['Procyon B', 'white_dwarf', 0.60, 15, 0.41]],
   ['Struve 2398', 18.713, 59.63, 11.5, 'red_dwarf', 0.33, 0.35],
   ['Groombridge 34', 0.305, 44.02, 11.6, 'red_dwarf', 0.38, 0.38],
-  ['Epsilon Indi', 22.055, -56.79, 11.9, 'red_dwarf', 0.76, 0.71],
+  ['Epsilon Indi', 22.055, -56.79, 11.9, 'k_star', 0.76, 0.71],
   ['Tau Ceti', 1.734, -15.94, 11.9, 'sun_like', 0.78, 0.79],
   ['Gliese 1061', 3.599, -44.51, 12.0, 'red_dwarf', 0.12, 0.16],
   ["Luyten's Star", 7.457, 5.23, 12.4, 'red_dwarf', 0.26, 0.35],
@@ -17460,23 +17491,23 @@ const KNOWN_STARS = [
   ["Kapteyn's Star", 5.194, -45.02, 12.8, 'red_dwarf', 0.27, 0.29],
   ['Wolf 1061', 16.505, -12.66, 14.0, 'red_dwarf', 0.29, 0.31],
   ["Van Maanen's Star", 0.818, 5.39, 14.1, 'white_dwarf', 0.68],
-  ['40 Eridani A', 4.254, -7.65, 16.3, 'red_dwarf', 0.78, 0.81, ['40 Eridani B', 'white_dwarf', 0.57, 400, 0.41]],
-  ['Altair', 19.846, 8.87, 16.7, 'blue_giant', 1.86, 1.79],
+  ['40 Eridani A', 4.254, -7.65, 16.3, 'k_star', 0.78, 0.81, ['40 Eridani B', 'white_dwarf', 0.57, 400, 0.41]],
+  ['Altair', 19.846, 8.87, 16.7, 'a_star', 1.86, 1.79],
   ['Gliese 581', 15.323, -7.72, 20.5, 'red_dwarf', 0.31, 0.30],
   ['Gliese 667 C', 17.315, -34.99, 23.6, 'red_dwarf', 0.33, 0.42],
-  ['Vega', 18.616, 38.78, 25.0, 'blue_giant', 2.14, 2.36],
-  ['Fomalhaut', 22.961, -29.62, 25.1, 'blue_giant', 1.92, 1.84],
+  ['Vega', 18.616, 38.78, 25.0, 'a_star', 2.14, 2.36],
+  ['Fomalhaut', 22.961, -29.62, 25.1, 'a_star', 1.92, 1.84],
   ['Pollux', 7.755, 28.03, 33.8, 'red_supergiant', 1.9, 9.1],
   ['Arcturus', 14.261, 19.18, 36.7, 'red_supergiant', 1.08, 25.4],
   ['TRAPPIST-1', 23.107, -5.04, 40.7, 'red_dwarf', 0.09, 0.12],
-  ['55 Cancri', 8.886, 28.33, 41.0, 'red_dwarf', 0.91, 0.94],
+  ['55 Cancri', 8.886, 28.33, 41.0, 'k_star', 0.91, 0.94],
   ['Capella', 5.278, 46.00, 42.9, 'sun_like', 2.57, 11.98],
   ['51 Pegasi', 22.958, 20.77, 50.6, 'sun_like', 1.09, 1.15],
-  ['Castor', 7.577, 31.89, 51, 'blue_giant', 2.76, 2.4],
+  ['Castor', 7.577, 31.89, 51, 'a_star', 2.76, 2.4],
   ['Aldebaran', 4.599, 16.51, 65.3, 'red_supergiant', 1.16, 44],
   ['Regulus', 10.140, 11.97, 79.3, 'blue_giant', 3.8, 4.35],
-  ['Alcor', 13.420, 54.99, 81.7, 'sun_like', 1.8, 1.8],
-  ['Mizar', 13.399, 54.93, 82.9, 'blue_giant', 2.2, 2.4],
+  ['Alcor', 13.420, 54.99, 81.7, 'a_star', 1.8, 1.8],
+  ['Mizar', 13.399, 54.93, 82.9, 'a_star', 2.2, 2.4],
   ['Gacrux', 12.519, -57.11, 88.6, 'red_supergiant', 1.5, 84],
   ['Algol', 3.136, 40.96, 90, 'blue_giant', 3.17, 2.73],
   ['Dubhe', 11.062, 61.75, 123, 'red_supergiant', 4.25, 30],
@@ -17485,14 +17516,17 @@ const KNOWN_STARS = [
   ['Spica', 13.420, -11.16, 250, 'blue_giant', 11.4, 7.5],
   ['Mimosa', 12.795, -59.69, 280, 'blue_giant', 16, 8.4],
   ['Mira', 2.322, -2.98, 300, 'red_supergiant', 1.2, 332],
-  ['Thuban', 14.073, 64.38, 303, 'blue_giant', 4.0, 3.4],
-  ['Canopus', 6.399, -52.70, 310, 'sun_like', 8, 71],
+  ['CW Leonis', 9.797, 13.28, 400, 'carbon_star', 0.8, 700],
+  ['La Superba', 12.754, 45.44, 710, 'carbon_star', 3, 215],
+  ["Hind's Crimson Star", 4.993, -14.81, 1500, 'carbon_star', 1.5, 480],
+  ['Thuban', 14.073, 64.38, 303, 'a_star', 4.0, 3.4],
+  ['Canopus', 6.399, -52.70, 310, 'f_star', 8, 71],
   ['Acrux', 12.443, -63.10, 320, 'blue_giant', 17.8, 7.8],
   ['Zeta Ophiuchi', 16.619, -10.57, 366, 'blue_giant', 20, 8],
   ['Hadar', 14.064, -60.37, 390, 'blue_giant', 12, 8.6],
   ['Adhara', 6.977, -28.97, 430, 'blue_giant', 12.6, 13.9],
   ['Albireo', 19.512, 27.96, 430, 'red_supergiant', 5, 69],
-  ['Polaris', 2.530, 89.26, 433, 'sun_like', 5.4, 37.5],
+  ['Polaris', 2.530, 89.26, 433, 'f_star', 5.4, 37.5],
   ['Alcyone', 3.791, 24.11, 440, 'blue_giant', 6, 9.3],
   ['Atlas', 3.820, 24.05, 440, 'blue_giant', 5, 5],
   ['Electra', 3.749, 24.11, 440, 'blue_giant', 4.2, 5.8],
@@ -17511,10 +17545,10 @@ const KNOWN_STARS = [
   ['Mintaka', 5.533, -0.30, 1200, 'blue_giant', 24, 16.5],
   ['Alnitak', 5.679, -1.94, 1260, 'blue_giant', 33, 20],
   ['θ¹ Orionis C', 5.588, -5.39, 1340, 'blue_giant', 33, 10.6],
-  ["Tabby's Star", 20.104, 44.46, 1470, 'sun_like', 1.43, 1.58],
+  ["Tabby's Star", 20.104, 44.46, 1470, 'f_star', 1.43, 1.58],
   ['Kepler-452', 19.738, 44.28, 1800, 'sun_like', 1.04, 1.11],
   ['Alnilam', 5.603, -1.20, 2000, 'blue_giant', 40, 42],
-  ['Deneb', 20.690, 45.28, 2600, 'blue_giant', 19, 203],
+  ['Deneb', 20.690, 45.28, 2600, 'a_star', 19, 203],
   ['Mu Cephei', 21.725, 58.78, 3060, 'red_supergiant', 19, 1260],
   ['Rho Cassiopeiae', 23.906, 57.50, 3400, 'sun_like', 40, 450],
   ['VY Canis Majoris', 7.383, -25.77, 3900, 'red_supergiant', 17, 1420],
