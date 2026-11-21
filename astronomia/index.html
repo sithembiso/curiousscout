@@ -4136,6 +4136,60 @@ function setWater(b, w) {
 // Below this share of the target's drawn size an impactor is a pebble, and
 // pebbles just land — animating them would cost geometry rebuilds for nothing.
 const ENGULF_MIN_R = 0.11;
+
+/* ------------------------------------------------------------------- cores */
+/*
+ * Every world has a core a third of its own size. Something that hits a world
+ * leaves a crater and goes on sinking in, and what happens is decided when it
+ * reaches that core:
+ *
+ *   a rocky world   consumes it: the impactor's mass becomes part of the world
+ *   a gas giant     vaporises it: a burst of glowing vapour, the rest dissolved
+ *   a star          goes supernova
+ *
+ * While it digs, the core glows up through the crater (see coreGlows).
+ */
+const CORE_FRAC = 1 / 3;
+const CORE_MIN_M = 0.01;       // M⊕: about a Moon. Anything smaller burns up before it gets deep.
+
+/** What a world does to something that reaches its core. */
+function coreFate(a) {
+  const def = TYPES[a.type];
+  if (def.star) {
+    if (def.dead || def.surf === 'neutron') return 'consume';
+    return def.brown ? 'vaporise' : 'supernova';      // a brown dwarf is a giant ball of gas
+  }
+  return GASSY_SURF.has(def.surf) ? 'vaporise' : 'consume';
+}
+
+/** Whether `b` is big and solid enough to sink all the way to a star's or a
+    gas giant's core, however small it looks next to it. */
+const reachesCore = (a, b) => coreFate(a) !== 'consume' && b.kind === 'body' && !b.rubble &&
+  b.m >= CORE_MIN_M && !TYPES[b.type].star && !GASSY_SURF.has(TYPES[b.type].surf);
+
+/** A star with something lodged in its core blows up — whatever its mass. */
+function corePlan(a) {
+  const plan = snPlan(a);
+  if (plan.ok) return plan;
+  if (TYPES[a.type].surf === 'dwarfstar') {
+    return {
+      ok: true, flavour: 'Ia', label: 'Type Ia',
+      foe: 1.5, ni: 0.6, rise: 14, plateau: 0, tPlat: 0, breakout: 3e43,
+      remnant: 'none', remMass: 0, life: 1100,
+      hot: [255, 246, 235], cool: [255, 150, 90],
+      story: 'Something drove right into the white dwarf\u2019s core and lit carbon fusion there. ' +
+        'It ran away through the whole star in about two seconds, and there is nothing left of it.'
+    };
+  }
+  return {
+    ok: true, flavour: 'II', label: 'Supernova',
+    foe: 1, ni: 0.05, rise: 8, plateau: 2.0e42, tPlat: 100, breakout: 1e44,
+    remnant: 'none', remMass: 0, life: 1100,
+    hot: [222, 238, 255], cool: [255, 105, 70],
+    story: 'Something fell all the way into the star\u2019s core. The core could not take it and ' +
+      'the whole star blew itself apart.'
+  };
+}
 /* How long burying one world in another takes, in SECONDS OF WALL CLOCK — not
    simulated days. A real planetary impact is over in minutes: work it out from
    the speed of arrival and the whole thing finishes inside a single frame at any
@@ -4148,7 +4202,8 @@ const ENGULF_STEPS = 10;         // how many times the crater is re-cut on the w
 
 function beginEngulf(a, b, vImp, vEsc) {
   const ra = visRadius(a), rb = visRadius(b);
-  if (!(rb > ra * ENGULF_MIN_R)) return false;
+  const deep = reachesCore(a, b);
+  if (!(rb > ra * ENGULF_MIN_R) && !deep) return false;
   const dir = b.p.clone().sub(a.p);
   if (dir.lengthSq() < 1e-18) return false;
   dir.normalize();
@@ -4161,17 +4216,20 @@ function beginEngulf(a, b, vImp, vEsc) {
   const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mt);
   a.v.copy(vel); b.v.copy(vel);
 
-  const T = clamp(0.40 + 1.30 * (rb / Math.max(ra, 1e-9)), ENGULF_MIN_SEC, ENGULF_MAX_SEC);
+  // (a long way down to a star's core: slow enough to watch)
+  const T = Math.max(clamp(0.40 + 1.30 * (rb / Math.max(ra, 1e-9)), ENGULF_MIN_SEC, ENGULF_MAX_SEC), deep ? 1.6 : 0);
   const hole = clamp(Math.cbrt(b.m / Math.max(a.m, 1e-12)) * 1.5, 0.14, 1.1);
   b.sink = {
     host: a, t: 0, T: T, vImp: vImp, vEsc: vEsc, dir: dir, spray: 0, inbound: inbound,
     heat: impactHeatOf(a, b, vImp, vEsc),
-    ra: ra, rb: rb, d0: ra + rb, d1: Math.max(ra - rb, 0),
+    // it sinks until the two cores touch
+    ra: ra, rb: rb, d0: ra + rb, d1: (ra + rb) * CORE_FRAC,
     hole: hole, step: 0, bore: 0,
     // A mark from the very first moment of contact, barely open — the two
     // surfaces are only touching at a point yet.
     mark: addScar(a, dir, hole * 0.12, inbound)
   };
+  coreGlow(a, b);
   fx.flash(b.p, rb * 2.4, [255, 200, 140], 0.45);
   return true;
 }
@@ -4356,9 +4414,132 @@ function updateEngulf(dt) {
   for (const b of done) {
     const s = b.sink;
     b.sink = null;
-    if (b.alive && s.host.alive) merge(s.host, b, s.vImp, s.vEsc, s.mark);
+    if (b.alive && s.host.alive) reachCore(s.host, b, s);
   }
   compact();
+}
+
+/** `b` has reached `a`'s core. */
+function reachCore(a, b, s) {
+  const fate = coreFate(a);
+  const name = b.name, host = a.name;
+  if (fate === 'vaporise') {
+    // Most of it is dissolved into the giant; a third boils back out as a
+    // burst of glowing vapour, flung out the way it came in.
+    const rb = visRadius(b), vEsc = Math.sqrt(2 * G * a.m / Math.max(visRadius(a), 1e-9));
+    b.m -= gasEjecta(b.p, a.v, 420, b.m * 0.33, vEsc * 0.45, rb * 1.5, { speed: 1.1 });
+    fx.flash(b.p, visRadius(a) * 1.4, [255, 214, 160], 0.9);
+    merge(a, b, s.vImp, s.vEsc, s.mark);
+    toast(name + ' reached ' + host + '\u2019s core and was vaporised');
+    return;
+  }
+  merge(a, b, s.vImp, s.vEsc, s.mark);
+  if (fate === 'supernova' && snSet.on && a.alive) {
+    const p = goSupernova(a, corePlan(a));
+    if (p) { toast(name + ' hit ' + host + '\u2019s core \u2014 ' + p.label + '!'); return; }
+  }
+  toast(name + ' reached ' + host + '\u2019s core and was consumed');
+}
+
+/*
+ * The core, glowing up through the crater while something digs towards it.
+ * It is drawn over the world's surface but only where the line of sight
+ * enters the world through the hole (and isn't blocked by the impactor in
+ * it), so it shows through the crater and nowhere else. The sums are done
+ * relative to the world's centre, in small numbers, so they stay exact at any
+ * distance.
+ */
+const coreGlows = [];
+const CORE_VERT = `
+  varying vec3 vRel;
+  varying vec3 vVP;
+  void main() {
+    vRel = mat3(modelViewMatrix) * position;     // from the world's centre, in view axes
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vVP = mv.xyz;
+    gl_Position = projectionMatrix * mv;
+  }`;
+const CORE_FRAG = `
+  uniform float uR;      // the world's radius
+  uniform vec3 uHole;    // the crater's direction, view axes
+  uniform float uCos;    // cos of the crater's angular radius
+  uniform vec3 uImp;     // impactor centre relative to the world's, view axes
+  uniform float uRi;     // impactor radius
+  uniform float uGlow;
+  varying vec3 vRel;
+  varying vec3 vVP;
+  void main() {
+    vec3 dir = normalize(vVP);                   // camera to this point
+    // back along the sight line to where it entered the world
+    float pd = dot(vRel, dir);
+    float h = pd * pd - dot(vRel, vRel) + uR * uR;
+    if (h < 0.0) discard;
+    vec3 E = vRel - dir * (pd + sqrt(h));
+    float inHole = dot(normalize(E), uHole);
+    if (inHole < uCos) discard;
+    // fading out towards the crater's rim, not cut off at it
+    float rim = smoothstep(uCos, uCos + (1.0 - uCos) * 0.6, inHole);
+    // the impactor sitting in the hole hides what is behind it
+    vec3 q = vRel - uImp;
+    float qd = dot(q, dir);
+    float hi = qd * qd - dot(q, q) + uRi * uRi;
+    if (uRi > 0.0 && hi > 0.0 && qd + sqrt(hi) > 0.0) discard;
+    float face = clamp(-dot(normalize(vRel), dir), 0.0, 1.0);
+    vec3 col = mix(vec3(1.0, 0.36, 0.06), vec3(1.0, 0.93, 0.62), face * face);
+    gl_FragColor = vec4(col * uGlow * rim * (0.55 + 0.45 * face), 1.0);
+  }`;
+
+function coreGlow(a, b) {
+  if (coreFate(a) !== 'consume' || !a.scars) return;     // only rock has a crater to see down
+  for (const g of coreGlows) if (g.host === a) { g.imp = b; g.fade = -1; return; }
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uR: { value: 1 }, uHole: { value: new THREE.Vector3() }, uCos: { value: 1 },
+                uImp: { value: new THREE.Vector3() }, uRi: { value: 0 }, uGlow: { value: 0 } },
+    vertexShader: CORE_VERT, fragmentShader: CORE_FRAG,
+    blending: THREE.AdditiveBlending, transparent: true, depthTest: false, depthWrite: false
+  });
+  const mesh = new THREE.Mesh(SPHERE, mat);
+  mesh.renderOrder = 5;
+  mesh.frustumCulled = false;
+  scene.add(mesh);
+  coreGlows.push({ host: a, imp: b, mesh: mesh, mat: mat, hole: new THREE.Vector3(), ang: 0.2, fade: -1, glow: 0 });
+}
+
+const _cgV = new THREE.Vector3();
+function updateCoreGlows(realDt) {
+  for (let i = coreGlows.length - 1; i >= 0; i--) {
+    const g = coreGlows[i], a = g.host, b = g.imp;
+    const s = b && b.alive && b.sink && b.sink.host === a ? b.sink : null;
+    if (s) {
+      // the hole is where the impactor is, and as wide as the crater it has dug
+      g.hole.subVectors(b.p, a.p).normalize();
+      const cut = Math.asin(clamp(visRadius(b) / Math.max(visRadius(a), 1e-12), 0, 1));
+      g.ang = Math.max(cut, s.mark ? scarAngle(s.mark) * 0.6 : 0);
+      g.glow = Math.max(g.glow, 0.25 + 0.75 * smoothstep(s.t));
+    } else if (g.fade < 0) g.fade = 0;
+    if (g.fade >= 0) g.fade += realDt / 2.5;     // the hole cools over and closes
+    if (!a.alive || g.fade >= 1 || land.b === a) {
+      scene.remove(g.mesh); g.mat.dispose(); coreGlows.splice(i, 1); continue;
+    }
+    const ra = visRadius(a);
+    g.mesh.position.copy(a.p);
+    g.mesh.scale.setScalar(ra * CORE_FRAC);
+    const u = g.mat.uniforms, view = camera.matrixWorldInverse;
+    u.uR.value = ra;
+    u.uHole.value.copy(g.hole).transformDirection(view);
+    u.uCos.value = Math.cos(g.ang);
+    if (s) {
+      _cgV.subVectors(b.p, a.p);
+      u.uImp.value.copy(_cgV).transformDirection(view).multiplyScalar(_cgV.length());
+      u.uRi.value = visRadius(b);
+    } else u.uRi.value = 0;
+    u.uGlow.value = g.glow * (g.fade >= 0 ? 1 - smoothstep(g.fade) : 1);
+  }
+}
+
+function clearCoreGlows() {
+  for (const g of coreGlows) { scene.remove(g.mesh); g.mat.dispose(); }
+  coreGlows.length = 0;
 }
 
 function absorb(hole, prey) {
@@ -15837,6 +16018,7 @@ function renderInspector() {
     '<dt>Density</dt><dd id="is-den"></dd>' +
     '<dt>Speed</dt><dd id="is-spd"></dd>' +
     '<dt>Surface temp</dt><dd id="is-tmp"></dd>' +
+    (b.kind === 'body' && !TYPES[b.type].craft ? '<dt>Core</dt><dd id="is-corer"></dd>' : '') +
     (b.kind === 'body' ? '<dt>Inside temp</dt><dd id="is-core"></dd>' : '') +
     (isStar ? '<dt>Luminosity</dt><dd id="is-lum"></dd>' : '') +
     (starBand(b) ? '<dt>Colour</dt><dd id="is-band"></dd>' : '') +
@@ -15864,7 +16046,7 @@ function renderInspector() {
   inspRefs = {
     mass: $('is-mass'), rad: $('is-rad'), den: $('is-den'), spd: $('is-spd'),
     tmp: $('is-tmp'), orb: $('is-orb'), orbL: $('is-orb-l'), mval: $('is-mval'),
-    lum: $('is-lum'), age: $('is-age'), core: $('is-core'), strip: $('is-strip'),
+    lum: $('is-lum'), age: $('is-age'), core: $('is-core'), corer: $('is-corer'), strip: $('is-strip'),
     band: $('is-band'), air: $('is-air'),
     scars: $('is-scars'), dm: $('is-dm'), dn: $('is-dn'), dr: $('is-dr'),
     tfbar: $('is-tfbar'), tfnote: $('is-tfnote'), life: $('is-life')
@@ -16010,6 +16192,11 @@ function updateInspectorStats() {
     inspRefs.band.textContent = bd ? bd.name : '—';
   }
   inspRefs.mval.textContent = fmtMass(b.m);
+  if (inspRefs.corer) {
+    const fate = coreFate(b);
+    inspRefs.corer.textContent = fmtRadius(b.r * CORE_FRAC) + ' \u00b7 ' +
+      (fate === 'supernova' ? 'hit it: supernova' : fate === 'vaporise' ? 'vaporises' : 'consumes');
+  }
   if (inspRefs.core) {
     const t = b.coreT || 0;
     // Flagged when the tide is actively kneading it, because that is the moment
@@ -18237,6 +18424,7 @@ function clearAll() {
   clearGalaxyStars();
   clearSupernovae();
   clearKiloJets();
+  clearCoreGlows();
   clearUniverses();
   clearBelts();
   clearBarys();
@@ -18926,6 +19114,7 @@ function loop(now) {
   updateBelts();
   updateRingChunks();
   if (marks.length) updateMarks();
+  if (coreGlows.length) updateCoreGlows(realDt);
   updateBarycentres();
   if (barys.length) updateBarys(simDt);
   renderFrame();
