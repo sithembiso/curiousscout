@@ -3942,6 +3942,7 @@ function impact(a, b) {
   // Still climbing out of the crater they were thrown from: leave them be.
   if (emerging(a, b)) return false;
   triggerSlowmo(a, b);
+  lifeStrike(a, b);
 
   // White holes never merge — they shove things away instead.
   if (a.kind === 'wh' || b.kind === 'wh') {
@@ -14622,6 +14623,8 @@ function updateVisuals(realDt, simDt) {
     // Heat from an impact soaks away over a month or two of simulated time
     // (and never takes longer than half a minute on screen).
     if (b.impactHeat && !b.sink) b.impactHeat = Math.max(0, b.impactHeat - Math.max(simDt / 50, realDt / 30));
+    // life slowly returns after an impact
+    if (b.lifeHit != null && b.lifeHit < 1) b.lifeHit = Math.min(1, b.lifeHit + simDt / LIFE_RECOVER);
     // Air blown off by an impact is slowly breathed back out by volcanoes.
     if (b.air != null && b.air < 1) b.air = Math.min(1, b.air + simDt / (365.25 * 4));
     if (p.surf && b.baseColor && p.surf.material.isMeshStandardMaterial) {
@@ -15772,7 +15775,42 @@ function lifeLikelihood(b) {
   if (GASSY_SURF.has(def.surf)) p *= 0.1;
   // an ocean under the ice, kept liquid by tides (Europa, Enceladus)
   if (w > 0 && !liquid && (b.coreT || 0) > 600) p = Math.max(p, 0.12);
-  return clamp(Math.max(p, b.terra || 0), 0, 1);
+  // and whatever a recent impact has knocked out of it (see lifeStrike)
+  return clamp(Math.max(p, b.terra || 0) * (b.lifeHit != null ? b.lifeHit : 1), 0, 1);
+}
+
+/* An impact on a world takes a share of its Life-Likelihood, by the size of
+   what hit it: 1 km across takes 10%, 5 km 25%, 20 km 50%, and 50 km or more
+   all of it (the one that ended the dinosaurs was about 10 km). In between it
+   runs smoothly on the logarithm of the size; below 1 km it fades to nothing.
+   It is a share of what is left, so two small hits are not simply added up. */
+const LIFE_STRIKE = [[1, 0.10], [5, 0.25], [20, 0.50], [50, 1.0]];
+const LIFE_RECOVER = 10e6 * 365.25;    // days: life takes about ten million years to come back
+function strikeShare(km) {
+  if (!(km > 0)) return 0;
+  if (km <= 1) return 0.10 * km;
+  for (let i = 1; i < LIFE_STRIKE.length; i++) {
+    const [k1, f1] = LIFE_STRIKE[i];
+    if (km > k1) continue;
+    const [k0, f0] = LIFE_STRIKE[i - 1];
+    return lerp(f0, f1, Math.log(km / k0) / Math.log(k1 / k0));
+  }
+  return 1;
+}
+function lifeStrike(a, b) {
+  if (a.kind !== 'body' || TYPES[a.type].star || TYPES[a.type].craft) return;
+  const km = 2 * b.r * 1e6;                         // the impactor's real width
+  const f = strikeShare(km);
+  if (f <= 0) return;
+  const before = lifeLikelihood(a);
+  a.lifeHit = (a.lifeHit != null ? a.lifeHit : 1) * (1 - f);
+  if (before >= 0.01) {
+    const size = km >= 10 ? Math.round(km).toLocaleString() : km >= 1 ? km.toFixed(1) : Math.round(km * 1000) + ' m';
+    const msg = b.name + ' (' + size + (km >= 1 ? ' km' : '') + ') struck ' + a.name + ' \u2014 Life-Likelihood ' +
+      Math.round(before * 100) + '% \u2192 ' + Math.round(lifeLikelihood(a) * 100) + '%';
+    // after the impact's own message and any tsunami's, so this one is left showing
+    setTimeout(() => toast(msg), 3400);
+  }
 }
 
 /* ------------------------------------------------------- terraform block  */
