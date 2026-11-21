@@ -4264,14 +4264,14 @@ const HEAT_RAMP = [
  * streaming away; what is left is thinner until volcanoes refill it.
  */
 function blowOffAir(a, heat, com, vel, vEsc) {
-  const def = TYPES[a.type];
-  if (!def.atmo || heat < 0.05) return;
+  const A = atmoOf(a);
+  if (!A || heat < 0.05) return;
   const air = a.air != null ? a.air : 1;
   const lost = air * clamp(heat * 0.6, 0, 0.85);
   if (lost <= 0.005) return;
   a.air = air - lost;
   const n = Math.min(Math.round(80 + 320 * lost), parts.free.length);
-  const R = visRadius(a), col = def.atmo;
+  const R = visRadius(a), col = A.col;
   for (let i = 0; i < n; i++) {
     const k = parts.free.pop(), k3 = k * 3;
     const u = rnd(-1, 1), th = rnd(0, TAU), sr = Math.sqrt(1 - u * u);
@@ -7716,8 +7716,13 @@ function updateTemperatures() {
       flux += st.lum / (dAU * dAU);
     }
     // 278.6 K is the equilibrium temperature at 1 AU from a Sun-like star
-    const eq = flux > 0 ? 278.6 * Math.pow(flux, 0.25) : 3;
+    let eq = flux > 0 ? 278.6 * Math.pow(flux, 0.25) : 3;
     const def = TYPES[b.type];
+    // A customised sky: thicker air traps more heat, and none at all lets it go.
+    if (b.atm) {
+      const base = def.atmo ? 1 : 0.01;
+      eq *= Math.pow((b.atm.on ? b.atm.thick : 0.01) / base, 0.035);
+    }
     // `floorT` is for worlds kept warm by something other than starlight — a
     // greenhouse atmosphere on Venus, an open magma ocean on a lava world.
     const floor = def.floorT != null ? def.floorT : def.glowHot ? 1200 : 3;
@@ -7727,6 +7732,44 @@ function updateTemperatures() {
     const inner = excess > 0 ? Math.pow(excess, 0.75) * 1.1 : 0;
     b.temp = Math.max(eq, floor, inner);
   }
+}
+
+/* ---------------------------------------------------------------- atmospheres */
+/*
+ * A world's air: the one its kind comes with, unless it has been customised
+ * (b.atm = { on, col, thick }). Thickness is in Earth atmospheres, from a
+ * whisper of 0.01 to a Venus-like crush of 100. Thicker air glows brighter,
+ * stands higher off the ground and, customised, traps more heat (see
+ * updateTemperatures); it also counts towards Life-Likelihood.
+ */
+function atmoOf(b) {
+  if (b.atm) return b.atm.on ? b.atm : null;
+  const def = TYPES[b.type];
+  return def.atmo ? { on: true, col: def.atmo, thick: 1 } : null;
+}
+/** How tall the glowing shell stands, as a share of the usual. */
+const atmoHeight = (A) => clamp(1 + 0.35 * Math.log10(A.thick), 0.35, 1.8);
+/** How strongly it glows, as a share of the usual. */
+const atmoGlow = (A) => clamp(1 + 0.4 * Math.log10(A.thick), 0.15, 2);
+
+/** Build the glowing shell for a world that has air, if it has none yet. */
+function ensureAtmo(b) {
+  const p = b.parts;
+  if (!p || !b.obj || p.atmo || !atmoOf(b)) return;
+  const am = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color().fromArray(atmoOf(b).col.map(c => c / 255)) },
+      uLight: { value: new THREE.Vector3(1, 0, 0) },
+      uStrength: { value: 0.95 },
+      uGlow: { value: 0 }
+    },
+    vertexShader: ATMO_VERT, fragmentShader: ATMO_FRAG,
+    blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, side: THREE.FrontSide
+  });
+  p.atmo = new THREE.Mesh(SPHERE, am);
+  p.atmo.scale.setScalar(1.09);
+  b.obj.add(p.atmo);
+  scaleVisual(b);
 }
 
 /* ================================================================== renderer */
@@ -8549,10 +8592,10 @@ function buildWorld(b, def, grp) {
 
   }
 
-  if (def.atmo) {
+  if (atmoOf(b)) {
     const am = new THREE.ShaderMaterial({
       uniforms: {
-        uColor: { value: new THREE.Color().fromArray(def.atmo.map(c => c / 255)) },
+        uColor: { value: new THREE.Color().fromArray(atmoOf(b).col.map(c => c / 255)) },
         uLight: { value: new THREE.Vector3(1, 0, 0) },
         uStrength: { value: 0.95 },
         uGlow: { value: 0 }
@@ -12262,7 +12305,7 @@ function scaleVisual(b) {
   if (p.surf) p.surf.scale.setScalar(b.kind === 'bh' && p.disk ? r * HOLE_SHADOW : r);
   if (p.sea) p.sea.scale.setScalar(r * seaRadius(b));
   if (p.cloud) p.cloud.scale.setScalar(r * (1.018 + lift));
-  if (p.atmo) p.atmo.scale.setScalar(r * (1.09 + lift));
+  if (p.atmo) p.atmo.scale.setScalar(r * (1 + 0.09 * (atmoOf(b) ? atmoHeight(atmoOf(b)) : 1) + lift));
   if (p.puff) p.puff.scale.setScalar(r);
   // The star's two shells ride just off its photosphere at any size.
   if (p.corona) p.corona.scale.setScalar(r * 1.055);
@@ -13798,9 +13841,9 @@ function brightestSun(b, at) {
 
 /** The colour of a world's air, or null if it has none worth the name. */
 function airOf(b) {
-  const def = TYPES[b.type];
-  if (def.atmo) return def.atmo;
-  if (b.terra > 0.3 && !def.star) return SKY;   // a world terraformed into breathing
+  const A = atmoOf(b);
+  if (A) return A.col;
+  if (!b.atm && b.terra > 0.3 && !TYPES[b.type].star) return SKY;   // a world terraformed into breathing
   return null;
 }
 
@@ -14497,7 +14540,7 @@ function updateVisuals(realDt, simDt) {
     if (p.city || (settings.movie && !tiny)) updateCities(b, px);
     if (p.surf) p.surf.visible = !tiny;
     if (p.cloud) p.cloud.visible = !tiny && px > 5;
-    if (p.atmo) p.atmo.visible = !tiny && px > 4;
+    if (p.atmo) p.atmo.visible = !tiny && px > 4 && !!atmoOf(b);
     if (p.ring) p.ring.visible = !tiny && !b.chunks;   // Saturn's are drawn as chunks instead
     if (p.disk) p.disk.visible = !tiny;
     // A star's corona is a thin shell just outside its surface: a few pixels
@@ -14562,12 +14605,13 @@ function updateVisuals(realDt, simDt) {
        whole limb, night side included, and the clouds boil off until it cools. */
     if (p.atmo || p.cloud) {
       const air = b.air != null ? b.air : 1, h = b.impactHeat || 0;
-      if (p.atmo) {
+      const A = atmoOf(b);
+      if (p.atmo && A) {
         const u = p.atmo.material.uniforms;
         const hc = ramp(HEAT_RAMP, h);
-        u.uColor.value.setRGB(def.atmo[0] / 255, def.atmo[1] / 255, def.atmo[2] / 255)
+        u.uColor.value.setRGB(A.col[0] / 255, A.col[1] / 255, A.col[2] / 255)
           .lerp(_tmpC.setRGB(hc[0] / 255, hc[1] / 255, hc[2] / 255), clamp(h * 1.3, 0, 1));
-        u.uStrength.value = 0.75 * air;
+        u.uStrength.value = 0.75 * air * atmoGlow(A);
         u.uGlow.value = h * 1.4 * Math.max(air, 0.25);
       }
       if (p.cloud) {
@@ -15766,7 +15810,11 @@ function lifeLikelihood(b) {
   const w = b.water || 0;
   const liquid = w > 0 && T > 255 && T < 380;
   const water = liquid ? 0.6 + 0.4 * Math.min(w / 0.3, 1) : w > 0 ? 0.25 : 0.06;
-  const air = def.atmo ? clamp(b.air != null ? b.air : 1, 0.15, 1) : 0.12;
+  const A = atmoOf(b);
+  const lt = A ? Math.log10(A.thick) : 0;
+  // best between about a third of Earth's air and five times it
+  const thickOk = A ? lerp(0.3, 1, smoothstep(clamp((lt + 2) / 1.5, 0, 1))) * lerp(1, 0.3, smoothstep(clamp((lt - 0.7) / 1.3, 0, 1))) : 1;
+  const air = A ? clamp(b.air != null ? b.air : 1, 0.15, 1) * thickOk : 0.12;
   const lm = Math.log10(Math.max(b.m, 1e-9));        // too small to hold air, or swollen into a giant
   const mass = smooth(lm, -2, -0.6) * (1 - smooth(lm, 1, 1.6));
   const star = nearestStar(b);
@@ -15776,7 +15824,8 @@ function lifeLikelihood(b) {
   // an ocean under the ice, kept liquid by tides (Europa, Enceladus)
   if (w > 0 && !liquid && (b.coreT || 0) > 600) p = Math.max(p, 0.12);
   // and whatever a recent impact has knocked out of it (see lifeStrike)
-  return clamp(Math.max(p, b.terra || 0) * (b.lifeHit != null ? b.lifeHit : 1), 0, 1);
+  // (a living surface only counts while there is air over it, and not a crushing amount)
+  return clamp(Math.max(p, A ? (b.terra || 0) * thickOk : 0) * (b.lifeHit != null ? b.lifeHit : 1), 0, 1);
 }
 
 /* An impact on a world takes a share of its Life-Likelihood, by the size of
@@ -15958,6 +16007,16 @@ function customiseHTML(b) {
     h += '<div class="an-sub">Colour tint</div><div class="an-swatches">' +
       '<input type="color" id="is-tint" value="' + bodyTintHex(b) + '"></div>' +
       '<p class="an-note">Washes a colour over the whole surface. White leaves it exactly as it was.</p>';
+    const A = atmoOf(b);
+    h += '<div class="an-sub">Atmosphere</div>' + tgl('is-atm-on', 'Has an atmosphere', '');
+    if (A) {
+      h += '<div class="an-swatches"><input type="color" id="is-atm-col" value="' + rgbHex(A.col) + '"></div>' +
+        '<div class="an-field"><label>Thickness <b id="is-atm-v"></b></label>' +
+        '<input type="range" id="is-atm-th" min="-2" max="2" step="0.01" value="' + Math.log10(A.thick).toFixed(2) + '"></div>' +
+        '<p class="an-note">The colour of the sky, and how much air there is, in Earth atmospheres. Thicker air glows ' +
+        'brighter, stands higher and traps more heat — Venus has about 90 times Earth\u2019s and is hot enough to melt lead. ' +
+        'Life likes it somewhere between a third of Earth\u2019s and five times it.</p>';
+    }
   }
 
   /* ---- rings ------------------------------------------------------------ */
@@ -16119,6 +16178,41 @@ function bindCustomise(b) {
     if (p && p.surf && p.surf.material.color) p.surf.material.color.copy(b.baseColor);
   });
 
+  /* ---- atmosphere ---- */
+  const aOn = $('is-atm-on');
+  if (aOn) {
+    aOn.classList.toggle('on', !!atmoOf(b));
+    aOn.addEventListener('click', () => {
+      const A = atmoOf(b);
+      b.atm = A ? { on: false, col: A.col.slice(), thick: A.thick }
+        : { on: true, col: (b.atm && b.atm.col) || SKY.slice(), thick: (b.atm && b.atm.thick) || 1 };
+      ensureAtmo(b);
+      scaleVisual(b);
+      updateTemperatures();
+      renderInspector();
+    });
+  }
+  const aTh = $('is-atm-th');
+  if (aTh) {
+    const showA = () => {
+      const t = Math.pow(10, +aTh.value);
+      $('is-atm-v').textContent = (t >= 10 ? Math.round(t) : t >= 1 ? t.toFixed(1) : t.toFixed(2)) + '\u00d7 Earth';
+    };
+    showA();
+    aTh.addEventListener('input', () => {
+      const A = atmoOf(b);
+      b.atm = { on: true, col: A.col.slice(), thick: Math.pow(10, +aTh.value) };
+      scaleVisual(b);
+      updateTemperatures();
+      showA();
+      updateInspectorStats();
+    });
+    on('is-atm-col', 'input', () => {
+      const A = atmoOf(b);
+      b.atm = { on: true, col: hexRgb($('is-atm-col').value), thick: A.thick };
+    });
+  }
+
   /* ---- water ---- */
   const wat = $('is-wat');
   if (wat) {
@@ -16189,6 +16283,7 @@ function bindCustomise(b) {
     b.temp = def.temp || b.temp;
     b.coreT = baseCoreT(def, b.m);
     b.tint = null;
+    b.atm = null;
     b.ringSpec = def.rings ? Object.assign({}, def.rings) : null;
     updateLuminosity(b);
     refreshVisual(b);
@@ -16422,7 +16517,7 @@ function renderInspector() {
     (b.stripped > 0 ? '<dt>Torn away</dt><dd id="is-strip"></dd>' : '') +
     (b.scarCount > 0 ? '<dt>Impact scars</dt><dd id="is-scars"></dd>' : '') +
     (b.terra > 0 && b.kind === 'body' ? '<dt>Living surface</dt><dd id="is-life"></dd>' : '') +
-    (def.atmo && b.air != null && b.air < 0.995 ? '<dt>Air left</dt><dd id="is-air"></dd>' : '') +
+    (atmoOf(b) && b.air != null && b.air < 0.995 ? '<dt>Air left</dt><dd id="is-air"></dd>' : '') +
     '<dt id="is-orb-l">Orbiting</dt><dd id="is-orb"></dd>' +
     '</dl>' +
     (b.kind === 'body' && !def.star && !def.craft
@@ -18886,7 +18981,7 @@ function saveUniverse() {
         p: [b.p.x, b.p.y, b.p.z], v: [b.v.x, b.v.y, b.v.z],
         // Everything the customise panel can change, so a rebuilt body comes
         // back exactly as it was left rather than as a factory one.
-        ct: b.coreT, tp: b.temp, rg: b.ringSpec, tn: b.tint,
+        ct: b.coreT, tp: b.temp, rg: b.ringSpec, tn: b.tint, at: b.atm || undefined,
         gw: b.ageGrow, gwt: b.ageGrowType, gc: b.ageCool, gh: b.bornHot,
         // A galaxy is saved as its shape, not as six thousand star positions —
         // the disc is rebuilt fresh on load. A collision in progress is lost.
@@ -18952,6 +19047,7 @@ function loadUniverse() {
     if (s.sy) b.shy = s.sy === 1 ? true : s.sy;
     if (s.lk && s.lk !== 1) b.look = s.lk;
     if (s.ai != null) b.air = s.ai;
+    if (s.at) { b.atm = s.at; ensureAtmo(b); }
     if (s.m0 != null) b.m0 = s.m0;
     if (s.tn) {
       const c = hexRgb(s.tn);
