@@ -271,6 +271,8 @@
     font-size: 10px; text-transform: uppercase; letter-spacing: 1.1px; color: var(--ink-dim); margin-bottom: 5px;
   }
   .an-field label b { font-family: "Orbitron", sans-serif; font-size: 11px; color: var(--accent2); letter-spacing: 0; }
+  /* a read-out, not a value you can type into */
+  .an-field label .an-pct { font-family: "Orbitron", sans-serif; font-size: 11px; font-weight: 700; color: var(--accent2); letter-spacing: 0; }
   /* Inspector values can be clicked and typed into */
   #an-insp-body .an-field label b { cursor: text; border-bottom: 1px dashed rgba(139,224,255,0.5); }
   #an-insp-body .an-field label b:hover { color: #fff; border-bottom-color: var(--accent); }
@@ -15729,6 +15731,50 @@ function renderCloudInspector(e) {
   updateInspectorStats();
 }
 
+/* ---------------------------------------------------- how Earth-like is it */
+/*
+ * Earth Similarity is the Earth Similarity Index astronomers use (Schulze-
+ * Makuch et al. 2011): how close a world's radius, density, escape speed and
+ * surface temperature are to Earth's, each compared as 1 - |x - x₀|/(x + x₀)
+ * and weighted (temperature counts for most), multiplied together. Earth at
+ * 288 K scores exactly 1.
+ */
+function earthSimilarity(b) {
+  const r = Math.max(b.r / R_EARTH, 1e-9);
+  const den = b.m / (r * r * r);                     // in Earth densities
+  const vesc = Math.sqrt(b.m / r);                   // in Earth escape speeds
+  const T = Math.max(b.temp || 0, 1);
+  const term = (x, x0, w) => Math.pow(Math.max(1 - Math.abs(x - x0) / (x + x0), 0), w / 4);
+  return term(r, 1, 0.57) * term(den, 1, 1.07) * term(vesc, 1, 0.70) * term(T, 288, 5.58);
+}
+
+/**
+ * Life-Likelihood: a rough guide, not a measurement, to how likely a world is
+ * to have life on it. It wants the temperature of liquid water, water itself
+ * (an ocean under ice still counts for a little), air to hold it in, a mass
+ * that can keep that air, and a star that lives long enough for anything to
+ * evolve. A world that is already alive scores at least its living surface.
+ */
+function lifeLikelihood(b) {
+  const def = TYPES[b.type];
+  const T = b.temp || 0;
+  const smooth = (x, a, b2) => smoothstep(clamp((x - a) / (b2 - a), 0, 1));
+  const temp = smooth(T, 200, 262) * (1 - smooth(T, 330, 400));
+  const w = b.water || 0;
+  const liquid = w > 0 && T > 255 && T < 380;
+  const water = liquid ? 0.6 + 0.4 * Math.min(w / 0.3, 1) : w > 0 ? 0.25 : 0.06;
+  const air = def.atmo ? clamp(b.air != null ? b.air : 1, 0.15, 1) : 0.12;
+  const lm = Math.log10(Math.max(b.m, 1e-9));        // too small to hold air, or swollen into a giant
+  const mass = smooth(lm, -2, -0.6) * (1 - smooth(lm, 1, 1.6));
+  const star = nearestStar(b);
+  const steady = star && star.lum > 30 ? 0.35 : 1;  // a bright star burns out before life gets going
+  let p = temp * water * Math.sqrt(air) * mass * steady;
+  if (GASSY_SURF.has(def.surf)) p *= 0.1;
+  // an ocean under the ice, kept liquid by tides (Europa, Enceladus)
+  if (w > 0 && !liquid && (b.coreT || 0) > 600) p = Math.max(p, 0.12);
+  return clamp(Math.max(p, b.terra || 0), 0, 1);
+}
+
 /* ------------------------------------------------------- terraform block  */
 
 /** The TERRAFORM section: what is stopping it, or how far along it is. */
@@ -16341,6 +16387,10 @@ function renderInspector() {
     (def.atmo && b.air != null && b.air < 0.995 ? '<dt>Air left</dt><dd id="is-air"></dd>' : '') +
     '<dt id="is-orb-l">Orbiting</dt><dd id="is-orb"></dd>' +
     '</dl>' +
+    (b.kind === 'body' && !def.star && !def.craft
+      ? '<div class="an-field"><label>Earth Similarity <span class="an-pct" id="is-esi"></span></label><div class="an-bar"><i id="is-esibar" style="width:0"></i></div></div>' +
+        '<div class="an-field"><label>Life-Likelihood <span class="an-pct" id="is-lik"></span></label><div class="an-bar"><i id="is-likbar" style="width:0"></i></div></div>'
+      : '') +
     '<div class="an-field"><label>Mass <b id="is-mval"></b></label>' +
     '<input type="range" id="is-mslider" min="' + massMin.toFixed(3) + '" max="' + massMax.toFixed(3) + '" step="0.001" value="' + Math.log10(b.m).toFixed(3) + '"></div>' +
     (isStar && snSet.on ? snPanelHTML(plan) : '') +
@@ -16361,7 +16411,8 @@ function renderInspector() {
     lum: $('is-lum'), age: $('is-age'), core: $('is-core'), corer: $('is-corer'), strip: $('is-strip'),
     band: $('is-band'), air: $('is-air'),
     scars: $('is-scars'), dm: $('is-dm'), dn: $('is-dn'), dr: $('is-dr'),
-    tfbar: $('is-tfbar'), tfnote: $('is-tfnote'), life: $('is-life')
+    tfbar: $('is-tfbar'), tfnote: $('is-tfnote'), life: $('is-life'),
+    esi: $('is-esi'), esibar: $('is-esibar'), lik: $('is-lik'), likbar: $('is-likbar')
   };
 
   if (b.disc && b.disc.alive) bindDisc(b, b.disc);
@@ -16521,6 +16572,11 @@ function updateInspectorStats() {
   }
   if (inspRefs.scars) inspRefs.scars.textContent = b.scarCount + (b.scarCount === 1 ? ' hit' : ' hits');
   if (inspRefs.life) inspRefs.life.textContent = Math.round(b.terra * 100) + '%';
+  if (inspRefs.esi) {
+    const e = Math.round(earthSimilarity(b) * 100), l = Math.round(lifeLikelihood(b) * 100);
+    inspRefs.esi.textContent = e + '%'; inspRefs.esibar.style.width = e + '%';
+    inspRefs.lik.textContent = l + '%'; inspRefs.likbar.style.width = l + '%';
+  }
   if (inspRefs.tfbar) {
     const pct = Math.round(b.terra * 100);
     inspRefs.tfbar.style.width = pct + '%';
