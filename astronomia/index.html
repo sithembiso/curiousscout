@@ -87,6 +87,9 @@
   /* ---------- layout ---------- */
   #an-app { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
   #an-app > * { pointer-events: auto; }
+  /* name labels float over everything, so clicks must go straight through them
+     to the button or the body underneath */
+  #an-app > .an-label { pointer-events: none; }
 
   .an-top {
     position: absolute; top: 10px; left: 10px; right: 10px;
@@ -3360,6 +3363,7 @@ const settings = {
   tidal: true,
   strip: true,           // inside the Roche limit, shave mass off before breaking up
   stripRate: 1,          // × how fast that shaving goes
+  stretchBoost: 1,       // × how strongly tides draw bodies out (1 is real)
   tideHeat: true,        // …and let the kneading raise the body's internal temperature
   trails: true,
   labels: true,
@@ -8023,7 +8027,7 @@ function tidalStretch(b, px) {
       const q = o.m / Math.pow(d2, 1.5);                      // M/d^3: the tide it raises
       if (q > best) { best = q; _tsBest.copy(_tsD); }
     }
-    if (best > 0) e = Math.min(3.75 * best / b.m * R * R * R, STRETCH_MAX);
+    if (best > 0) e = Math.min(3.75 * best / b.m * R * R * R * settings.stretchBoost, STRETCH_MAX);
   }
   // ease in and out, so a body sweeping past does not snap between shapes
   b.stretch = lerp(b.stretch || 0, e, 0.25);
@@ -17224,6 +17228,9 @@ function openSettings() {
     tgl('st-strip', 'Strip material away', 'Matter is lifted off a body inside the Roche limit and laid into a ring. It really loses the mass.') +
     sld('st-striprate', 'Stripping speed', 0.1, 6, 0.1, settings.stripRate) +
     '<p class="an-note">Real stripping takes years to millennia. This is how much faster than that it happens here.</p>' +
+    sld('st-stretch', 'Stretching', 0, 3, 0.05, Math.log10(settings.stretchBoost)) +
+    '<p class="an-note">How strongly tides draw a body out into an egg pointing at what pulls it. At <b>real</b> only ' +
+    'something right by the Roche limit visibly stretches, and Mimas is barely out of round; turn it up to see it everywhere.</p>' +
     tgl('st-tideheat', 'Tidal heating', 'Being kneaded by a tide turns motion into heat. This is why Io has volcanoes and Europa has an ocean under its ice.') +
 
     '<div class="an-sec">GROWING UP</div>' +
@@ -17342,6 +17349,7 @@ function openSettings() {
   bindSld('st-slows', (v) => v + ' seconds', (v) => { settings.slowmoSecs = v; });
 
   bindSld('st-striprate', (v) => v.toFixed(1) + '×', (v) => { settings.stripRate = v; });
+  bindSld('st-stretch', (v) => v < 0.03 ? 'real' : '×' + fmtBoost(Math.pow(10, v)), (v) => { settings.stretchBoost = Math.pow(10, v); });
 
   const bdNote = () => $('st-bd-note').textContent =
     'A brown dwarf here contracts until it lights up as a red dwarf after ' +
