@@ -15173,6 +15173,8 @@ function updateVisuals(realDt, simDt) {
       p.glow.material.opacity = 0.05 + far * 0.95;
       p.halo.material.opacity = far;
       p.halo.visible = far > 0.01;
+      // a tiny compact star in the Size Comparison line would wash its neighbours out
+      if (b.noBeams && isCompact(b)) { p.halo.visible = false; p.glow.material.opacity *= 0.35; }
     }
 
     // ---- a pulsar's lighthouse beams, swept round on the wall clock (the real
@@ -15181,7 +15183,7 @@ function updateVisuals(realDt, simDt) {
        nearly the speed of light, sweeping round like a lighthouse as it turns
        (that sweep is what makes a pulsar pulse). Built the first time it is
        drawn; the Crab Pulsar's own, much longer beams are made with its map. */
-    if (def.surf === 'neutron' && !p.beams && b.obj) { addPulsarBeams(b, 1); b.beamAuto = true; }
+    if (def.surf === 'neutron' && !p.beams && b.obj && !b.noBeams) { addPulsarBeams(b, 1); b.beamAuto = true; }
     if (p.beams && b.beamAuto) p.beams.scale.setScalar(Math.max(r * 90, 60 * wpp));
     if (p.beams) p.beams.children[0].rotation.y = performance.now() / 1000 * TAU * 0.5;
 
@@ -15279,7 +15281,8 @@ function updateVisuals(realDt, simDt) {
         // 5 AU of sunlight there is not enough heat to outgas at all.
         if (flux > 0.03) len = 0.16 * AU * Math.pow(clamp(flux, 0, 60), 0.4);
       }
-      const visible = len > 0 && len / wpp > 4;
+      // (not in the Size Comparison line: a tail a million km long would bury the rest)
+      const visible = len > 0 && len / wpp > 4 && !b.noBeams;
       p.tail.visible = visible;
       if (p.coma) {
         p.coma.visible = visible;
@@ -19113,45 +19116,77 @@ function addPulsarBeams(b, len) {
 
 /* ------------------------------------------------------------ size comparison */
 /*
- * Real things side by side at their real sizes, smallest to biggest: a neutron
- * star the width of a city, the Solar System's worlds, a white dwarf no bigger
- * than Earth, then stars from a red dwarf to Stephenson 2-18, two thousand
- * times as wide as the Sun. Gravity is switched off while this map is open,
+ * Real things side by side at their real sizes, smallest to biggest: an
+ * asteroid half a kilometre wide, a comet, a neutron star the width of a city,
+ * moons, dwarf planets, the planets, exoplanets, a brown dwarf, a white dwarf
+ * no bigger than Earth, then stars from TRAPPIST-1 to Stephenson 2-18, two
+ * thousand times as wide as the Sun. Gravity is switched off while this map is open,
  * or the giants would swallow everything beside them; loading another map
  * gives it back. Every one is drawn at the same exaggeration, so the sizes
  * compare truly. (Galaxies, nebulae and black holes are drawn at sizes made
  * to be seen rather than their real ones, so they cannot join the line.)
  */
 const SIZE_LINE = [
-  // name, kind, radius, in Earth radii (e) or Sun radii (s), mass in Suns (or default)
-  ['Vela Pulsar', 'neutron_star', 10 / 6371, 'e', 1.4],
-  ['Ceres', 'sol_ceres'], ['Moon', 'sol_luna'], ['Mercury', 'sol_mercury'], ['Mars', 'sol_mars'],
+  // name, kind, radius, in km (k), Earth radii (e) or Sun radii (s), mass in Suns (or the kind's own)
+  // (in any order: the line is sorted by size when it is built)
+  ['Bennu', 'asteroid', 0.245, 'k', 7.3e10 / 1.989e30],
+  ['Comet 67P', 'comet', 2.0, 'k'],
+  ['Vela Pulsar', 'neutron_star', 10, 'k', 1.4],
+  ['Phobos', 'sol_phobos'], ['Ceres', 'sol_ceres'], ['Pluto', 'sol_pluto'], ['Eris', 'sol_eris'],
+  ['Europa', 'sol_europa'], ['Moon', 'sol_luna'], ['Mercury', 'sol_mercury'], ['Titan', 'sol_titan'],
+  ['Ganymede', 'sol_ganymede'], ['Mars', 'sol_mars'],
   ['Sirius B', 'white_dwarf', 0.92, 'e', 1.02],
+  ['TRAPPIST-1e', 'terrestrial', 0.92, 'e', 0.69 / 332946],
   ['Venus', 'sol_venus'], ['Earth', 'sol_earth'],
-  ['Neptune', 'sol_neptune'], ['Uranus', 'sol_uranus'], ['Saturn', 'sol_saturn'], ['Jupiter', 'sol_jupiter'],
+  ['Kepler-452b', 'super_earth', 1.63, 'e', 5 / 332946],
+  ['GJ 1214b', 'ocean_world', 2.74, 'e', 8.2 / 332946],
+  ['Neptune', 'sol_neptune'], ['Uranus', 'sol_uranus'], ['Saturn', 'sol_saturn'],
+  ['Luhman 16A', 'l_dwarf', 0.096, 's', 0.033],
+  ['Jupiter', 'sol_jupiter'],
+  ['TRAPPIST-1', 'red_dwarf', 0.119, 's', 0.09],
   ['Proxima Centauri', 'red_dwarf', 0.154, 's', 0.122],
+  ['Barnard’s Star', 'red_dwarf', 0.196, 's', 0.16],
+  ['WASP-12b', 'gas_giant', 1.9 * 11.21, 'e', 467 / 332946],
+  ['HAT-P-67b', 'super_puff', 2.14 * 11.21, 'e', 143 / 332946],
+  ['Alpha Centauri B', 'k_star', 0.86, 's', 0.91],
   ['Sun', 'sol_sun'],
+  ['Alpha Centauri A', 'sun_like', 1.22, 's', 1.1],
   ['Sirius A', 'a_star', 1.71, 's', 2.06],
+  ['Vega', 'a_star', 2.36, 's', 2.14],
+  ['Regulus', 'b_star', 4.35, 's', 3.8],
   ['Pollux', 'k_star', 9.1, 's', 1.9],
   ['Arcturus', 'k_star', 25.4, 's', 1.08],
+  ['R136a1', 'o_star', 39, 's', 200],
+  ['Polaris', 'f_star', 37.5, 's', 5.4],
   ['Aldebaran', 'k_star', 44, 's', 1.16],
   ['Rigel', 'b_star', 78.9, 's', 21],
+  ['Deneb', 'a_star', 203, 's', 19],
+  ['Rho Cassiopeiae', 'f_star', 450, 's', 40],
   ['Antares', 'red_supergiant', 680, 's', 12],
   ['Betelgeuse', 'red_supergiant', 764, 's', 16.5],
   ['UY Scuti', 'red_supergiant', 909, 's', 7],
+  ['Mu Cephei', 'red_supergiant', 1260, 's', 19],
   ['VY Canis Majoris', 'red_supergiant', 1420, 's', 17],
+  ['WOH G64', 'red_supergiant', 1540, 's', 25],
   ['Stephenson 2-18', 'red_supergiant', 2150, 's', 40]
 ];
 function buildSizeLine() {
   sim.gravityWas = settings.gravity;
   settings.gravity = 0;
-  let x = 0, prev = 0;
+  const made = [];
   for (const [name, type, rad, unit, mSun] of SIZE_LINE) {
     const o = { name };
-    if (rad != null) o.r = rE(unit === 's' ? rad * R_SUN : rad);
+    if (rad != null) o.r = unit === 'k' ? rad / 1e6 : rE(unit === 's' ? rad * R_SUN : rad);
     if (mSun != null) o.mass = mSun * M_SUN;
     const b = makeBody(type, new V3(), new V3(), o);
     b.tilt = 0;
+    b.noBeams = true;              // a pulsar's jets would drown out everything near it
+    made.push(b);
+  }
+  // smallest first, each a little apart from the next
+  made.sort((a, b) => a.r - b.r);
+  let x = 0, prev = 0;
+  for (const b of made) {
     const r = visRadius(b);
     // a gap that grows with the neighbours, so small and large both read clearly
     x += prev ? prev + (prev + r) * 0.35 + r : 0;
@@ -19530,7 +19565,7 @@ const PRESETS = [
     build() { return buildCrab(); }
   },
   {
-    name: 'Size Comparison', desc: 'Real things side by side at their real sizes, from a neutron star the width of a city through the planets and the Sun to Stephenson 2-18, two thousand times wider than the Sun. Start at Earth and scroll out to meet each giant. (Gravity is off here so nothing falls together.)',
+    name: 'Size Comparison', desc: '48 real things side by side at their real sizes: an asteroid, a comet, a neutron star, moons, dwarf planets, the planets, exoplanets, a brown dwarf, and stars from TRAPPIST-1 to Stephenson 2-18, two thousand times wider than the Sun. Start at Earth and scroll either way. (Gravity is off here so nothing falls together.)',
     dist: 1,
     build() { buildSizeLine(); },
     view() {
