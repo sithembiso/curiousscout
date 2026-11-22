@@ -12773,6 +12773,7 @@ const parts = {
 /* Impact ejecta cools in a day or two. Supernova ejecta is radioactive and stays
    lit for months, so how fast a grain fades is stored per particle. */
 const COOL_IMPACT = 1 / 1.6;
+const VAPOUR_FADE = COOL_IMPACT * 0.12;   // per day: cooled vapour is gone about eleven days later
 
 const flashes = [];
 
@@ -12818,6 +12819,7 @@ function initParticles() {
   parts.wr = new Float32Array(P_MAX);
   parts.hot = new Float32Array(P_MAX);
   parts.crate = new Float32Array(P_MAX);
+  parts.vap = new Float32Array(P_MAX);
   parts.on = new Uint8Array(P_MAX);
   // Which supernova remnant a grain belongs to, or -1 for ordinary impact
   // debris. That is what lets a cloud know how much mass it still has, and lets
@@ -13136,6 +13138,7 @@ function gasEjecta(center, baseVel, count, totalMass, vEsc, radius, opts) {
     // Vapour stays lit far longer than a cooling pebble does.
     parts.crate[k] = COOL_IMPACT * 0.22;
     parts.src[k] = -1;
+    parts.vap[k] = 1;                 // and once it has cooled, it thins away (see stepParticles)
 
     // The fastest gas is the hottest and sits at the white end of the ramp.
     // Fresh impact vapour (o.warm) stays in the white-to-orange part of it.
@@ -13329,6 +13332,7 @@ function killParticle(k) {
   parts.m[k] = 0;
   parts.size[k] = 0;
   parts.wr[k] = 0;
+  parts.vap[k] = 0;
   parts.col[k3] = parts.col[k3 + 1] = parts.col[k3 + 2] = 0;
   parts.free.push(k);
   parts.live--;
@@ -13490,6 +13494,17 @@ function updateParticles(simDt) {
     parts.col[k3 + 1] = lerp(parts.cool[k3 + 1], parts.warm[k3 + 1], g);
     parts.col[k3 + 2] = lerp(parts.cool[k3 + 2], parts.warm[k3 + 2], g);
     parts.size[k] = parts.bsize[k] * (0.7 + 0.3 * g);
+    /* Vapour does not hang in space for ever: once it has cooled it spreads
+       out and thins away to nothing over about as long again, swelling and
+       dimming as it goes, and then it is gone (its mass with it, spread too
+       thin to matter). */
+    if (parts.vap[k] > 0 && h <= 0) {
+      const f = parts.vap[k] = Math.max(0, parts.vap[k] - simDt * VAPOUR_FADE);
+      if (f <= 0) { killParticle(k); continue; }
+      const dim = f * f;
+      parts.col[k3] *= dim; parts.col[k3 + 1] *= dim; parts.col[k3 + 2] *= dim;
+      parts.size[k] *= 1 + (1 - f) * 0.8;
+    }
     if (parts.wr[k] > 0) {
       // a cloud: as wide as it really is, and faint, so that where many of
       // them overlap they build up into glowing gas instead of white glare
