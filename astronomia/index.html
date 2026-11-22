@@ -12774,6 +12774,7 @@ const parts = {
    lit for months, so how fast a grain fades is stored per particle. */
 const COOL_IMPACT = 1 / 1.6;
 const VAPOUR_FADE = COOL_IMPACT * 0.12;   // per day: cooled vapour is gone about eleven days later
+const DEBRIS_FADE = 1 / (365.25 * 2);      // per day: cooled dust and sparks, about two years
 
 const flashes = [];
 
@@ -12819,7 +12820,9 @@ function initParticles() {
   parts.wr = new Float32Array(P_MAX);
   parts.hot = new Float32Array(P_MAX);
   parts.crate = new Float32Array(P_MAX);
-  parts.vap = new Float32Array(P_MAX);
+  parts.vap = new Float32Array(P_MAX);    // 1 for vapour, which fades fastest
+  parts.gone = new Float32Array(P_MAX);   // how far a cooled particle has faded, 0 to 1
+  parts.keep = new Uint8Array(P_MAX);     // ring material: stays for good
   parts.on = new Uint8Array(P_MAX);
   // Which supernova remnant a grain belongs to, or -1 for ordinary impact
   // debris. That is what lets a cloud know how much mass it still has, and lets
@@ -13214,6 +13217,7 @@ function ringEjecta(center, srcVel, P, count, totalMass, arc, hotCol, coolCol) {
     parts.hot[k] = 0.5;
     parts.crate[k] = COOL_IMPACT;
     parts.src[k] = -1;
+    parts.keep[k] = 1;                // a ring is meant to last
 
     const w = mix(hotCol, [255, 255, 255], Math.random() * 0.4);
     parts.warm[k3] = w[0] / 255; parts.warm[k3 + 1] = w[1] / 255; parts.warm[k3 + 2] = w[2] / 255;
@@ -13333,6 +13337,8 @@ function killParticle(k) {
   parts.size[k] = 0;
   parts.wr[k] = 0;
   parts.vap[k] = 0;
+  parts.gone[k] = 0;
+  parts.keep[k] = 0;
   parts.col[k3] = parts.col[k3 + 1] = parts.col[k3 + 2] = 0;
   parts.free.push(k);
   parts.live--;
@@ -13494,12 +13500,15 @@ function updateParticles(simDt) {
     parts.col[k3 + 1] = lerp(parts.cool[k3 + 1], parts.warm[k3 + 1], g);
     parts.col[k3 + 2] = lerp(parts.cool[k3 + 2], parts.warm[k3 + 2], g);
     parts.size[k] = parts.bsize[k] * (0.7 + 0.3 * g);
-    /* Vapour does not hang in space for ever: once it has cooled it spreads
-       out and thins away to nothing over about as long again, swelling and
-       dimming as it goes, and then it is gone (its mass with it, spread too
-       thin to matter). */
-    if (parts.vap[k] > 0 && h <= 0) {
-      const f = parts.vap[k] = Math.max(0, parts.vap[k] - simDt * VAPOUR_FADE);
+    /* Nothing loose from a collision hangs in space for ever. Once it has
+       cooled, vapour spreads and thins away over about eleven days, and rock
+       dust and spent sparks drift apart over a couple of years; each swells
+       and dims as it goes, and then it is gone (its mass with it, spread too
+       thin to matter). Ring material, supernova clouds and black-hole gas
+       are not loose and stay. */
+    if (h <= 0 && parts.src[k] < 0 && !parts.keep[k] && !(parts.wr[k] > 0)) {
+      parts.gone[k] = Math.min(1, parts.gone[k] + simDt * (parts.vap[k] > 0 ? VAPOUR_FADE : DEBRIS_FADE));
+      const f = 1 - parts.gone[k];
       if (f <= 0) { killParticle(k); continue; }
       const dim = f * f;
       parts.col[k3] *= dim; parts.col[k3 + 1] *= dim; parts.col[k3 + 2] *= dim;
