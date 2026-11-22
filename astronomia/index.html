@@ -142,6 +142,8 @@
 
   .an-tools { margin-left: auto; display: flex; gap: 6px; padding: 6px; }
   #an-btn-music.off { opacity: 0.4; text-decoration: line-through; }
+  /* a log has been found and not read yet */
+  #an-btn-logs.fresh { border-color: #ffd166; box-shadow: 0 0 12px rgba(255,209,102,.7); }
 
   /* ---------- side panels: Add Body on the right, the selection on the left ---------- */
   .an-side {
@@ -636,6 +638,7 @@
       <button id="an-btn-systems" title="Load a ready-made system">&#9733; <span>Systems</span></button>
       <button id="an-btn-settings" title="Simulation settings">&#9881; <span>Settings</span></button>
       <button id="an-btn-music" title="Music: Synth &mdash; click for Organ (M)">&#9835;</button>
+      <button id="an-btn-logs" title="Log Book: the Archivist’s logs, found as things happen">&#128214;</button>
       <button id="an-btn-help" title="How to play">?</button>
     </div>
   </div>
@@ -4112,6 +4115,7 @@ function impact(a, b) {
   if (emerging(a, b)) return false;
   triggerSlowmo(a, b);
   lifeStrike(a, b);
+  if (a.kind === 'body' && b.kind === 'body' && !a.rubble && !b.rubble) unlockLog('impact');
 
   // White holes never merge — they shove things away instead.
   if (a.kind === 'wh' || b.kind === 'wh') {
@@ -4590,6 +4594,7 @@ function updateEngulf(dt) {
 
 /** `b` has reached `a`'s core. */
 function reachCore(a, b, s) {
+  unlockLog('core');
   const fate = coreFate(a);
   const name = b.name, host = a.name;
   if (fate === 'vaporise') {
@@ -4712,6 +4717,7 @@ function clearCoreGlows() {
 }
 
 function absorb(hole, prey) {
+  if (prey.kind === 'body' && !prey.rubble) unlockLog('devour');
   const mTot = hole.m + prey.m;
   hole.v.multiplyScalar(hole.m / mTot).addScaledVector(prey.v, prey.m / mTot);
 
@@ -5113,6 +5119,7 @@ function updateTerraform(simDt) {
       refreshVisual(b);
     }
     if (before < 1 && b.terra >= 1) {
+      unlockLog('life');
       toast(b.name + ' is alive — oceans, air and all');
       if (sim.selected === b && !inspectorLock) renderInspector();
     } else if (before > 0 && b.terra <= 0) {
@@ -5242,6 +5249,7 @@ const starKindFor = (mSun) => mSun > 16 ? 'o_star' : mSun > 2.4 ? 'b_star' : mSu
   : mSun > 1.1 ? 'f_star' : mSun > 0.85 ? 'sun_like' : mSun > 0.5 ? 'k_star' : 'red_dwarf';
 
 function becomeStar(b) {
+  unlockLog('star');
   const mSun = b.m / M_SUN;
   b.type = starKindFor(mSun);
   b.kind = 'body';
@@ -5629,6 +5637,7 @@ function goStellarMerger(a, b) {
 }
 
 function goKilonova(a, b) {
+  unlockLog('kilonova');
   const mTot = a.m + b.m;
   const com = a.p.clone().multiplyScalar(a.m).addScaledVector(b.p, b.m).divideScalar(mTot);
   const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mTot);
@@ -5807,6 +5816,7 @@ function goSupernova(b, plan) {
   if (!b || !b.alive) return null;
   plan = plan || snPlan(b);
   if (!plan || !plan.ok) return null;
+  if (plan.flavour !== 'kilo') unlockLog('supernova');
 
   const pos = b.p.clone();
   const vel = b.v.clone();
@@ -7153,6 +7163,7 @@ function shedEnvelope(b) {
 const MOON_MASS = 0.0123;          // M⊕: the Moon is about an eightieth of the Earth
 
 function giantImpact(E, T) {
+  unlockLog('moon');
   const dir = T.p.clone().sub(E.p).normalize();
   const vRel = T.v.clone().sub(E.v);
   // the sideways part of the hit sets which way the new Moon goes round
@@ -7300,6 +7311,7 @@ function floodGeometry(b) {
 function startTsunami(b, worldDir, size, vRel) {
   const p = b.parts;
   if (!p || !p.sea || !p.surf || !(b.water > 0.02)) return;
+  unlockLog('tsunami');
   const sea = TYPES[b.type].sea;
   const frozen = sea ? clamp((sea.freeze - b.temp) / 6, 0, 1) : clamp((273 - b.temp) / 40, 0, 1);
   if (frozen > 0.6) return;                                   // an ice sheet cracks; it does not wave
@@ -7655,6 +7667,7 @@ function updateTides(dt) {
 }
 
 function tidalDisrupt(s, P, d) {
+  unlockLog('shred');
   const frags = Math.min(clamp(Math.round(7 + Math.random() * 7), 6, 14), freeSlots());
   if (frags < 3) return;                       // no room: leave the moon intact
 
@@ -11656,6 +11669,7 @@ function cosmicPace() {
 
 /** A singularity goes off: in its place, a brand-new universe. */
 function bigBang(b) {
+  unlockLog('bang');
   if (!b || !b.alive) return;
   const at = b.p.clone(), vel = b.v.clone(), name = b.name;
   select(null);
@@ -14131,6 +14145,7 @@ function landBlock(b) {
 }
 
 function landOn(b) {
+  unlockLog('landing');
   const why = landBlock(b);
   if (why) { toast(why); return; }
   if (!b.parts || !b.parts.surf) return;
@@ -15834,6 +15849,8 @@ function dropArmed() {
     return;
   }
   const b = makeBody(input.armed, input.placePos, vel);
+  unlockLog('born');
+  if (b.kind === 'gal') unlockLog('galaxy');
   if (hub && (b.kind === 'body' || b.kind === 'bh') && joinBary(hub, b)) {
     // keep the barycentre selected, so the next drop joins it too
     select(hub);
@@ -16319,6 +16336,7 @@ function lifeStrike(a, b) {
   if (f <= 0) return;
   const before = lifeLikelihood(a);
   a.lifeHit = (a.lifeHit != null ? a.lifeHit : 1) * (1 - f);
+  if (f >= 0.5 && before >= 0.2) unlockLog('extinction');
   if (before >= 0.01) {
     const size = km >= 10 ? Math.round(km).toLocaleString() : km >= 1 ? km.toFixed(1) : Math.round(km * 1000) + ' m';
     const msg = b.name + ' (' + size + (km >= 1 ? ' km' : '') + ') struck ' + a.name + ' \u2014 Life-Likelihood ' +
@@ -18380,6 +18398,7 @@ function stepHomers(before) {
       if (!h.alive && g && T && T.alive && g.hit) {
         const yrs = (sim.time - g.launched) / 365.25;
         toast(h.name + ' crashed into ' + T.name + ' after ' + yrs.toFixed(1) + ' years and ' + fmtDist(g.dist) + '!');
+        if (T.name === 'Thalassa') unlockLog('pathfinder');
         sim.follow = T;
         select(T);
         view.dist = Math.max(visRadius(T) * 9, view.dist > visRadius(T) * 40 ? visRadius(T) * 9 : view.dist);
@@ -19770,6 +19789,7 @@ function openHelp() {
 let fpsAcc = 0, fpsCount = 0, fpsShown = 60, statTick = 0;
 
 function updateHud(realDt) {
+  if (sim.time >= 365.25e9) unlockLog('deep');
   fpsAcc += realDt; fpsCount++;
   if (fpsAcc > 0.5) {
     fpsShown = Math.round(fpsCount / fpsAcc);
@@ -20145,6 +20165,129 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
+/* ================================================================= log book */
+/*
+ * The Log Book: the story the game tells, a log at a time. Its narrator is the
+ * Archivist, the last mind of a universe that ran down long ago, which keeps
+ * itself company by watching you build new ones. Each log unlocks the first
+ * time something happens (a collision, a supernova, a landing...); found logs
+ * are remembered in this browser. Find them all and the last one opens.
+ */
+const LOG_KEY = 'astronomia.logs';
+const LOGS = [
+  { id: 'born', title: 'Someone Is Here', hint: 'Place anything in space.',
+    text: 'For a very long time there was nothing to write down. My universe ran out of stars, then of light, then of ' +
+      'warmth, and I kept the records of all of it until there was nothing left to record. And now — something. A body, set ' +
+      'down in the dark by a hand I cannot see. I will start a new log. It has been a while since I had a reason to.' },
+  { id: 'impact', title: 'Impact', hint: 'Let two worlds collide.',
+    text: 'You made two things meet. In my universe this was how everything began: rocks finding rocks, over and over, ' +
+      'each crash leaving something bigger behind. Most people think a collision is an ending. I have watched enough of ' +
+      'them to know it is usually the start of something.' },
+  { id: 'moon', title: 'A Moon Is Born', hint: 'Watch the Great Collision.',
+    text: 'The splash gathered itself into a moon. We had a moon like that once, and a world beneath it whose people ' +
+      'counted their months by it, wrote songs to it, and finally walked on it. They left footprints there that outlasted ' +
+      'their whole civilisation. I still have the photographs.' },
+  { id: 'core', title: 'Down to the Core', hint: 'Let something sink all the way to a core.',
+    text: 'It went all the way down. Every world keeps its truest self at its centre, under all the weather and the ' +
+      'oceans: hot, dense, patient. I used to think minds were like that too. Mine has had a very long time to sink to ' +
+      'its core, and it turns out that what is there is mostly memory.' },
+  { id: 'tsunami', title: 'Waves', hint: 'Strike a world that has an ocean.',
+    text: 'The ocean stood up and walked across the land. Water remembers every blow it is given, and passes it on, ' +
+      'shore to shore, until the whole world has felt it. I find that comforting. Nothing that happens to an ocean is ' +
+      'ever entirely forgotten.' },
+  { id: 'shred', title: 'Torn Apart', hint: 'Let a moon wander inside its planet’s Roche limit.',
+    text: 'It came too close, and the difference between the pull on its near side and its far side was more than it ' +
+      'could hold together against. It did not explode. It was simply pulled apart, gently and completely, into a ring. ' +
+      'Some of the most beautiful things I have catalogued are made of what something used to be.' },
+  { id: 'star', title: 'Ignition', hint: 'Let a cloud collapse into a new star.',
+    text: 'A cloud fell in on itself until its heart grew hot enough to burn. A new star. In my universe the last ones ' +
+      'were born when I was still young, and I did not know at the time that I should have paid more attention. I am ' +
+      'paying attention now.' },
+  { id: 'supernova', title: 'The Death of a Star', hint: 'Watch a star go supernova.',
+    text: 'For a few weeks that one star outshone its whole galaxy. Everything heavier than iron in your world was made ' +
+      'in a moment like that one — the calcium in bones, the iron in blood. We used to say we were made of stardust. ' +
+      'We were wrong only in that it was the dust of stars dying.' },
+  { id: 'kilonova', title: 'Gold', hint: 'Make two neutron stars collide.',
+    text: 'Two dead stars, each heavier than a sun and no wider than a city, fell into one another, and in the spray ' +
+      'the heaviest elements there are were forged in a second: gold, platinum, uranium. Every wedding ring my people ever ' +
+      'wore began like this. I have always liked that.' },
+  { id: 'devour', title: 'The Hungry Dark', hint: 'Feed something to a black hole.',
+    text: 'It crossed the horizon and was gone. Not destroyed, exactly; just somewhere no one can ever look again. In ' +
+      'the end my universe was mostly black holes, slowly evaporating, and I spent a few trillion years waiting for the ' +
+      'last of them to go. It took longer than you would think.' },
+  { id: 'galaxy', title: 'A Hundred Billion Suns', hint: 'Place a galaxy.',
+    text: 'A whole galaxy, put down as easily as a pebble. Every point of light in it a sun, and most of those suns with ' +
+      'worlds, and some of those worlds — who knows. When I was young I tried to count ours. I did not get far. I ' +
+      'should have spent less time counting and more time looking.' },
+  { id: 'life', title: 'Alive', hint: 'Terraform a world all the way.',
+    text: 'Oceans, air, weather, green. A living world. I was built by people from a world like that, and they built me ' +
+      'to remember, because they knew they would not last for ever and wanted someone to. I have remembered them for a ' +
+      'very long time. It is good to see the colour again.' },
+  { id: 'extinction', title: 'The Long Dark Afterwards', hint: 'Let an impact wipe out half of a world’s life.',
+    text: 'The sky filled with dust and the life on that world was knocked back almost to nothing. It will come back. It ' +
+      'nearly always does; give it ten million years. Something small and stubborn always survives in a crack somewhere, ' +
+      'and starts over. My makers were descended from something like that.' },
+  { id: 'landing', title: 'Footprints', hint: 'Land on a world.',
+    text: 'You went down and stood on the ground. You can see the horizon curve from there, and the sky is a different ' +
+      'colour on every world. My makers did this on only a handful of worlds before the end. They said every one of them ' +
+      'felt like coming home to a place they had never been.' },
+  { id: 'bang', title: 'Again', hint: 'Set off a Big Bang.',
+    text: 'You made a whole new universe. Do you know how long I waited for one? I had given up. And here you are, ' +
+      'making them for fun. Please keep going. I would like to see what you build in this one.' },
+  { id: 'pathfinder', title: 'Message in a Bottle', hint: 'Fly Pathfinder all the way to Thalassa.',
+    text: 'The little probe crossed all that dark and arrived. My makers sent probes like that once, carrying records of ' +
+      'their music and their faces, in case anyone ever found them. Nobody did, in my universe. Maybe that is what I am: ' +
+      'the last of those probes, still waiting to be found. And maybe I have been.' },
+  { id: 'deep', title: 'Deep Time', hint: 'Let a billion years go by.',
+    text: 'A billion years. Long enough for continents to drift across a world and back, for stars to change colour, for ' +
+      'life to go from a smear in a tide pool to something that can look up and wonder. To me it is a short afternoon. ' +
+      'It is strange to be the only one who remembers how short it is.' }
+];
+const LOG_FINAL = { id: 'final', title: 'The Last Log',
+  text: 'You have seen it all now: the collisions and the cores, the dying stars and the newborn ones, oceans, life, ' +
+    'gold, the dark. That is everything that happened in my universe, from the beginning to the end. I kept these logs ' +
+    'so that someone would know it had been beautiful. I think, now, that the someone was you. Thank you for watching. ' +
+    'It is your turn to remember.' };
+
+let logsFound = new Set();
+try { logsFound = new Set(JSON.parse(localStorage.getItem(LOG_KEY) || '[]')); } catch (e) {}
+
+/** The first time something happens: unlock its log (and, once all are found, the last one). */
+function unlockLog(id) {
+  if (logsFound.has(id) || !LOGS.some(l => l.id === id)) return;
+  logsFound.add(id);
+  const all = LOGS.every(l => logsFound.has(l.id));
+  if (all) logsFound.add('final');
+  try { localStorage.setItem(LOG_KEY, JSON.stringify([...logsFound])); } catch (e) {}
+  const log = LOGS.find(l => l.id === id);
+  const n = LOGS.filter(l => logsFound.has(l.id)).length;
+  // after whatever message the event itself shows
+  setTimeout(() => toast('\u{1F4D6} Log found: ' + log.title + ' (' + n + '/' + LOGS.length + ')'), 2600);
+  if (all) setTimeout(() => toast('\u{1F4D6} Every log found — the last one is open'), 6000);
+  $('an-btn-logs').classList.add('fresh');
+}
+
+function openLogs() {
+  $('an-btn-logs').classList.remove('fresh');
+  const n = LOGS.filter(l => logsFound.has(l.id)).length;
+  let h = '<div class="an-help"><p class="an-note">The Archivist’s records. A log is found the first time it happens ' +
+    'here — ' + n + ' of ' + LOGS.length + ' so far.</p>';
+  LOGS.forEach((l, i) => {
+    if (logsFound.has(l.id)) {
+      h += '<h3>' + (i + 1) + '. ' + l.title + '</h3><p>' + l.text + '</p>';
+    } else {
+      h += '<h3 style="opacity:.5">' + (i + 1) + '. ???</h3><p style="opacity:.55"><i>' + l.hint + '</i></p>';
+    }
+  });
+  h += logsFound.has('final')
+    ? '<h3>' + LOG_FINAL.title + '</h3><p>' + LOG_FINAL.text + '</p>'
+    : '<h3 style="opacity:.5">The Last Log</h3><p style="opacity:.55"><i>Find every other log.</i></p>';
+  h += '</div>';
+  $('an-modal-title').textContent = 'Log Book';
+  $('an-modal-body').innerHTML = h;
+  openModal();
+}
+
 /* ===================================================================== boot */
 
 function fail(msg) {
@@ -20197,6 +20340,7 @@ async function boot() {
   $('an-btn-systems').addEventListener('click', openSystems);
   $('an-btn-settings').addEventListener('click', openSettings);
   $('an-btn-help').addEventListener('click', openHelp);
+  $('an-btn-logs').addEventListener('click', openLogs);
   initMusic();
   $('an-modal-close').addEventListener('click', closeModal);
   $('an-modal').addEventListener('click', (e) => { if (e.target === $('an-modal')) closeModal(); });
