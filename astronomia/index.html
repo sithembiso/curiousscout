@@ -4092,6 +4092,9 @@ function resolveCollisions() {
   for (let k = 0; k < collisionPairs.length; k += 2) {
     const a = collisionPairs[k], b = collisionPairs[k + 1];
     if (!a.alive || !b.alive) continue;
+    // Neighbours in the Size Comparison line are only there to be looked at:
+    // a pulsar catches anything within 20,000 km, and would eat the asteroid beside it.
+    if (a.noBeams && b.noBeams) continue;
     // Close enough to the widest reach of a mountain: do they really touch?
     // (Not for a pair already sinking in, or one a black hole has hold of.)
     if (!a.sink && !b.sink && a.kind === 'body' && b.kind === 'body' && !plunging.includes(a)) {
@@ -7760,6 +7763,7 @@ function updateSpin(dt) {
   for (let i = 0; i < bs.length; i++) {
     const b = bs[i];
     if (!b.alive || b.kind !== 'body' || TYPES[b.type].craft) continue;   // bolts hold a spacecraft together
+    if (b.noBeams || !(settings.gravity > 0)) { b.shedding = false; continue; }   // the size line: no gravity, so no break-up test
     const period = Math.abs(b.spin);
 
     /* It also has to beat its own break-up spin, 2π√(r³/GM): the 72 s line is
@@ -19565,7 +19569,7 @@ const PRESETS = [
     build() { return buildCrab(); }
   },
   {
-    name: 'Size Comparison', desc: '48 real things side by side at their real sizes: an asteroid, a comet, a neutron star, moons, dwarf planets, the planets, exoplanets, a brown dwarf, and stars from TRAPPIST-1 to Stephenson 2-18, two thousand times wider than the Sun. Start at Earth and scroll either way. (Gravity is off here so nothing falls together.)',
+    name: 'Size Comparison', desc: '50 real things side by side at their real sizes: an asteroid, a comet, a neutron star, moons, dwarf planets, the planets, exoplanets, a brown dwarf, and stars from TRAPPIST-1 to Stephenson 2-18, two thousand times wider than the Sun. Start at Earth and scroll either way. (Gravity is off here so nothing falls together.)',
     dist: 1,
     build() { buildSizeLine(); },
     view() {
