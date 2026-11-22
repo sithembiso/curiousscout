@@ -11561,11 +11561,9 @@ const UNI_AGES = [
   [365.25e11, 15, '100 billion years'], [365.25e12, 5, '1 trillion years'],
   [365.25e15, 1, '1 quadrillion years'], [365.25e18, 0, '1 quintillion years']
 ];
-/* A Big Bang universe keeps its own clock, separate from the sim's, that
-   speeds up as it goes: each second covers e^0.75 times as much time as the
-   last, so the first second, the first year and the first quintillion years
-   all get their turn on screen — about a minute and a half from bang to dark. */
-const UNI_CLOCK = 0.75;
+/* A Big Bang universe ages on the game's own clock, like everything else in
+   it: a year of its life is a year of game time. Speed time up to watch the
+   ages go by (the clock goes up to 10^74 years a second). */
 /** How many galaxies a Big Bang universe should still have at this age. */
 function uniGalaxiesAt(age) {
   if (age < UNI_AGES[0][0]) return UNI_BORN;
@@ -11809,8 +11807,7 @@ function updateUniverses(realDt, simDt) {
   for (let i = universes.length - 1; i >= 0; i--) {
     const u = universes[i];
     u.members = u.members.filter(g => g.alive);
-    const tick = u.ages && !u.crunch
-      ? (sim.running ? Math.max(u.age, 1 / 86400) * (Math.exp(UNI_CLOCK * realDt) - 1) : 0) : simDt;
+    const tick = simDt;
     if (u.ages && !u.crunch && tick > 0) thinUniverse(u, u.age + tick);
     if (u.members.length === 0) {
       toast(u.ages && u.mark >= UNI_AGES.length
@@ -19733,7 +19730,7 @@ function openHelp() {
     '<ul>' +
     '<li>A <b>Singularity</b> (under <b>Cosmic</b>) is a point of infinite density with no event horizon around it. It swallows anything that touches it, and it shimmers through every colour.</li>' +
     '<li>Select it and press <b>BIG BANG</b>: it explodes into a brand-new <b>Universe</b> — a bubble of space crowded with <b>100 galaxies</b>, all flying apart as it expands. Time speeds up so you can watch.</li>' +
-    '<li>A newborn universe has its own clock that runs faster and faster. Over the ages its galaxies merge: 99 after a second, 90 after a minute, 75 after a year, 50 after a thousand years, 30 after a billion, 5 after a trillion, one after a quadrillion — and after a quintillion years the last one goes dark and the bubble pops. The whole life takes about a minute and a half.</li>' +
+    '<li>A newborn universe ages on the game clock, like everything else. Over the ages its galaxies merge: 99 after a second, 90 after a minute, 75 after a year, 50 after a thousand years, 30 after a billion, 5 after a trillion, one after a quadrillion — and after a quintillion years the last one goes dark and the bubble pops. Speed time up (click the speed and type, say, <b>1e15 years</b>) to watch it all go by.</li>' +
     '<li>You can also drop a Universe straight from the palette. Click any star in any of its galaxies to lock on and fly in.</li>' +
     '<li>Select a universe (click the middle of its bubble) and press <b>BIG CRUNCH</b>: the expansion turns round, the galaxies fall back together and merge, and the whole thing collapses into a single singularity — ready to go bang again.</li>' +
     '</ul>' +
