@@ -142,6 +142,12 @@
 
   .an-tools { margin-left: auto; display: flex; gap: 6px; padding: 6px; }
   #an-btn-music.off { opacity: 0.4; text-decoration: line-through; }
+  /* the Size Comparison's ◀ ▶ bar */
+  #an-sizetour { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 10px;
+    background: rgba(8,12,28,.82); border: 1px solid rgba(140,170,255,.35); border-radius: 22px; padding: 5px 8px; color: #dfe8ff;
+    font: 13px/1.2 system-ui, sans-serif; max-width: calc(100vw - 32px); white-space: nowrap; }
+  #an-sizetour span { overflow: hidden; text-overflow: ellipsis; }
+  #an-sizetour button { width: 34px; height: 30px; border-radius: 15px; border: 1px solid rgba(140,170,255,.45); background: rgba(40,60,120,.6); color: #fff; cursor: pointer; flex: none; }
   /* a log has been found and not read yet */
   #an-btn-logs.fresh { border-color: #ffd166; box-shadow: 0 0 12px rgba(255,209,102,.7); }
 
@@ -7434,6 +7440,7 @@ function siphonStars(dt) {
     for (const s of bs) {
       if (s === H || !s.alive || s.kind !== 'body' || !TYPES[s.type].star) continue;
       if (s.m >= H.m) continue;                                // only a lighter star is eaten
+      if (s.noBeams && H.noBeams) continue;                    // neighbours in the Size Comparison line
       const d = s.p.distanceTo(H.p);
       const touch = visRadius(H) + visRadius(s);
       const tidal = s.r * Math.cbrt(H.m / Math.max(s.m, 1e-9));
@@ -7932,7 +7939,11 @@ function updateTemperatures() {
     const b = sim.bodies[i];
     if (TYPES[b.type].star || b.kind !== 'body') continue;
     let flux = 0;
-    for (let s = 0; s < stars.length; s++) {
+    // In the Size Comparison line a world sits right beside stars it would
+    // never be near (Earth next to a white dwarf would bake at 10,000 K):
+    // there, every world gets the sunlight Earth does instead.
+    if (b.noBeams) flux = 1;
+    else for (let s = 0; s < stars.length; s++) {
       const st = stars[s];
       const dAU = Math.max(b.p.distanceTo(st.p) / AU, 1e-4);
       flux += st.lum / (dAU * dAU);
@@ -12947,6 +12958,18 @@ function initLights() {
 }
 
 function updateLights() {
+  /* The Size Comparison line is lit like a photo studio, from over your left
+     shoulder: its worlds sit nowhere near a star, and in real starlight they
+     would be black discs. */
+  if (sizeTour.list.length) {
+    const l = starLights[0];
+    l.position.copy(camera.position).addScaledVector(camera.up, view.dist * 0.6);
+    l.position.x -= view.dist * 0.8;
+    l.color.setRGB(1, 0.97, 0.92);
+    l.intensity = 1.3;
+    for (let i = 1; i < LIGHT_POOL; i++) starLights[i].intensity = 0;
+    return;
+  }
   const stars = sim.starCache;
   /* The three that shine brightest where you are looking — brightness falls
      off with distance squared — not the three most luminous in the whole
@@ -14081,7 +14104,7 @@ function renderFrame() {
 /* =================================================================== camera */
 
 const view = { target: new THREE.Vector3(), dist: 900, yaw: 0.75, pitch: 0.46, over: 0 };
-const MIN_DIST = 5e-10, MAX_DIST = 1e16;  // half a metre to ~1 billion light-years
+const MIN_DIST = 5e-10, MAX_DIST = 1e19;  // half a metre to ~1 trillion light-years (the observable universe fits)
 /*
  * Past MAX_DIST the zoom carries on as a power of ten in view.over, out to a
  * camera distance of 10^1002 km. No floating-point number reaches that far
@@ -17200,6 +17223,7 @@ function updateInspectorStats() {
     return;
   }
   if (b.kind === 'mark') {
+    if (b.sub === 'size') return;
     const d = b.p.distanceTo(b.host.p);
     inspRefs.md.textContent = (d / AU).toFixed(d < 1000 * AU ? 1 : 0) + ' AU';
     if (inspRefs.mv) inspRefs.mv.textContent = fmtSpeed(b.v);
@@ -18017,6 +18041,10 @@ function disposeMark(m) {
   m.alive = false;
   if (m.sprite) { scene.remove(m.sprite); m.sprite.material.dispose(); }
   if (m.mesh) { scene.remove(m.mesh); m.mesh.geometry.dispose(); m.mesh.material.dispose(); }
+  if (m.grp) {
+    scene.remove(m.grp);
+    m.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+  }
   if (sim.selected === m) select(null);
   if (sim.follow === m) sim.follow = null;
 }
@@ -18025,6 +18053,13 @@ function updateMarks() {
   for (let i = marks.length - 1; i >= 0; i--) {
     const m = marks[i];
     if (!m.host.alive) { disposeMark(m); marks.splice(i, 1); continue; }
+    if (m.grp) {               // a span of the size line: it stays where it was put
+      const px = m.r / worldPerPixel(Math.max(camera.position.distanceTo(m.p), 1e-9));
+      const k = clamp((px - 3) / 30, 0, 1);
+      for (const [mat, a] of m.fades) mat.opacity = a * k;
+      m.grp.children[0].material.uniforms.uA.value = (m.style === 'universe' ? 1.4 : m.style === 'orbits' ? 0.25 : 0.7) * Math.max(k, 0.15);
+      continue;
+    }
     m.shy = m.host.shy;
     const d = m.d0 + m.v * Math.max(sim.time - m.t0, 0);
     m.p.copy(m.host.p).addScaledVector(m.dir, d);
@@ -18050,9 +18085,9 @@ function renderMarkInspector(m) {
   $('an-insp-h').textContent = m.sub === 'probe' ? 'SPACECRAFT' : 'SELECTED';
   host.innerHTML =
     '<div class="an-name-in" style="cursor:default;pointer-events:none">' + escAttr(m.name) + '</div>' +
-    '<div class="an-type">' + (m.sub === 'probe' ? 'launched ' + m.year : 'the edge of the Solar System') + '</div>' +
+    '<div class="an-type">' + (m.sub === 'probe' ? 'launched ' + m.year : m.sub === 'size' ? 'size comparison' : 'the edge of the Solar System') + '</div>' +
     '<dl class="an-stats">' +
-    '<dt>From the Sun</dt><dd id="is-md"></dd>' +
+    (m.sub === 'size' ? '<dt>Across</dt><dd>' + fmtDist(m.real * 2) + '</dd>' : '<dt>From the Sun</dt><dd id="is-md"></dd>') +
     (m.sub === 'probe' ? '<dt>Speed</dt><dd id="is-mv"></dd><dt>Light takes</dt><dd id="is-ml"></dd>' : '') +
     '</dl>' +
     '<div class="an-row"><button id="is-mfollow">' + (sim.follow === m ? 'UNFOLLOW' : 'FOLLOW') +
@@ -19127,8 +19162,13 @@ function addPulsarBeams(b, len) {
  * thousand times as wide as the Sun. Gravity is switched off while this map is open,
  * or the giants would swallow everything beside them; loading another map
  * gives it back. Every one is drawn at the same exaggeration, so the sizes
- * compare truly. (Galaxies, nebulae and black holes are drawn at sizes made
- * to be seen rather than their real ones, so they cannot join the line.)
+ * compare truly.
+ *
+ * Past the stars it keeps going: black holes at the real width of their
+ * shadows, the Solar System, the Oort Cloud, nebulae, a star cluster,
+ * galaxies, the Local Group, superclusters, and last of all the whole
+ * observable universe, 93 billion light-years across. Things that are not
+ * one body are drawn as clouds of dots inside a faint skin (SIZE_SPAN).
  */
 const SIZE_LINE = [
   // name, kind, radius, in km (k), Earth radii (e) or Sun radii (s), mass in Suns (or the kind's own)
@@ -19174,9 +19214,182 @@ const SIZE_LINE = [
   ['WOH G64', 'red_supergiant', 1540, 's', 25],
   ['Stephenson 2-18', 'red_supergiant', 2150, 's', 40]
 ];
+/*
+ * Past the stars. Black holes: [name, 'bh', mass in Suns] (drawn at the true
+ * width of their shadow, 2.6 times the horizon). Galaxies: [name, 'gal', kind,
+ * radius in light-years]. Everything else is a span: [name, style, radius,
+ * unit (a: AU, l: light-years), colour, blurb].
+ */
+const SIZE_SPAN = [
+  ['Sagittarius A*', 'bh', 4.3e6, 'The black hole at the middle of the Milky Way: 4.3 million Suns, and its shadow would fit inside Mercury’s orbit.'],
+  ['M87*', 'bh', 6.5e9, 'The first black hole ever photographed (2019). 6.5 billion Suns; its shadow is bigger than the whole orbit of Neptune.'],
+  ['TON 618', 'bh', 6.6e10, 'One of the heaviest black holes known: 66 billion Suns. Light takes more than a week to cross its shadow.'],
+  ['The Solar System', 'orbits', 30.07, 'a', 0x9fc6ff, 'The Sun and its eight planets, out to Neptune’s orbit, 9 billion km across. Every star in this line before it would fit inside.'],
+  ['Heliosphere', 'shell', 120, 'a', 0xb48cff, 'The bubble blown by the Sun’s wind, out to where it meets the gas between the stars. Only the two Voyagers have left it.'],
+  ['Oort Cloud', 'shell', 100000, 'a', 0x9fd8ff, 'A ghostly shell of a trillion icy comets around the Solar System, reaching a third of the way to the next star.'],
+  ['Orion Nebula', 'nebula', 12, 'l', 0xff6fa8, 'The nearest big star nursery, 24 light-years across. You can see it with your own eyes as the fuzzy middle star of Orion’s sword.'],
+  ['Omega Centauri', 'cluster', 75, 'l', 0xffe9b8, 'The biggest globular cluster of the Milky Way: ten million old stars packed into a ball 150 light-years wide.'],
+  ['Tarantula Nebula', 'nebula', 300, 'l', 0xff5a7a, 'The biggest star nursery near us, 600 light-years across, in the Large Magellanic Cloud. If it were as close as Orion it would cast shadows.'],
+  ['Large Magellanic Cloud', 'gal', 'irregular_galaxy', 16000, 'A small galaxy circling ours, 32,000 light-years across.'],
+  ['Milky Way', 'gal', 'barred_galaxy', 50000, 'Our galaxy: a few hundred billion stars, 100,000 light-years across. The Sun is one of them.'],
+  ['Andromeda', 'gal', 'galaxy', 110000, 'The nearest big galaxy, twice as wide as ours. It is falling towards us and will hit in about 4.5 billion years.'],
+  ['IC 1101', 'gal', 'elliptical_galaxy', 1000000, 'One of the biggest galaxies known: a giant elliptical about two million light-years across, made by swallowing many others.'],
+  ['Local Group', 'web', 5e6, 'l', 0xbcd2ff, 'Our galaxy’s neighbourhood: the Milky Way, Andromeda, Triangulum and about a hundred little galaxies, 10 million light-years across.'],
+  ['Virgo Supercluster', 'web', 5.5e7, 'l', 0xc8b8ff, 'Some hundred groups and clusters of galaxies around the Virgo Cluster, the Local Group among them: 110 million light-years across.'],
+  ['Laniakea', 'web', 2.6e8, 'l', 0xffc8e8, 'Our home supercluster, 520 million light-years across and a hundred thousand galaxies big. Its name is Hawaiian for “immeasurable heaven”.'],
+  ['Observable Universe', 'universe', 4.65e10, 'l', 0xffa860, 'Everything whose light has had time to reach us since the Big Bang: two trillion galaxies, strung along a web of threads, 93 billion light-years across. What lies past its edge, nobody can see.']
+];
+
+// UNI_VERT's, but with the view direction normalised per vertex: at the
+// observable universe's size its length squared overflows a GPU float.
+const SIZE_VERT = `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  varying vec3 vN;
+  varying vec3 vV;
+  varying vec3 vP;
+  void main() {
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vN = normalize(normalMatrix * normal);
+    vV = mv.xyz / max(max(abs(mv.x), abs(mv.y)), max(abs(mv.z), 1e-30));
+    vV = -normalize(vV);
+    vP = position;
+    gl_Position = projectionMatrix * mv;
+    #include <logdepthbuf_vertex>
+  }`;
+const SIZE_FRAG = `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  uniform vec3 uCol;
+  uniform float uA;
+  varying vec3 vN;
+  varying vec3 vV;
+  varying vec3 vP;
+  void main() {
+    #include <logdepthbuf_fragment>
+    float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
+    gl_FragColor = vec4(uCol, (pow(f, 3.0) * 0.6 + 0.02) * uA);
+  }`;
+
+/** Dots for a span, in a unit ball: how they are scattered depends on what it is. */
+function spanDots(style, rng) {
+  const pts = [], cols = [];
+  const gauss = () => (rng() + rng() + rng() + rng() - 2) * 0.87;
+  const ball = () => { let x, y, z; do { x = rng() * 2 - 1; y = rng() * 2 - 1; z = rng() * 2 - 1; } while (x * x + y * y + z * z > 1); return [x, y, z]; };
+  const put = (x, y, z, c) => { pts.push(x, y, z); cols.push(c[0], c[1], c[2]); };
+  if (style === 'shell') {
+    for (let i = 0; i < 2600; i++) {
+      const u = rng() * 2 - 1, a = rng() * TAU, q = Math.sqrt(1 - u * u), r = Math.pow(0.05 + 0.95 * rng(), 0.35);
+      const c = 0.6 + rng() * 0.4;
+      put(q * Math.cos(a) * r, u * r, q * Math.sin(a) * r, [c * 0.8, c * 0.9, c]);
+    }
+  } else if (style === 'cluster') {
+    for (let i = 0; i < 5000; i++) {
+      const [x, y, z] = ball(), k = Math.pow(rng(), 2.2);
+      const c = rng() < 0.15 ? [1, 0.7, 0.45] : [1, 0.95, 0.82];
+      put(x * k, y * k, z * k, c);
+    }
+  } else if (style === 'nebula') {
+    // a few bright young stars in the heart, the glow is drawn as puffs (below)
+    for (let i = 0; i < 400; i++) { const k = Math.pow(rng(), 2); const [x, y, z] = ball(); put(x * k * 0.6, y * k * 0.6, z * k * 0.6, [0.8, 0.9, 1]); }
+  } else {
+    // a cosmic web: knots joined by threads, with galaxies strung along them
+    const many = style === 'universe' ? 26000 : 6000;
+    const knots = [];
+    const nK = style === 'universe' ? 260 : 40;
+    for (let i = 0; i < nK; i++) knots.push(ball());
+    for (let i = 0; i < many; i++) {
+      const A = knots[(rng() * nK) | 0];
+      let x, y, z;
+      if (rng() < 0.35) { x = A[0] + gauss() * 0.02; y = A[1] + gauss() * 0.02; z = A[2] + gauss() * 0.02; }
+      else {
+        // along a thread to one of its nearer knots
+        let B = knots[(rng() * nK) | 0], bd = 9;
+        for (let t = 0; t < 4; t++) { const C = knots[(rng() * nK) | 0], d = Math.hypot(C[0] - A[0], C[1] - A[1], C[2] - A[2]); if (C !== A && d < bd) { bd = d; B = C; } }
+        const t = rng(), w = 0.012;
+        x = A[0] + (B[0] - A[0]) * t + gauss() * w; y = A[1] + (B[1] - A[1]) * t + gauss() * w; z = A[2] + (B[2] - A[2]) * t + gauss() * w;
+      }
+      if (x * x + y * y + z * z > 1) continue;
+      const c = 0.55 + rng() * 0.45, warm = rng();
+      put(x, y, z, [c, c * (0.85 + warm * 0.1), c * (0.75 + (1 - warm) * 0.3)]);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  return g;
+}
+
+/** One span of the size line: a faint skin around a cloud of dots, at its real (×bodyScale) size. */
+function makeSpan(row, rng) {
+  const [name, style, rad, unit, col, blurb] = row;
+  const real = rad * (unit === 'a' ? AU : LY_GM);
+  const R = real * settings.bodyScale;
+  const m = { kind: 'mark', sub: 'size', alive: true, host: SIZE_ANCHOR, name, blurb, real,
+    dir: new V3(1, 0, 0), d0: 0, v: 0, t0: 0, p: new V3(), r: R, style };
+  const grp = new THREE.Group();
+  grp.scale.setScalar(R);
+  // tipped a little towards the camera, so rings and threads read as round
+  grp.rotation.set(1.15, 0, 0.2);
+  const skin = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), new THREE.ShaderMaterial({
+    uniforms: { uCol: { value: new THREE.Color(col) }, uA: { value: style === 'orbits' ? 0.25 : style === 'universe' ? 1.4 : 0.7 } },
+    vertexShader: SIZE_VERT, fragmentShader: SIZE_FRAG,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending
+  }));
+  skin.frustumCulled = false;
+  skin.renderOrder = -6;
+  grp.add(skin);
+  m.fades = [];
+  if (style === 'orbits') {
+    const ring = (rr, c) => {
+      const q = [];
+      for (let i = 0; i <= 128; i++) { const a = i / 128 * TAU; q.push(Math.cos(a) * rr, 0, Math.sin(a) * rr); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(q, 3));
+      const l = new THREE.Line(g, new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
+      l.frustumCulled = false; grp.add(l); m.fades.push([l.material, 0.7]);
+    };
+    for (const a of [0.387, 0.723, 1, 1.524]) ring(a / 30.07, 0x9fc6ff);
+    for (const a of [5.2, 9.58, 19.2, 30.07]) ring(a / 30.07, 0xc8d8ff);
+    const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_GLOW, color: 0xffe0a0, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+    sun.scale.setScalar(0.08); grp.add(sun);
+  } else {
+    const g = spanDots(style, rng);
+    const pm = new THREE.PointsMaterial({ size: style === 'universe' ? 1.6 : 2, sizeAttenuation: false, vertexColors: true, map: TEX_GLOW,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.9 });
+    const pts = new THREE.Points(g, pm);
+    pts.frustumCulled = false;
+    grp.add(pts); m.fades.push([pm, 0.9]);
+    if (style === 'nebula') {
+      // the glowing gas: big soft puffs of colour
+      const q = [], c = [], base = new THREE.Color(col), teal = new THREE.Color(0x5fd8d0);
+      for (let i = 0; i < 260; i++) {
+        let x, y, z; do { x = rng() * 2 - 1; y = rng() * 2 - 1; z = rng() * 2 - 1; } while (x * x + y * y + z * z > 1);
+        const k = 0.35 + 0.65 * Math.sqrt(rng());
+        q.push(x * k, y * k * 0.7, z * k);
+        const h = base.clone().lerp(teal, rng() < 0.25 ? 0.6 : 0).multiplyScalar(0.05 + rng() * 0.07);
+        c.push(h.r, h.g, h.b);
+      }
+      const gg = new THREE.BufferGeometry();
+      gg.setAttribute('position', new THREE.Float32BufferAttribute(q, 3));
+      gg.setAttribute('color', new THREE.Float32BufferAttribute(c, 3));
+      const puffM = new THREE.PointsMaterial({ size: R * 0.7, sizeAttenuation: true, vertexColors: true, map: TEX_GLOW,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 1 });
+      const puffs = new THREE.Points(gg, puffM);
+      puffs.frustumCulled = false; grp.add(puffs); m.fades.push([puffM, 1]);
+    }
+  }
+  scene.add(grp);
+  m.grp = grp;
+  return m;
+}
+const SIZE_ANCHOR = { alive: true, shy: false, p: new THREE.Vector3() };
+
 function buildSizeLine() {
   sim.gravityWas = settings.gravity;
   settings.gravity = 0;
+  // and everything at its true size, not the usual exaggeration: this map is about real sizes
+  sim.scaleWas = settings.bodyScale;
+  settings.bodyScale = 1;
   const made = [];
   for (const [name, type, rad, unit, mSun] of SIZE_LINE) {
     const o = { name };
@@ -19187,16 +19400,80 @@ function buildSizeLine() {
     b.noBeams = true;              // a pulsar's jets would drown out everything near it
     made.push(b);
   }
+  // past the stars
+  const rng = mulberry32(2026);
+  for (const row of SIZE_SPAN) {
+    if (row[1] === 'bh') {
+      const b = makeBody('smbh', new V3(), new V3(), { name: row[0], mass: row[2] * M_SUN });
+      b.look = 1 / BH_VIS;           // its shadow at its real width, like everything else here
+      // no glowing disc: it would be many times wider than the shadow and blaze over its neighbours
+      if (b.parts.disk) { b.parts.disk.parent.remove(b.parts.disk); b.parts.disk = null; }
+      b.noBeams = true; b.blurb = row[3];
+      made.push(b);
+    } else if (row[1] === 'gal') {
+      const b = makeBody(row[2], new V3(), new V3(), { name: row[0] });
+      b.galR = row[3] * LY_GM * settings.bodyScale;
+      b.m = galMassFor(b.galR);
+      b.galAxis = new V3(0, 0.55, 1).normalize();     // turned mostly to face you
+      b.noBeams = true; b.blurb = row[4];
+      made.push(b);
+    } else {
+      const m = makeSpan(row, rng);
+      marks.push(m);
+      made.push(m);
+    }
+  }
   // smallest first, each a little apart from the next
-  made.sort((a, b) => a.r - b.r);
+  const size = (b) => b.kind === 'gal' ? b.galR : visRadius(b);
+  made.sort((a, b) => size(a) - size(b));
   let x = 0, prev = 0;
   for (const b of made) {
-    const r = visRadius(b);
+    const r = size(b);
     // a gap that grows with the neighbours, so small and large both read clearly
     x += prev ? prev + (prev + r) * 0.35 + r : 0;
     b.p.set(x, 0, 0);
+    if (b.grp) b.grp.position.copy(b.p);
+    if (b.kind === 'gal') seedGalaxyStars(b);   // its stars are laid out round where it now stands
     prev = r;
   }
+  sizeTour.list = made;
+  sizeTour.i = made.findIndex(b => b.name === 'Earth');
+  showSizeTour();
+}
+
+/* ◀ ▶ along the line: seventy things over twenty-seven powers of ten is a
+   lot of scrolling, so two buttons hop to the next smaller or bigger one. */
+const sizeTour = { list: [], i: 0, el: null };
+function showSizeTour() {
+  if (!sizeTour.el) {
+    const el = document.createElement('div');
+    el.id = 'an-sizetour';
+    el.innerHTML = '<button id="an-st-prev" title="Smaller">&#9664;</button><span id="an-st-name"></span>' +
+      '<button id="an-st-next" title="Bigger">&#9654;</button>';
+    $('an-app').appendChild(el);
+    $('an-st-prev').addEventListener('click', () => sizeTourGo(-1));
+    $('an-st-next').addEventListener('click', () => sizeTourGo(1));
+    sizeTour.el = el;
+  }
+  sizeTour.el.style.display = '';
+  sizeTourLabel();
+}
+function hideSizeTour() { if (sizeTour.el) sizeTour.el.style.display = 'none'; sizeTour.list = []; }
+function sizeTourLabel() {
+  const b = sizeTour.list[sizeTour.i];
+  if (!b) return;
+  const real = b.real != null ? b.real : b.kind === 'gal' ? b.galR / settings.bodyScale : visRadius(b) / settings.bodyScale;
+  $('an-st-name').innerHTML = (sizeTour.i + 1) + '/' + sizeTour.list.length + ' &middot; <b>' + escAttr(b.name) + '</b> &middot; ' + fmtDist(real * 2) + ' across';
+}
+function sizeTourGo(d) {
+  const L = sizeTour.list;
+  if (!L.length) return;
+  sizeTour.i = clamp(sizeTour.i + d, 0, L.length - 1);
+  const b = L[sizeTour.i];
+  frameOn(b, b.kind === 'gal' ? 2.4 : b.kind === 'mark' ? 3 : 5);
+  view.yaw = 0; view.pitch = 0.12;
+  select(b);
+  sizeTourLabel();
 }
 
 const PRESETS = [
@@ -19569,13 +19846,13 @@ const PRESETS = [
     build() { return buildCrab(); }
   },
   {
-    name: 'Size Comparison', desc: '50 real things side by side at their real sizes: an asteroid, a comet, a neutron star, moons, dwarf planets, the planets, exoplanets, a brown dwarf, and stars from TRAPPIST-1 to Stephenson 2-18, two thousand times wider than the Sun. Start at Earth and scroll either way. (Gravity is off here so nothing falls together.)',
+    name: 'Size Comparison', desc: 'The universe, smallest to biggest, at real sizes: an asteroid, a comet, a neutron star, moons, the planets, stars up to Stephenson 2-18, then black holes, the Solar System, the Oort Cloud, nebulae, galaxies, superclusters and the whole observable universe. 67 things over twenty-two powers of ten. Start at Earth and hop with the ◀ ▶ buttons, or scroll. (Gravity is off here so nothing falls together.)',
     dist: 1,
     build() { buildSizeLine(); },
     view() {
       const e = sim.bodies.find(b => b.name === 'Earth');
       view.target.copy(e.p); view.dist = visRadius(e) * 14; view.yaw = 0; view.pitch = 0.12;
-      setTimeout(() => toast('Scroll out to meet the giants →'), 1800);
+      setTimeout(() => toast('Press \u25b6 to go bigger, all the way to the observable universe'), 1800);
     }
   },
   {
@@ -19600,6 +19877,7 @@ function openSystems() {
 }
 
 function clearAll() {
+  hideSizeTour();
   while (tsunamis.length) endTsunami(tsunamis[0]);
   homers.length = 0;
   for (const b of sim.bodies) { disposeVisual(b); }
@@ -19630,6 +19908,7 @@ function loadPreset(p) {
   settings.decayBoost = 1e9;
   // and one that switches gravity off (Size Comparison) gives it back after
   if (sim.gravityWas != null) { settings.gravity = sim.gravityWas; sim.gravityWas = null; }
+  if (sim.scaleWas != null) { settings.bodyScale = sim.scaleWas; sim.scaleWas = null; }
   p.build();
   view.target.set(0, 0, 0);
   view.dist = p.dist;
