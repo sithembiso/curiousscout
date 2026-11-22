@@ -7582,6 +7582,7 @@ function tideFill(T, i, b) {
 const TIDE_SLACK = 1 + 1e-9;   // covers rounding: cbrt(a)/cbrt(b) is not bit-for-bit cbrt(a/b)
 
 function updateTides(dt) {
+  if (!(settings.gravity > 0)) return;          // no gravity, no tides
   const bs = sim.bodies;
   let doomed = null, doomedP = null, doomedD = 0;
   const T = tideScratch(bs.length);
@@ -8083,7 +8084,7 @@ function tidalStretch(b, px) {
       const q = o.m / Math.pow(d2, 1.5);                      // M/d^3: the tide it raises
       if (q > best) { best = q; _tsBest.copy(_tsD); }
     }
-    if (best > 0) e = Math.min(3.75 * best / b.m * R * R * R * settings.stretchBoost, STRETCH_MAX);
+    if (best > 0) e = Math.min(3.75 * best / b.m * R * R * R * settings.stretchBoost * settings.gravity, STRETCH_MAX);
   }
   // ease in and out, so a body sweeping past does not snap between shapes
   b.stretch = lerp(b.stretch || 0, e, 0.25);
@@ -19110,6 +19111,55 @@ function addPulsarBeams(b, len) {
   b.parts.beams = holder;
 }
 
+/* ------------------------------------------------------------ size comparison */
+/*
+ * Real things side by side at their real sizes, smallest to biggest: a neutron
+ * star the width of a city, the Solar System's worlds, a white dwarf no bigger
+ * than Earth, then stars from a red dwarf to Stephenson 2-18, two thousand
+ * times as wide as the Sun. Gravity is switched off while this map is open,
+ * or the giants would swallow everything beside them; loading another map
+ * gives it back. Every one is drawn at the same exaggeration, so the sizes
+ * compare truly. (Galaxies, nebulae and black holes are drawn at sizes made
+ * to be seen rather than their real ones, so they cannot join the line.)
+ */
+const SIZE_LINE = [
+  // name, kind, radius, in Earth radii (e) or Sun radii (s), mass in Suns (or default)
+  ['Vela Pulsar', 'neutron_star', 10 / 6371, 'e', 1.4],
+  ['Ceres', 'sol_ceres'], ['Moon', 'sol_luna'], ['Mercury', 'sol_mercury'], ['Mars', 'sol_mars'],
+  ['Sirius B', 'white_dwarf', 0.92, 'e', 1.02],
+  ['Venus', 'sol_venus'], ['Earth', 'sol_earth'],
+  ['Neptune', 'sol_neptune'], ['Uranus', 'sol_uranus'], ['Saturn', 'sol_saturn'], ['Jupiter', 'sol_jupiter'],
+  ['Proxima Centauri', 'red_dwarf', 0.154, 's', 0.122],
+  ['Sun', 'sol_sun'],
+  ['Sirius A', 'a_star', 1.71, 's', 2.06],
+  ['Pollux', 'k_star', 9.1, 's', 1.9],
+  ['Arcturus', 'k_star', 25.4, 's', 1.08],
+  ['Aldebaran', 'k_star', 44, 's', 1.16],
+  ['Rigel', 'b_star', 78.9, 's', 21],
+  ['Antares', 'red_supergiant', 680, 's', 12],
+  ['Betelgeuse', 'red_supergiant', 764, 's', 16.5],
+  ['UY Scuti', 'red_supergiant', 909, 's', 7],
+  ['VY Canis Majoris', 'red_supergiant', 1420, 's', 17],
+  ['Stephenson 2-18', 'red_supergiant', 2150, 's', 40]
+];
+function buildSizeLine() {
+  sim.gravityWas = settings.gravity;
+  settings.gravity = 0;
+  let x = 0, prev = 0;
+  for (const [name, type, rad, unit, mSun] of SIZE_LINE) {
+    const o = { name };
+    if (rad != null) o.r = rE(unit === 's' ? rad * R_SUN : rad);
+    if (mSun != null) o.mass = mSun * M_SUN;
+    const b = makeBody(type, new V3(), new V3(), o);
+    b.tilt = 0;
+    const r = visRadius(b);
+    // a gap that grows with the neighbours, so small and large both read clearly
+    x += prev ? prev + (prev + r) * 0.35 + r : 0;
+    b.p.set(x, 0, 0);
+    prev = r;
+  }
+}
+
 const PRESETS = [
   {
     name: 'The Solar System', desc: 'Our own eight planets at their real distances, on real orbital periods — with their major moons, the dwarf planets, the Asteroid and Kuiper Belts, and everything known beyond: Sedna, the Voyagers, the heliopause, the Oort Cloud and Alpha Centauri. Its Sun is born with the map — speed the clock up to watch it grow, swell, and shrink to an Earth-sized white dwarf over 100 billion years.',
@@ -19480,6 +19530,16 @@ const PRESETS = [
     build() { return buildCrab(); }
   },
   {
+    name: 'Size Comparison', desc: 'Real things side by side at their real sizes, from a neutron star the width of a city through the planets and the Sun to Stephenson 2-18, two thousand times wider than the Sun. Start at Earth and scroll out to meet each giant. (Gravity is off here so nothing falls together.)',
+    dist: 1,
+    build() { buildSizeLine(); },
+    view() {
+      const e = sim.bodies.find(b => b.name === 'Earth');
+      view.target.copy(e.p); view.dist = visRadius(e) * 14; view.yaw = 0; view.pitch = 0.12;
+      setTimeout(() => toast('Scroll out to meet the giants →'), 1800);
+    }
+  },
+  {
     name: 'Empty Space', desc: 'A clean slate. Build whatever you like.',
     dist: 500,
     build() { }
@@ -19529,11 +19589,14 @@ function loadPreset(p) {
   sim.running = false;
   // a map that sets its own decay speed (Neutron Waltz) does it for itself only
   settings.decayBoost = 1e9;
+  // and one that switches gravity off (Size Comparison) gives it back after
+  if (sim.gravityWas != null) { settings.gravity = sim.gravityWas; sim.gravityWas = null; }
   p.build();
   view.target.set(0, 0, 0);
   view.dist = p.dist;
   view.yaw = 0.75;
   view.pitch = 0.46;
+  if (p.view) p.view();
   computeAccel();
   clearTrails();
   refreshStarCache();
