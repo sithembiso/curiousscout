@@ -7993,6 +7993,57 @@ function ensureAtmo(b) {
   scaleVisual(b);
 }
 
+/* ------------------------------------------------------------ tidal stretch */
+/*
+ * Gravity pulls harder on the near side of a body than on its far side, so
+ * anything close to something much heavier is drawn out into an egg pointing
+ * at it: the tidal bulge. How much is the real ratio of that difference in
+ * pull to the body's own gravity, q = (M/m)(R/d)^3, times 15/4 for a body
+ * that can flow (a fluid Love number). The Moon and Io come out round, as
+ * they are; it only shows close to the Roche limit, where tides start tearing
+ * a body apart, or for a star wandering near a black hole. It is how the body
+ * is drawn, not its physics, and it keeps the body's volume: longer along the
+ * pull, thinner across it. The surface turns through the bulge, as the real
+ * one does. Off with the Tidal forces setting, and while you stand on it.
+ */
+const STRETCH_MAX = 1.4;                  // never more than 2.4 times as long as it is round
+const _tsD = new THREE.Vector3(), _tsBest = new THREE.Vector3(), _tsS = new THREE.Matrix4();
+const _tsQ = new THREE.Quaternion(), _tsE = new THREE.Euler();
+function tidalStretch(b, px) {
+  const def = TYPES[b.type];
+  let e = 0;
+  if (settings.tidal && b.kind === 'body' && !def.craft && land.b !== b && px > 2 && b.m > 0) {
+    const R = visRadius(b);
+    let best = 0;
+    for (const o of sim.bodies) {
+      if (o === b || !o.alive || !(o.m > b.m * 2) || o.kind === 'gal' || o.kind === 'wh') continue;
+      const d2 = _tsD.subVectors(o.p, b.p).lengthSq();
+      const q = o.m / Math.pow(d2, 1.5);                      // M/d^3: the tide it raises
+      if (q > best) { best = q; _tsBest.copy(_tsD); }
+    }
+    if (best > 0) e = Math.min(3.75 * best / b.m * R * R * R, STRETCH_MAX);
+  }
+  // ease in and out, so a body sweeping past does not snap between shapes
+  b.stretch = lerp(b.stretch || 0, e, 0.25);
+  if (b.stretch < 0.002) {
+    if (!b.obj.matrixAutoUpdate) { b.obj.matrixAutoUpdate = true; b.stretch = 0; }
+    return;
+  }
+  // its own place and tilt, then stretched along the line to what pulls it
+  const a = 1 + b.stretch, c = 1 / Math.sqrt(a);
+  const d = _tsBest.normalize();
+  _tsS.set(
+    c + (a - c) * d.x * d.x, (a - c) * d.x * d.y, (a - c) * d.x * d.z, 0,
+    (a - c) * d.y * d.x, c + (a - c) * d.y * d.y, (a - c) * d.y * d.z, 0,
+    (a - c) * d.z * d.x, (a - c) * d.z * d.y, c + (a - c) * d.z * d.z, 0,
+    0, 0, 0, 1);
+  // matrix = T * S * R: its own tilt, then stretched in world axes, then placed
+  _tsQ.setFromEuler(_tsE.set(0, 0, b.tilt));
+  b.obj.matrixAutoUpdate = false;
+  b.obj.matrix.makeRotationFromQuaternion(_tsQ).premultiply(_tsS).setPosition(b.p);
+  b.obj.matrixWorldNeedsUpdate = true;
+}
+
 /* ================================================================== renderer */
 
 let renderer, scene, camera, canvasEl;
@@ -14736,6 +14787,7 @@ function updateVisuals(realDt, simDt) {
 
     b.obj.position.copy(b.p);
     b.obj.rotation.z = b.tilt;
+    tidalStretch(b, px);
 
     // Colour follows mass, so a star that has been fed or drained is repainted
     // the moment it crosses a band — and only then. This runs every frame.
