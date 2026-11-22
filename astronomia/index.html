@@ -3663,7 +3663,7 @@ function computeAccel() {
     VX[i] = b.v.x; VY[i] = b.v.y; VZ[i] = b.v.z;
     M[i] = b.m;
     SOFT[i] = b.kind === 'gal' ? Math.max(b.galR, 1) * GAL_SOFT : 0.35 * b.r;
-    CAP[i] = captureRadius(b);
+    CAP[i] = hitBound(b);           // the widest it can be; resolveCollisions checks the real ground
     AX[i] = 0; AY[i] = 0; AZ[i] = 0;
     SGN[i] = b.kind === 'wh' ? -1 : 1;              // a white hole pushes instead of pulls
     const h = b.rotHost;
@@ -4082,12 +4082,20 @@ function advance(frameSeconds) {
 const vEscape = (a, b) =>
   Math.sqrt(2 * G * (a.m + b.m) / Math.max(1e-9, visRadius(a) + visRadius(b)));
 
+const _hitD = new THREE.Vector3();
 function resolveCollisions() {
   if (settings.collisions === 'off' || !collisionPairs.length) return;
   let dirty = false;
   for (let k = 0; k < collisionPairs.length; k += 2) {
     const a = collisionPairs[k], b = collisionPairs[k + 1];
     if (!a.alive || !b.alive) continue;
+    // Close enough to the widest reach of a mountain: do they really touch?
+    // (Not for a pair already sinking in, or one a black hole has hold of.)
+    if (!a.sink && !b.sink && a.kind === 'body' && b.kind === 'body' && !plunging.includes(a)) {
+      _hitD.subVectors(b.p, a.p);
+      const d = _hitD.length();
+      if (d > 0 && d > hitRadius(a, _hitD) + hitRadius(b, _hitD.clone().negate())) continue;
+    }
     if (impact(a, b)) dirty = true;
   }
   if (dirty) compact();
@@ -4384,7 +4392,7 @@ function beginEngulf(a, b, vImp, vEsc) {
     host: a, t: 0, T: T, vImp: vImp, vEsc: vEsc, dir: dir, spray: 0, inbound: inbound,
     heat: impactHeatOf(a, b, vImp, vEsc),
     // it sinks until the two cores touch
-    ra: ra, rb: rb, d0: ra + rb, d1: (ra + rb) * CORE_FRAC,
+    ra: ra, rb: rb, d0: Math.min(a.p.distanceTo(b.p), ra + rb), d1: (ra + rb) * CORE_FRAC,
     hole: hole, step: 0, bore: 0,
     // A mark from the very first moment of contact, barely open — the two
     // surfaces are only touching at a point yet.
@@ -4764,7 +4772,41 @@ function bounce(a, b) {
   }
 }
 
+/**
+ * A big impact boils gas out of the rock and ice it melts, and the impactor
+ * brings whatever air it had: so a hit leaves the world with more atmosphere
+ * than before, once the blast that knocks some of it off (blowOffAir) has
+ * died down. What comes out is mostly carbon (as CO2), some sulfur, and
+ * hydrogen as water vapour (much more if the impactor carried water); a
+ * world with no air at all can be given some. Sized by how big the impactor
+ * is next to the world: the Moon-forming hit would add about two Earth
+ * atmospheres, a Moon-sized rock on Earth about a tenth of one.
+ */
+function impactAir(a, b) {
+  const def = TYPES[a.type];
+  if (a.kind !== 'body' || b.kind !== 'body' || def.star || def.craft || GASSY_SURF.has(def.surf) || b.rubble) return;
+  const ratio = b.m / Math.max(a.m, 1e-12);
+  const add = Math.min(8 * ratio, 3);
+  if (add < 1e-4) return;
+  const A = atmoOf(a);
+  const mix = Object.assign({}, A ? A.mix : {});
+  const w = Math.max(b.water || 0, WATER_OF[TYPES[b.type].surf] || 0);
+  const put = (el, v) => { mix[el] = (mix[el] || 0) + v; };
+  put('C', add * 0.55); put('S', add * 0.08); put('H', add * (0.1 + 0.5 * w)); put('N', add * 0.07);
+  // and the impactor's own air, in proportion
+  const B = atmoOf(b);
+  if (B) for (const el in B.mix) put(el, B.mix[el] * Math.min(ratio * 4, 1));
+  a.atm = { on: true, mix };
+  ensureAtmo(a);
+  if (add >= 0.05) {
+    const total = mixTotal(mix);
+    const msg = a.name + '\u2019s air thickened to ' + (total >= 10 ? Math.round(total) : total.toFixed(2)) + '\u00d7 Earth\u2019s';
+    setTimeout(() => toast(msg), 5200);
+  }
+}
+
 function merge(a, b, vImp, vEsc, mark) {
+  impactAir(a, b);
   const mTot = a.m + b.m;
   // Where it was hit, captured before the survivor is moved to the barycentre.
   const hitDir = b.p.clone().sub(a.p);
@@ -4867,6 +4909,7 @@ function merge(a, b, vImp, vEsc, mark) {
 }
 
 function shatter(a, b, vImp) {
+  impactAir(a, b);                  // the survivor is wrapped in what the hit boiled off
   const mTot = a.m + b.m;
   const hitDir = b.p.clone().sub(a.p);
   const inbound = b.v.clone().sub(a.v);
@@ -9457,6 +9500,25 @@ function scarFireTexture(seed, size) {
 }
 
 /** Turn a world-space direction into the body's own rotating frame. */
+/**
+ * A world's hitbox: how far out its drawn ground (or sea) stands in a given
+ * world direction, so a collision happens where the impactor really touches —
+ * on a mountain, down in a valley, or on the water — and the crater is dug
+ * right there. Anything without drawn relief is the plain ball it always was.
+ */
+function hitRadius(b, worldDir) {
+  const r = captureRadius(b);
+  const def = TYPES[b.type];
+  if (b.kind !== 'body' || def.star || def.craft || b.surfKey || !b.parts || !b.parts.surf ||
+      reliefOf(b.type) <= 1e-6 || isCompact(b)) return r;
+  const n = localOnBody(b, worldDir);
+  const ground = surfRadiusAt(b, n);
+  const sea = (b.water || 0) > 0 ? seaRadius(b) : 0;
+  return visRadius(b) * Math.max(ground, sea);
+}
+/** The widest a world's hitbox reaches: its ball plus its highest peak. */
+const hitBound = (b) => b.kind === 'body' && !TYPES[b.type].star ? captureRadius(b) * (1 + reliefTop(b.type)) : captureRadius(b);
+
 function localOnBody(b, worldDir) {
   const v = worldDir.clone();
   if (v.lengthSq() < 1e-18) v.set(1, 0, 0);
