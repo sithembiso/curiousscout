@@ -8093,6 +8093,97 @@ function tidalStretch(b, px) {
   b.obj.matrixWorldNeedsUpdate = true;
 }
 
+/* ------------------------------------------------------------- stellar flares */
+/*
+ * Stars flare: magnetic field tangled by the churning surface snaps and
+ * reconnects, a patch of it flashes far brighter than the rest of the star,
+ * and plasma climbs the field lines into glowing arches (prominence loops)
+ * that stand over the spot and then drain away. The Sun does it now and then;
+ * red dwarfs, the "flare stars", far more often and far harder; hot giants
+ * hardly at all. Each flare is a flash at the surface and two or three loops
+ * of different sizes, riding on the surface so they turn with the star, that
+ * rise, glow and fade over a few seconds. Only drawn on a star big enough on
+ * screen to see them.
+ */
+const FLARE_LIFE = 4.5;                 // seconds on the wall clock
+const FLARE_MAX = 3;                    // at once, per star
+let flareLoopGeo = null, flareGlowGeo = null;
+const _flUp = new THREE.Vector3(0, 1, 0), _flN = new THREE.Vector3();
+function flareRate(def) {
+  if (def.brown || def.temp < 4000) return 0.35;          // red dwarfs and their like: flare stars
+  if (def.temp > 12000) return 0.03;                      // hot giants: barely
+  return 0.12;
+}
+function starFlares(b, def, px, realDt) {
+  const p = b.parts;
+  if (b.flares && b.flares.length && b.flares[0].host !== p.surf) b.flares = [];   // rebuilt
+  b.flares = b.flares || [];
+  if (px > 24 && b.flares.length < FLARE_MAX && Math.random() < flareRate(def) * realDt) {
+    if (!flareLoopGeo) {
+      flareLoopGeo = new THREE.TorusGeometry(1, 0.06, 8, 48, Math.PI);   // the bright core of an arch
+      flareGlowGeo = new THREE.TorusGeometry(1, 0.22, 8, 48, Math.PI);   // and the soft glow round it
+    }
+    const band = starBand(b);
+    const base = band ? band.rgb : kelvinToRGB(b.temp || def.temp);
+    // hot plasma: the star's own colour run through a fiery orange
+    const col = mix(base, [255, 120, 40], 0.6);
+    const grp = new THREE.Group();
+    // somewhere away from the poles, in the star's own turning frame
+    const lat = (Math.random() - 0.5) * 1.6, lon = Math.random() * TAU;
+    _flN.set(Math.cos(lat) * Math.cos(lon), Math.sin(lat), Math.cos(lat) * Math.sin(lon));
+    grp.position.copy(_flN);
+    grp.quaternion.setFromUnitVectors(_flUp, _flN);
+    grp.rotateY(Math.random() * Math.PI);                 // which way the arches span
+    const mats = [];
+    const loops = 2 + ((Math.random() * 2) | 0);
+    const glows = [];
+    for (let i = 0; i < loops; i++) {
+      const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(col[0] / 255, col[1] / 255, col[2] / 255),
+        transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+      const loop = new THREE.Mesh(flareLoopGeo, m);
+      const size = 0.12 + Math.random() * 0.14;
+      loop.scale.set(size, size * (0.9 + Math.random() * 0.5), size * 0.6);
+      loop.position.set((Math.random() - 0.5) * 0.08, -size * 0.15, (Math.random() - 0.5) * 0.08);
+      loop.rotation.y = (Math.random() - 0.5) * 0.7;      // a fanned-out arcade, not one ring
+      grp.add(loop);
+      mats.push(m);
+      const gm = new THREE.MeshBasicMaterial({ color: new THREE.Color(col[0] / 255, col[1] * 0.7 / 255, col[2] * 0.5 / 255),
+        transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+      const halo = new THREE.Mesh(flareGlowGeo, gm);
+      halo.scale.copy(loop.scale); halo.position.copy(loop.position); halo.rotation.copy(loop.rotation);
+      grp.add(halo);
+      glows.push(gm);
+    }
+    // the flash where the field snapped
+    const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_GLOW, color: new THREE.Color(1, 0.95, 0.85),
+      transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    flash.scale.setScalar(0.3);
+    grp.add(flash);
+    mats.push(flash.material);
+    p.surf.add(grp);
+    b.flares.push({ grp, mats, glows, flash, t: 0, host: p.surf, loops });
+  }
+  for (let i = b.flares.length - 1; i >= 0; i--) {
+    const f = b.flares[i];
+    f.t += realDt;
+    const k = f.t / FLARE_LIFE;
+    if (k >= 1 || !b.alive) {
+      f.grp.parent && f.grp.parent.remove(f.grp);
+      for (const m of f.mats) m.dispose();
+      for (const m of f.glows) m.dispose();
+      b.flares.splice(i, 1);
+      continue;
+    }
+    f.grp.visible = px > 24;
+    // the flash is over in a moment; the arches climb, glow and drain away
+    f.mats[f.loops].opacity = Math.max(0, 1 - k * 5) * 1.4;
+    const rise = smoothstep(clamp(k * 3, 0, 1));
+    const glow = Math.min(1, k * 5) * (1 - smoothstep(clamp((k - 0.45) / 0.55, 0, 1)));
+    for (let j = 0; j < f.loops; j++) { f.mats[j].opacity = glow * 0.75; f.glows[j].opacity = glow * 0.3; }
+    f.grp.scale.setScalar(0.35 + 0.65 * rise);
+  }
+}
+
 /* ================================================================== renderer */
 
 let renderer, scene, camera, canvasEl;
@@ -14988,6 +15079,7 @@ function updateVisuals(realDt, simDt) {
     // what sells the shells as standing at different heights rather than
     // being painted onto the same ball.
     if (p.corona) p.corona.rotation.y = b.rot * 0.79;
+    if (def.star && def.surf === 'star' && !def.dead && p.surf) starFlares(b, def, px, realDt);
 
     // ---- lighting direction for the atmosphere rim
     if (p.atmo && p.atmo.visible) {
