@@ -10980,13 +10980,14 @@ function seedGalaxyStars(b) {
       clumps.push([Math.cos(a) * d, Math.sin(a) * d, gauss() * 0.10 * R, 0.10 + rng() * 0.16]);
     }
   }
-  const BULGE_SHARE = { spiral: 0.14, barred: 0.18, ring: 0.16, elliptical: 1, irregular: 0.08, dwarf: 0.06 }[shape];
-  // A plain spiral (an Andromeda) has a wide golden inner disc round its core,
-  // wound into the same spiral as the arms, with dark dust lanes between.
-  const INNER_SHARE = shape === 'spiral' ? 0.28 : 0;
-  // Its arms are many and wound tight, so they wrap the disc round and round
-  // like the rings of an Andromeda rather than sweeping out as two.
-  const SPIRAL_WIND = 6.0, SPIRAL_ARMS = Math.max(arms, 4);
+  const BULGE_SHARE = { spiral: 0.09, barred: 0.18, ring: 0.16, elliptical: 1, irregular: 0.08, dwarf: 0.06 }[shape];
+  /* A plain spiral is a grand-design one, like M74 seen face on: a small,
+     bright, warm core with a little golden glow round it, and thin, well
+     defined blue-violet arms that start right at the core and sweep out about
+     one and a half turns, beaded with pink star-forming knots. */
+  const INNER_SHARE = shape === 'spiral' ? 0.07 : 0;
+  const SPIRAL_WIND = 3.5, SPIRAL_ARMS = Math.max(arms, 5);
+  const ARM_V = [0.66, 0.66, 1.0], DISC_V = [0.50, 0.46, 0.82];   // its violet-blue arms and haze
 
   const want = Math.min(b.galN || GAL_STARS, galx.free.length);
   const mine = [];
@@ -11012,11 +11013,12 @@ function seedGalaxyStars(b) {
       s = R * (0.06 + rng() * 0.10) * (0.6 + t);
       hot = true; old = true; disp = 0.28;
     } else if (bulge) {
-      const r = (0.02 + Math.pow(rng(), 2.1) * 0.20) * R;
+      const rb = shape === 'spiral' ? 0.10 : 0.20;  // a grand-design spiral's core is small
+      const r = (0.02 + Math.pow(rng(), 2.1) * rb) * R;
       const th = rng() * TAU;
       lx = Math.cos(th) * r; ly = Math.sin(th) * r;
       lz = gauss() * r * 0.55;                      // a fat, round bulge
-      c = mix(BULGE, [1, 1, 1], Math.pow(1 - r / (0.22 * R), 2) * 0.7);
+      c = mix(BULGE, [1, 1, 1], Math.pow(1 - r / ((rb + 0.02) * R), 2) * 0.7);
       // a quarter of the puffs in a twentieth of the area: keep each one faint
       c = [c[0] * 0.45, c[1] * 0.45, c[2] * 0.45];
       s = R * (0.05 + rng() * 0.07);
@@ -11024,7 +11026,7 @@ function seedGalaxyStars(b) {
     } else if (INNER_SHARE && i < want * (BULGE_SHARE + INNER_SHARE)) {
       // The inner disc: old golden stars with brown dust among them, laid
       // along the spiral so the gaps between its windings show as dark lanes.
-      const t = 0.05 + Math.pow(rng(), 0.85) * 0.50;
+      const t = 0.05 + Math.pow(rng(), 0.85) * 0.17;
       const r = t * R;
       const spread = gauss() * 0.55;
       const th = Math.log(t / 0.10) * SPIRAL_WIND + ((rng() * SPIRAL_ARMS) | 0) * (TAU / SPIRAL_ARMS) + spread;
@@ -11032,8 +11034,8 @@ function seedGalaxyStars(b) {
       lz = gauss() * (0.015 + t * 0.02) * R;
       const lane = clamp(1 - Math.abs(spread) / 0.8, 0, 1);
       // golden near the middle and along the windings, dusty brown between
-      c = mix([0.50, 0.32, 0.20], [1.0, 0.78, 0.48], clamp(lane * 0.55 + (1 - t / 0.55) * 0.45, 0, 1));
-      const dim = 0.15 + 0.20 * lane + 0.16 * (1 - t / 0.55);
+      c = mix([0.62, 0.48, 0.40], [1.0, 0.86, 0.66], clamp(lane * 0.5 + (1 - t / 0.22) * 0.5, 0, 1));
+      const dim = 0.16 + 0.16 * lane + 0.18 * (1 - t / 0.22);
       c = [c[0] * dim, c[1] * dim, c[2] * dim];
       s = R * (0.045 + rng() * 0.07);             // broad puffs: a haze, not dots
       old = true; disp = 0.08;
@@ -11072,25 +11074,34 @@ function seedGalaxyStars(b) {
     } else {
       // Spiral arms; for a barred spiral they start at the ends of the bar.
       // (a plain spiral's arms begin outside its golden inner disc)
-      const r0 = shape === 'barred' ? 0.40 : shape === 'spiral' ? 0.36 : 0.14;
-      const r = (r0 + Math.sqrt(rng()) * (1 - r0)) * R;
+      const r0 = shape === 'barred' ? 0.40 : shape === 'spiral' ? 0.09 : 0.14;
+      // (a grand design's disc thins out outwards, the way real discs do)
+      const r = shape === 'spiral'
+        ? Math.min(r0 + (-Math.log(1 - rng() * 0.93)) * 0.36, 1) * R
+        : (r0 + Math.sqrt(rng()) * (1 - r0)) * R;
       const t = r / R;
-      const spread = (0.16 + t * 0.34) * gauss() * (shape === 'spiral' ? 2.0 : 2.2);
+      const spread = (0.16 + t * 0.34) * gauss() * (shape === 'spiral' ? 1.7 : 2.2);
       const th = shape === 'barred'
         ? Math.log(t / r0) * WIND * 0.8 + ((rng() * 2) | 0) * Math.PI + spread
         : shape === 'spiral'
-          ? Math.log(t / 0.10) * SPIRAL_WIND + ((rng() * SPIRAL_ARMS) | 0) * (TAU / SPIRAL_ARMS) + spread
+          ? (() => {
+            // each arm wavers and kinks a little along its length, not a drawn curve
+            const arm = (rng() * SPIRAL_ARMS) | 0;
+            return Math.log(t / 0.10) * SPIRAL_WIND + arm * (TAU / SPIRAL_ARMS) + spread +
+              Math.sin(t * 11 + arm * 2.3) * 0.22 + Math.sin(t * 23 + arm * 5.1) * 0.10;
+          })()
           : Math.log(Math.max(t, 0.02) / 0.10) * WIND + ((rng() * arms) | 0) * (TAU / arms) + spread;
       lx = Math.cos(th) * r; ly = Math.sin(th) * r;
       lz = gauss() * (0.012 + t * 0.020) * R;       // a thin disc
       const onArm = clamp(1 - Math.abs(spread) / (0.2 + t * 0.4), 0, 1);
-      c = mix(DISC, ARM, onArm);
+      c = shape === 'spiral' ? mix(DISC_V, ARM_V, onArm) : mix(DISC, ARM, onArm);
       // Star-forming knots are small, tight and bright; the rest is broad haze.
-      const knot = onArm > 0.55 && rng() < 0.15;
-      if (knot) c = mix(c, HII, 0.85);
-      const dim = (0.42 + onArm * 0.8) * (knot ? 3.2 : 1);
+      const knot = onArm > 0.55 && rng() < (shape === 'spiral' ? 0.2 : 0.15);
+      if (knot) c = mix(c, shape === 'spiral' ? [1.0, 0.36, 0.78] : HII, 0.85);   // magenta-pink in a grand design
+      // (a grand design's haze between the arms is brighter: the arms rise out of a glowing disc)
+      const dim = (shape === 'spiral' ? (0.5 + onArm * 0.62) * (0.65 + 0.5 * t) : 0.42 + onArm * 0.8) * (knot ? 3.2 : 1);
       c = [c[0] * dim, c[1] * dim, c[2] * dim];
-      s = knot ? R * (0.012 + rng() * 0.014)
+      s = knot ? R * (shape === 'spiral' ? 0.016 + rng() * 0.02 : 0.012 + rng() * 0.014)
         : R * (0.03 + rng() * 0.05) * (0.8 + t * 0.6) * (1 + (1 - onArm) * 1.6);   // between the arms, broad faint haze
     }
 
