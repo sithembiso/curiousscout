@@ -14953,6 +14953,12 @@ function updateVisuals(realDt, simDt) {
 
     // ---- a pulsar's lighthouse beams, swept round on the wall clock (the real
     // 30 turns a second would only strobe)
+    /* Every neutron star fires twin jets of plasma off its magnetic poles, at
+       nearly the speed of light, sweeping round like a lighthouse as it turns
+       (that sweep is what makes a pulsar pulse). Built the first time it is
+       drawn; the Crab Pulsar's own, much longer beams are made with its map. */
+    if (def.surf === 'neutron' && !p.beams && b.obj) { addPulsarBeams(b, 1); b.beamAuto = true; }
+    if (p.beams && b.beamAuto) p.beams.scale.setScalar(Math.max(r * 90, 60 * wpp));
     if (p.beams) p.beams.children[0].rotation.y = performance.now() / 1000 * TAU * 0.5;
 
     // ---- black holes
@@ -18852,10 +18858,15 @@ const PULSAR_FRAG = `
     float along = pow(1.0 - vY, 1.2) * smoothstep(0.0, 0.02, vY);
     gl_FragColor = vec4(vec3(0.75, 0.88, 1.0), along * pow(vEdge, 1.2) * 1.6);
   }`;
+let pulsarGeo = null, pulsarMat = null;      // one beam shape for every neutron star
 function addPulsarBeams(b, len) {
-  const geo = new THREE.CylinderGeometry(0.11, 0.006, 1, 24, 1, true).translate(0, 0.5, 0);
-  const mat = new THREE.ShaderMaterial({ vertexShader: JET_VERT, fragmentShader: PULSAR_FRAG,
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  if (!pulsarGeo) {
+    pulsarGeo = new THREE.CylinderGeometry(0.11, 0.006, 1, 24, 1, true).translate(0, 0.5, 0);
+    pulsarMat = new THREE.ShaderMaterial({ vertexShader: JET_VERT, fragmentShader: PULSAR_FRAG,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    pulsarMat.userData.shared = true;
+  }
+  const geo = pulsarGeo, mat = pulsarMat;
   const spin = new THREE.Group();                 // turns about the spin axis
   for (const d of [1, -1]) {
     const beam = new THREE.Mesh(geo, mat);
