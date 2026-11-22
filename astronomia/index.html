@@ -8013,7 +8013,9 @@ function tidalStretch(b, px) {
   const def = TYPES[b.type];
   let e = 0;
   if (settings.tidal && b.kind === 'body' && !def.craft && land.b !== b && px > 2 && b.m > 0) {
-    const R = visRadius(b);
+    // its real size, not the size it is drawn at: the drawing is blown up to be
+    // seen, and the stretch grows as the cube of the size
+    const R = b.r;
     let best = 0;
     for (const o of sim.bodies) {
       if (o === b || !o.alive || !(o.m > b.m * 2) || o.kind === 'gal' || o.kind === 'wh') continue;
