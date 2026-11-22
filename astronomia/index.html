@@ -10644,7 +10644,9 @@ const GAL_SOFT = 0.55;
 const GAL_VERT = `
   attribute vec3 aCol;
   attribute float aSize;
+  attribute float aDust;
   uniform float uScale;
+  uniform float uDust;      // 0: the glowing gas, 1: the dark dust
   varying vec3 vCol;
   varying float vA;
   void main() {
@@ -10656,7 +10658,22 @@ const GAL_VERT = `
     gl_PointSize = aSize > 0.0 ? clamp(px, 3.0, 240.0) : 0.0;
     // A freed slot is parked off-screen too: some GPUs still draw a zero-size
     // point as one pixel, which leaves a ghost of the last galaxy behind.
-    if (aSize <= 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    if (aSize <= 0.0 || abs(aDust - uDust) > 0.5) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+  }`;
+
+/* Dust does not shine: it blots out the light behind it. So it is drawn after
+   the glowing gas with ordinary blending, as soft brown-black puffs that dim
+   whatever they lie over — the dark lanes along a spiral's arms. */
+const GAL_DUST_FRAG = `
+  uniform float uDustA;
+  varying vec3 vCol;
+  varying float vA;
+  void main() {
+    vec2 q = gl_PointCoord * 2.0 - 1.0;
+    float d2 = dot(q, q);
+    if (d2 > 1.0) discard;
+    float a = (exp(-d2 * 3.2) - 0.0408) / 0.9592;
+    gl_FragColor = vec4(vCol, a * vA * uDustA);
   }`;
 
 const GAL_FRAG = `
@@ -10671,7 +10688,7 @@ const GAL_FRAG = `
     float a = (exp(-d2 * 3.2) - 0.0408) / 0.9592;
     gl_FragColor = vec4(vCol * uGain, a * vA);
   }`;
-const GAL_GAIN = 0.03;
+const GAL_GAIN = 0.07;
 
 /* A galaxy star seen up close: a real ball of fire. Drawn camera-relative
    (galx.mesh sits at the camera and each instance is offset from it), because
@@ -10791,6 +10808,7 @@ function setGalStar(k, kind, rng) {
 const GAL_STAR_VERT = `
   attribute vec3 aSCol;
   attribute float aSize;
+  attribute float aDust;
   attribute float aStar;
   attribute float aRad;
   uniform float uDpr;
@@ -10813,7 +10831,7 @@ const GAL_STAR_VERT = `
     s = max(s * uDpr, min(sqrt(disc) * 14.0 * uDpr, 80.0));
     s = max(s, min(disc * 9.0, 900.0));
     gl_PointSize = aSize > 0.0 ? s : 0.0;
-    if (aSize <= 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    if (aSize <= 0.0 || aDust > 0.5) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);   // dust is not a star
   }`;
 
 const GAL_STAR_FRAG = `
@@ -10854,6 +10872,7 @@ function initGalaxyStars() {
   galx.siz = new Float32Array(GAL_MAX);
   galx.ssz = new Float32Array(GAL_MAX);
   galx.own = new Int32Array(GAL_MAX);
+  galx.dust = new Float32Array(GAL_MAX);   // 1 for a cloud of dark dust rather than glowing gas
   galx.free.length = 0;
   for (let i = GAL_MAX - 1; i >= 0; i--) { galx.free.push(i); galx.own[i] = -1; }
   galx.live = 0;
@@ -10865,19 +10884,28 @@ function initGalaxyStars() {
   geo.setAttribute('aCol', new THREE.BufferAttribute(galx.col, 3));
   geo.setAttribute('aSize', new THREE.BufferAttribute(galx.siz, 1));
   geo.setAttribute('aStar', new THREE.BufferAttribute(galx.ssz, 1));
+  geo.setAttribute('aDust', new THREE.BufferAttribute(galx.dust, 1));
   galx.geo = geo;
   // Each test particle is drawn as a soft puff of glowing gas sized in WORLD
   // units, not as a speck: thousands of them overlap into continuous clouds —
   // a bright bulge, arms of blue starlight and pink nebulae, tails that read as
   // streamers of gas rather than a spray of dots.
   galx.pts = new THREE.Points(geo, new THREE.ShaderMaterial({
-    uniforms: { uScale: { value: 1 }, uGain: { value: GAL_GAIN } },
+    uniforms: { uScale: { value: 1 }, uGain: { value: GAL_GAIN }, uDust: { value: 0 } },
     vertexShader: GAL_VERT, fragmentShader: GAL_FRAG,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
   }));
   galx.pts.frustumCulled = false;
   galx.pts.renderOrder = -5;             // behind every solid body in the scene
   scene.add(galx.pts);
+  galx.dustPts = new THREE.Points(geo, new THREE.ShaderMaterial({
+    uniforms: { uScale: { value: 1 }, uDust: { value: 1 }, uDustA: { value: 0.4 } },
+    vertexShader: GAL_VERT, fragmentShader: GAL_DUST_FRAG,
+    transparent: true, depthWrite: false, blending: THREE.NormalBlending
+  }));
+  galx.dustPts.frustumCulled = false;
+  galx.dustPts.renderOrder = -4.5;       // over the gas, under the stars
+  scene.add(galx.dustPts);
   galx.stars = new THREE.Points(geo, new THREE.ShaderMaterial({
     uniforms: { uDpr: { value: VIEW.dpr }, uScale: { value: 1 } },
     vertexShader: GAL_STAR_VERT, fragmentShader: GAL_STAR_FRAG,
@@ -10925,6 +10953,7 @@ function freeGalaxyStars(id) {
     if (galx.own[k] !== id) continue;
     galx.own[k] = -1;
     galx.siz[k] = 0;
+    galx.dust[k] = 0;
     galx.free.push(k);
     galx.live--;
   }
@@ -11000,6 +11029,7 @@ function seedGalaxyStars(b) {
        whether it moves in the disc (`hot` false) or swarms on an orbit tipped
        at random, the way the stars of a bulge or an elliptical do. */
     let lx, ly, lz, c, s, hot = false, old = bulge, disp = 0.05;
+    galx.dust[k] = 0;
 
     if (shape === 'elliptical') {
       // A triaxial egg, densest at the middle, all old stars.
@@ -11080,7 +11110,13 @@ function seedGalaxyStars(b) {
         ? Math.min(r0 + (-Math.log(1 - rng() * 0.93)) * 0.36, 1) * R
         : (r0 + Math.sqrt(rng()) * (1 - r0)) * R;
       const t = r / R;
-      const spread = (0.16 + t * 0.34) * gauss() * (shape === 'spiral' ? 1.7 : 2.2);
+      /* A fifth of a spiral's arm clouds are dust instead of gas: dark lanes
+         running along the inside edge of each arm, the way real spirals show
+         them, plus loose patches scattered through the disc. */
+      const dust = (shape === 'spiral' || shape === 'barred') && rng() < 0.18;
+      const lane = dust && rng() < 0.7;
+      const spread = lane ? -(0.12 + Math.abs(gauss()) * 0.10) * (0.7 + t)
+        : (0.16 + t * 0.34) * gauss() * (shape === 'spiral' ? 1.7 : 2.2);
       const th = shape === 'barred'
         ? Math.log(t / r0) * WIND * 0.8 + ((rng() * 2) | 0) * Math.PI + spread
         : shape === 'spiral'
@@ -11099,10 +11135,17 @@ function seedGalaxyStars(b) {
       const knot = onArm > 0.55 && rng() < (shape === 'spiral' ? 0.2 : 0.15);
       if (knot) c = mix(c, shape === 'spiral' ? [1.0, 0.36, 0.78] : HII, 0.85);   // magenta-pink in a grand design
       // (a grand design's haze between the arms is brighter: the arms rise out of a glowing disc)
-      const dim = (shape === 'spiral' ? (0.5 + onArm * 0.62) * (0.65 + 0.5 * t) : 0.42 + onArm * 0.8) * (knot ? 3.2 : 1);
+      // (a spiral's arms are lit a little brighter, to shine through their dust)
+      const dim = (shape === 'spiral' ? (0.5 + onArm * 0.62) * (0.65 + 0.5 * t) * 1.2 : 0.42 + onArm * 0.8) * (knot ? 3.2 : 1);
       c = [c[0] * dim, c[1] * dim, c[2] * dim];
       s = knot ? R * (shape === 'spiral' ? 0.016 + rng() * 0.02 : 0.012 + rng() * 0.014)
         : R * (0.03 + rng() * 0.05) * (0.8 + t * 0.6) * (1 + (1 - onArm) * 1.6);   // between the arms, broad faint haze
+      if (dust) {
+        // brown-black, and soft: lanes long and narrow-ish, patches broader
+        c = mix([0.10, 0.06, 0.04], [0.20, 0.13, 0.09], rng());
+        s = R * (lane ? 0.03 + rng() * 0.035 : 0.04 + rng() * 0.06) * (0.8 + t * 0.6);
+        galx.dust[k] = 1;
+      }
     }
 
     galx.pos[k3] = b.p.x + u.x * lx + w.x * ly + ax.x * lz;
@@ -11412,6 +11455,7 @@ function updateGalaxies() {
     const S = VIEW.h * VIEW.dpr / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
     galx.stars.material.uniforms.uDpr.value = VIEW.dpr;
     galx.pts.material.uniforms.uScale.value = S;
+    if (galx.dustPts) galx.dustPts.material.uniforms.uScale.value = S;
     galx.stars.material.uniforms.uScale.value = S;
     if (galx.live > 0) placeGalaxyStars(S);
     else {
@@ -11425,6 +11469,7 @@ function updateGalaxies() {
       galx.geo.attributes.aRad.needsUpdate = true;
       galx.geo.attributes.aCol.needsUpdate = true;
       galx.geo.attributes.aSize.needsUpdate = true;
+      galx.geo.attributes.aDust.needsUpdate = true;
       galx.geo.attributes.aStar.needsUpdate = true;
       galx.dirty = false;
     }
@@ -11457,6 +11502,7 @@ function placeGalaxyStars(S) {
   placePlanets(S);
   galx.geo.attributes.position.needsUpdate = true;
   galx.pts.position.copy(o);
+  if (galx.dustPts) galx.dustPts.position.copy(o);
   galx.stars.position.copy(o);
 
   const sm = galx.mesh;
