@@ -2958,7 +2958,7 @@ const TYPES = {
   irregular_galaxy: {
     label: 'Irregular Galaxy', group: 'DISCS & GALAXIES', mass: 4.3e6 * M_SUN, rad: 0,
     kind: 'gal', shape: 'irregular', scale: [0.2, 0.5], spin: 6e6,
-    blurb: 'No arms, no shape — just bright clumps of young blue stars and glowing pink gas, often torn up by a bigger neighbour. The Magellanic Clouds are irregulars.'
+    blurb: 'No arms and no tidy shape: a big oval cluster of old yellow stars, blue-grey clouds of dust drifting round it, and small star clusters and bright novae scattered all through it, often torn up by a bigger neighbour. The Magellanic Clouds are irregulars.'
   },
   ring_galaxy: {
     label: 'Ring Galaxy', group: 'DISCS & GALAXIES', mass: 4.3e6 * M_SUN, rad: 0,
@@ -11018,13 +11018,36 @@ function seedGalaxyStars(b) {
   const OLD = [1.0, 0.78, 0.52];        // an elliptical's whole population
   // Irregulars and dwarfs are built round a handful of star-forming clumps.
   const clumps = [];
-  if (shape === 'irregular' || shape === 'dwarf') {
-    const nc = shape === 'dwarf' ? 2 + ((rng() * 2) | 0) : 4 + ((rng() * 4) | 0);
+  if (shape === 'dwarf') {
+    const nc = 2 + ((rng() * 2) | 0);
     for (let j = 0; j < nc; j++) {
       const a = rng() * TAU, d = Math.sqrt(rng()) * 0.62 * R;
       clumps.push([Math.cos(a) * d, Math.sin(a) * d, gauss() * 0.10 * R, 0.10 + rng() * 0.16]);
     }
   }
+  /* An irregular is drawn from a picture of one: a big oval cluster of yellow
+     stars a little off the middle, blue-grey clouds of dust with pale violet
+     edges scattered round it, and dotted through it all, small yellow star
+     clusters and bright magenta novae — some of them shining out of the dust. */
+  const irr = shape === 'irregular' ? (() => {
+    const core = { x: (rng() - 0.5) * 0.3 * R, y: (rng() - 0.5) * 0.25 * R, rx: (0.18 + rng() * 0.06) * R, ry: (0.12 + rng() * 0.04) * R };
+    const clouds = [], nc = 3 + ((rng() * 3) | 0);
+    for (let j = 0; j < nc; j++) {
+      const a = j / nc * TAU + rng() * 0.9, d = (0.42 + rng() * 0.38) * R;
+      const r = (j === 0 ? 0.22 : 0.08 + rng() * 0.10) * R;
+      clouds.push({ x: core.x + Math.cos(a) * d, y: core.y + Math.sin(a) * d * 0.8, rx: r, ry: r * (0.75 + rng() * 0.25) });
+    }
+    const spot = (inCloud) => {
+      if (inCloud) { const c = clouds[(rng() * clouds.length) | 0], a = rng() * TAU, q = Math.sqrt(rng()) * 0.7;
+        return [c.x + Math.cos(a) * c.rx * q, c.y + Math.sin(a) * c.ry * q]; }
+      const a = rng() * TAU, d = (0.25 + rng() * 0.6) * R;
+      return [core.x + Math.cos(a) * d, core.y + Math.sin(a) * d * 0.8];
+    };
+    const novae = [], groups = [];
+    for (let j = 0; j < 7; j++) novae.push(spot(j < clouds.length));      // one in every cloud, a few loose
+    for (let j = 0; j < 5; j++) groups.push(spot(false));
+    return { core, clouds, novae, groups };
+  })() : null;
   const BULGE_SHARE = { spiral: 0.09, barred: 0.18, ring: 0.16, elliptical: 1, irregular: 0.08, dwarf: 0.06 }[shape];
   /* A plain spiral is a grand-design one, like M74 seen face on: a small,
      bright, warm core with a little golden glow round it, and thin, well
@@ -11044,7 +11067,7 @@ function seedGalaxyStars(b) {
        u, ly along w, lz up the spin axis — its cloud colour and puff size, and
        whether it moves in the disc (`hot` false) or swarms on an orbit tipped
        at random, the way the stars of a bulge or an elliptical do. */
-    let lx, ly, lz, c, s, hot = false, old = bulge, disp = 0.05;
+    let lx, ly, lz, c, s, hot = false, old = bulge, disp = 0.05, nova = false;
     galx.dust[k] = 0;
 
     if (shape === 'elliptical') {
@@ -11058,6 +11081,50 @@ function seedGalaxyStars(b) {
       c = [c[0] * dim, c[1] * dim, c[2] * dim];
       s = R * (0.06 + rng() * 0.10) * (0.6 + t);
       hot = true; old = true; disp = 0.28;
+    } else if (irr) {
+      const roll = rng();
+      if (roll < 0.30) {
+        // the big yellow cluster: an oval, densest in the middle
+        const q = Math.pow(rng(), 0.8), a = rng() * TAU;
+        lx = irr.core.x + Math.cos(a) * irr.core.rx * q; ly = irr.core.y + Math.sin(a) * irr.core.ry * q;
+        lz = gauss() * 0.05 * R;
+        c = mix([1.0, 0.80, 0.30], [1.0, 0.95, 0.75], (1 - q) * 0.6);
+        const dim = 0.26 + (1 - q) * 0.12;
+        c = [c[0] * dim, c[1] * dim * 0.92, c[2] * dim * 0.6];
+        s = R * (0.04 + rng() * 0.05);
+        hot = true; old = true; disp = 0.2;
+      } else if (roll < 0.62) {
+        // a dust cloud: blue-grey, with a pale violet rim
+        const cl = irr.clouds[(rng() * irr.clouds.length) | 0];
+        const rim = rng() < 0.3, q = rim ? 0.92 + rng() * 0.1 : Math.sqrt(rng()) * 0.85, a = rng() * TAU;
+        lx = cl.x + Math.cos(a) * cl.rx * q; ly = cl.y + Math.sin(a) * cl.ry * q;
+        lz = gauss() * 0.03 * R;
+        c = rim ? [0.70, 0.66, 0.86] : mix([0.40, 0.54, 0.74], [0.46, 0.60, 0.80], rng());
+        s = rim ? cl.rx * (0.10 + rng() * 0.08) : cl.rx * (0.30 + rng() * 0.25);
+        galx.dust[k] = 1;
+      } else if (roll < 0.72) {
+        // small yellow star clusters
+        const g = irr.groups[(rng() * irr.groups.length) | 0];
+        lx = g[0] + gauss() * 0.012 * R; ly = g[1] + gauss() * 0.012 * R; lz = gauss() * 0.01 * R;
+        c = [1.0 * 1.1, 0.78 * 1.1, 0.12 * 1.1];         // kept under white, or it stops being yellow
+        s = R * (0.008 + rng() * 0.012);
+        old = true;
+      } else if (roll < 0.82) {
+        // novae: bright magenta points, some in the dust
+        const n = irr.novae[(rng() * irr.novae.length) | 0];
+        lx = n[0] + gauss() * 0.005 * R; ly = n[1] + gauss() * 0.005 * R; lz = gauss() * 0.005 * R;
+        c = [0.87 * 1.15, 0.20 * 1.15, 1.0 * 1.15];       // kept under white, or it stops being magenta
+        s = R * (0.02 + rng() * 0.025);
+        nova = true;
+      } else {
+        // and a faint haze of ordinary stars holding it all together
+        const a = rng() * TAU, d = Math.sqrt(rng()) * 0.95 * R;
+        lx = irr.core.x * 0.5 + Math.cos(a) * d; ly = irr.core.y * 0.5 + Math.sin(a) * d * 0.75; lz = gauss() * 0.06 * R;
+        c = mix(ARM, BULGE, rng());
+        c = [c[0] * 0.22, c[1] * 0.22, c[2] * 0.22];
+        s = R * (0.05 + rng() * 0.06);
+      }
+      disp = Math.max(disp, 0.08);
     } else if (bulge) {
       const rb = shape === 'spiral' ? 0.10 : 0.20;  // a grand-design spiral's core is small
       const r = (0.02 + Math.pow(rng(), 2.1) * rb) * R;
@@ -11193,6 +11260,11 @@ function seedGalaxyStars(b) {
     galx.siz[k] = s;
     // What kind of star this actually is. Blue giants live on the young arms.
     setGalStar(k, pickGalKind(old, c[2] > c[0] && rng() < 0.7, rng), rng);
+    if (nova) {
+      // drawn again as a bright magenta star, over the dust, so a nova in a cloud shines out of it
+      galx.scol[k3] = 0.85; galx.scol[k3 + 1] = 0.12; galx.scol[k3 + 2] = 1.0;
+      galx.ssz[k] = Math.max(galx.ssz[k], 4.5);
+    }
     galx.own[k] = b.id;
     galx.live++;
     mine.push(k);
