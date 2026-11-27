@@ -4372,14 +4372,17 @@ function corePlan(a) {
       'the whole star blew itself apart.'
   };
 }
-/* How long burying one world in another takes, in SECONDS OF WALL CLOCK — not
-   simulated days. A real planetary impact is over in minutes: work it out from
-   the speed of arrival and the whole thing finishes inside a single frame at any
-   watchable time rate, which is exactly the "it vanished instantly" this is meant
-   to fix. So it runs on the same clock as the other things built to be looked
-   at, and a bigger impactor takes longer to go under than a smaller one. */
-const ENGULF_MIN_SEC = 0.40;
-const ENGULF_MAX_SEC = 1.90;
+/* Burying one world in another runs on the GAME clock, for as long as it would
+   really take (worked out in beginEngulf): a planetary impact lasts tens of
+   minutes to hours, so slow the clock down to minutes a second to watch one. */
+/** A collision's length: "28 minutes", "1.5 hours", "3 days". */
+function fmtSpan(days) {
+  const sec = days * 86400;
+  if (sec < 90) return Math.max(1, Math.round(sec)) + ' seconds';
+  if (sec < 5400) return Math.round(sec / 60) + ' minutes';
+  if (sec < 172800) return prec(sec / 3600, 2) + ' hours';
+  return prec(days, 2) + ' days';
+}
 const ENGULF_STEPS = 10;         // how many times the crater is re-cut on the way in
 
 function beginEngulf(a, b, vImp, vEsc) {
@@ -4398,11 +4401,17 @@ function beginEngulf(a, b, vImp, vEsc) {
   const vel = a.v.clone().multiplyScalar(a.m).addScaledVector(b.v, b.m).divideScalar(mt);
   a.v.copy(vel); b.v.copy(vel);
 
-  // (a long way down to a star's core: slow enough to watch)
-  const T = Math.max(clamp(0.40 + 1.30 * (rb / Math.max(ra, 1e-9)), ENGULF_MIN_SEC, ENGULF_MAX_SEC), deep ? 1.6 : 0);
+  /* How long it really takes, in simulated days, run on the game clock: the
+     impactor ploughs in from first touch until the two cores meet, slowing as
+     it goes (about three times as long as it would take at its arrival speed).
+     The Moon-forming hit comes out at about half an hour, so at 28 minutes a
+     second it takes about a second to watch, and at a day a second it is over
+     in a blink, as a real one would be. */
+  const plough = (a.r + b.r) * (1 - CORE_FRAC);
+  const T = 3 * plough / Math.max(vImp, vEsc * 0.5, 1e-9);
   const hole = clamp(Math.cbrt(b.m / Math.max(a.m, 1e-12)) * 1.5, 0.14, 1.1);
   b.sink = {
-    host: a, t: 0, T: T, vImp: vImp, vEsc: vEsc, dir: dir, spray: 0, inbound: inbound,
+    host: a, t: 0, T: T, Tsec: T * 86400, vImp: vImp, vEsc: vEsc, dir: dir, spray: 0, inbound: inbound,
     heat: impactHeatOf(a, b, vImp, vEsc),
     // it sinks until the two cores touch
     ra: ra, rb: rb, d0: Math.min(a.p.distanceTo(b.p), ra + rb), d1: (ra + rb) * CORE_FRAC,
@@ -4413,6 +4422,7 @@ function beginEngulf(a, b, vImp, vEsc) {
   };
   coreGlow(a, b);
   fx.flash(b.p, rb * 2.4, [255, 200, 140], 0.45);
+  if (b.m > a.m * 0.001) toast(b.name + ' hits ' + a.name + ': the collision takes ' + fmtSpan(T));
   return true;
 }
 
@@ -4536,9 +4546,9 @@ function splashRing(a, b, s, x, dt) {
 }
 
 /** Advance every world currently sinking into another one. `dt` is in seconds. */
+/** `dt` is simulated DAYS: a collision runs on the game clock (see beginEngulf). */
 function updateEngulf(dt) {
   if (!(dt > 0)) return;
-  dt = Math.min(dt, 0.1);        // a stalled tab must not bury a world in one go
   let done = null;
   for (let i = 0; i < sim.bodies.length; i++) {
     const b = sim.bodies[i];
@@ -15084,7 +15094,7 @@ function updateVisuals(realDt, simDt) {
      with everything else, and frozen while time is paused. */
   const fxDt = sim.running ? realDt * slowmoScale() : 0;
   // Worlds part-way inside one another. First, because finishing one removes a body.
-  updateEngulf(fxDt);
+  updateEngulf(sim.running ? simDt : 0);     // collisions on the game clock: their real length
   updateTsunamis(fxDt);
   // Then, because an explosion can destroy bodies and is itself a light source
   // that the two passes below need to know about.
