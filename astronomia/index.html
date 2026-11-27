@@ -14792,7 +14792,10 @@ function applyMovie() {
 }
 
 /** Worlds that have people on them, or could: the living ones. */
-const hasCities = (b) => b.kind === 'body' && (isLivingSurf(TYPES[b.type]) || (b.terra || 0) > 0.5) && (b.water || 0) > 0;
+// Cities need a world where life is likely enough for people to have arisen
+// (Life-Likelihood over 50%); they shine brighter the likelier it is.
+const hasCities = (b) => b.kind === 'body' && (isLivingSurf(TYPES[b.type]) || (b.terra || 0) > 0.5) && (b.water || 0) > 0 && lifeOf(b) > 0.5;
+const cityGlow = (b) => smoothstep(clamp((lifeOf(b) - 0.5) / 0.4, 0, 1));
 
 /**
  * The lights of a world's cities, as a map: sparse warm specks over the land,
@@ -14863,6 +14866,7 @@ const CITY_FRAG = `
   #include <logdepthbuf_pars_fragment>
   uniform sampler2D uMap;
   uniform vec3 uL;        // towards the star, world axes
+  uniform float uAmt;     // how lit up: from its Life-Likelihood
   varying vec2 vUv;
   varying vec3 vN;
   void main() {
@@ -14870,7 +14874,7 @@ const CITY_FRAG = `
     // only where the sun has set, coming on through dusk
     float night = smoothstep(0.10, -0.20, dot(normalize(vN), uL));
     vec4 t = texture2D(uMap, vUv);
-    gl_FragColor = vec4(t.rgb * t.a * night * 1.1, 1.0);
+    gl_FragColor = vec4(t.rgb * t.a * night * 1.1 * uAmt, 1.0);
   }`;
 
 const _cityL = new THREE.Vector3();
@@ -14884,7 +14888,7 @@ function updateCities(b, px) {
     const tex = new THREE.CanvasTexture(cityTexture(b));
     tex.encoding = THREE.sRGBEncoding;
     const mat = new THREE.ShaderMaterial({
-      uniforms: { uMap: { value: tex }, uL: { value: new THREE.Vector3(1, 0, 0) } },
+      uniforms: { uMap: { value: tex }, uL: { value: new THREE.Vector3(1, 0, 0) }, uAmt: { value: 1 } },
       vertexShader: CITY_VERT, fragmentShader: CITY_FRAG,
       blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
@@ -14896,6 +14900,7 @@ function updateCities(b, px) {
   }
   p.city.geometry = p.surf.geometry;
   p.city.visible = true;
+  p.city.material.uniforms.uAmt.value = cityGlow(b);
   const star = nearestStar(b);
   if (star) p.city.material.uniforms.uL.value.copy(_cityL.subVectors(star.p, b.p).normalize());
 }
@@ -15457,7 +15462,13 @@ function updateVisuals(realDt, simDt) {
       const cold = clamp((110 - b.temp) / 70, 0, 1) * 0.5;
       mat.color.copy(b.baseColor).lerp(FROST, cold);
       // A world that was born living and is now losing it goes brown first.
-      if (b.terra < 1 && isLivingSurf(def)) mat.color.lerp(DEAD, (1 - b.terra) * 0.85);
+      /* How green it is follows its Life-Likelihood: a world fit for life is
+         covered in plants, and as the odds fall (an impact, a boiling or a
+         freezing, poisoned air) the green dies back to bare brown rock. */
+      if (isLivingSurf(def)) {
+        const veg = Math.min(clamp(b.terra != null ? b.terra : 1, 0, 1), lifeOf(b));
+        if (veg < 1) mat.color.lerp(DEAD, (1 - veg) * 0.85);
+      }
       // A world remade by a magma ocean has a new crust: none of its old lands
       if (b.resurfaced) {
         const crust = cachedTexture('lava', lavaTexture);
@@ -15468,7 +15479,7 @@ function updateVisuals(realDt, simDt) {
 
     // ---- the living layer fading in or out over a terraformed world
     if (p.terraSkin) {
-      const t = clamp(b.terra, 0, 1);
+      const t = Math.min(clamp(b.terra, 0, 1), lifeOf(b));   // greenery only as far as life can hold on
       const show = t > 0.004 && !tiny;
       p.terraSkin.visible = show;
       if (show) {
@@ -16563,6 +16574,13 @@ function earthSimilarity(b) {
  * that can keep that air, and a star that lives long enough for anything to
  * evolve. A world that is already alive scores at least its living surface.
  */
+/** Life-Likelihood, worked out at most a few times a second (it walks every star). */
+function lifeOf(b) {
+  const now = performance.now();
+  if (b._llT == null || now - b._llT > 250) { b._ll = lifeLikelihood(b); b._llT = now; }
+  return b._ll;
+}
+
 function lifeLikelihood(b) {
   const def = TYPES[b.type];
   const T = b.temp || 0;
