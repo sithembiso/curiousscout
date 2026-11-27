@@ -11031,10 +11031,10 @@ function seedGalaxyStars(b) {
      clusters and bright magenta novae — some of them shining out of the dust. */
   const irr = shape === 'irregular' ? (() => {
     const core = { x: (rng() - 0.5) * 0.3 * R, y: (rng() - 0.5) * 0.25 * R, rx: (0.18 + rng() * 0.06) * R, ry: (0.12 + rng() * 0.04) * R };
-    const clouds = [], nc = 5 + ((rng() * 3) | 0);
+    const clouds = [], nc = 20;                 // twenty clouds to a galaxy
     for (let j = 0; j < nc; j++) {
-      const a = j / nc * TAU + rng() * 0.9, d = (0.36 + rng() * 0.46) * R;
-      const r = (j === 0 ? 0.22 : 0.08 + rng() * 0.10) * R;
+      const a = j / nc * TAU * 3 + rng() * 1.2, d = (0.24 + rng() * 0.62) * R;
+      const r = (j === 0 ? 0.15 : 0.045 + rng() * 0.07) * R;
       clouds.push({ x: core.x + Math.cos(a) * d, y: core.y + Math.sin(a) * d * 0.8, rx: r, ry: r * (0.75 + rng() * 0.25) });
     }
     const spot = (inCloud) => {
@@ -11044,7 +11044,7 @@ function seedGalaxyStars(b) {
       return [core.x + Math.cos(a) * d, core.y + Math.sin(a) * d * 0.8];
     };
     const novae = [], groups = [];
-    for (let j = 0; j < clouds.length + 3; j++) novae.push(spot(j < clouds.length));      // one in every cloud, a few loose
+    for (let j = 0; j < 12; j++) novae.push(spot(j < 9));      // one in every cloud, a few loose
     for (let j = 0; j < 5; j++) groups.push(spot(false));
     return { core, clouds, novae, groups };
   })() : null;
