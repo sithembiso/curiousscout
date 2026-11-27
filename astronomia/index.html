@@ -15126,7 +15126,9 @@ const _basis = new THREE.Matrix4();
 const _tmpC = new THREE.Color();
 const FROST = new THREE.Color(0.72, 0.82, 0.95);
 /* What a living world fades to when it stops being one: dust. */
-const DEAD = new THREE.Color(0.60, 0.53, 0.44);
+// The tint a dying world's plants fade to. It multiplies the green land, so it
+// has to be bright and warm (over 1 in red) or the brown comes out muddy and dim.
+const DEAD = new THREE.Color(1.55, 1.08, 0.62);
 const CRUST = new THREE.Color(0.30, 0.27, 0.25);   // fresh dark basalt, after a magma ocean
 
 function refreshStarCache() {
@@ -15467,7 +15469,7 @@ function updateVisuals(realDt, simDt) {
          freezing, poisoned air) the green dies back to bare brown rock. */
       if (isLivingSurf(def)) {
         const veg = Math.min(clamp(b.terra != null ? b.terra : 1, 0, 1), lifeOf(b));
-        if (veg < 1) mat.color.lerp(DEAD, (1 - veg) * 0.85);
+        if (veg < 1) mat.color.lerp(DEAD, 1 - veg);
       }
       // A world remade by a magma ocean has a new crust: none of its old lands
       if (b.resurfaced) {
