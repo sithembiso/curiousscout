@@ -4418,7 +4418,8 @@ function beginEngulf(a, b, vImp, vEsc) {
     hole: hole, step: 0, bore: 0,
     // A mark from the very first moment of contact, barely open — the two
     // surfaces are only touching at a point yet.
-    mark: addScar(a, dir, hole * 0.12, inbound)
+    // (the wave is raised by the whole impactor, not by the first point of contact)
+    mark: addScar(a, dir, hole * 0.12, inbound, hole)
   };
   coreGlow(a, b);
   fx.flash(b.p, rb * 2.4, [255, 200, 140], 0.45);
@@ -4488,9 +4489,40 @@ function blowOffAir(a, heat, com, vel, vEsc) {
   parts.dirty = true;
 }
 
+/**
+ * A hit big enough to melt a whole world (a Mars into the Earth) leaves a
+ * magma ocean: every continent melts, the seas boil away into a steam sky,
+ * every living thing dies, and the clouds are gone. When it has cooled enough
+ * to crust over, the steam rains back down as one ocean over a brand-new
+ * crust: none of the old lands come back.
+ */
+function meltAll(a) {
+  if (a.kind !== 'body' || TYPES[a.type].star || GASSY_SURF.has(TYPES[a.type].surf)) return;
+  const first = !a.magmaOcean;
+  a.magmaOcean = true;
+  if ((a.water || 0) > 0) { a.waterWas = Math.max(a.waterWas || 0, a.water); setWater(a, 0); }
+  const lived = (a.terra || 0) > 0.01 && isLivingSurf(TYPES[a.type]);
+  a.terra = 0; a.terraOn = false; a.lifeHit = 0;
+  if (first && !a.rubble) setTimeout(() => { if (a.alive) toast(a.name + ' has melted into a magma ocean' +
+    (lived ? ': its seas have boiled away and nothing is left alive' : '')); }, 3200);
+}
+function magmaOcean(b) {
+  if ((b.impactHeat || 0) > 0.12) return;
+  b.magmaOcean = false;
+  b.resurfaced = true;
+  b.scars = []; b.scarCount = 0;
+  if (b.parts) buildScars(b);
+  if (b.waterWas > 0 && canHoldWater(b)) {
+    setWater(b, 1);                       // the steam rains back as one ocean over the new crust
+    toast(b.name + '’s magma ocean has crusted over, and its steam has rained back as a world-wide ocean');
+  } else toast(b.name + '’s magma ocean has crusted over');
+  b.waterWas = 0;
+}
+
 /** How hot a hit leaves the whole surface, 0–1: a pebble nothing, a Theia white-hot. */
 function impactHeatOf(a, b, vImp, vEsc) {
-  const sev = clamp(vImp / Math.max(vEsc, 1e-9), 0.5, 2);
+  // (nothing falls in slower than escape speed: gravity alone brings it in at least that fast)
+  const sev = clamp(vImp / Math.max(vEsc, 1e-9), 1, 2);
   return clamp(Math.sqrt(b.m / Math.max(a.m + b.m, 1e-12)) * 2.4 * sev, 0, 1);
 }
 
@@ -4927,6 +4959,7 @@ function merge(a, b, vImp, vEsc, mark) {
   const heat = impactHeatOf(a, b, vImp, vEsc);
   a.impactHeat = Math.max(a.impactHeat || 0, heat);
   blowOffAir(a, heat, com, vel, vEsc);
+  if (a.impactHeat >= 0.5) meltAll(a);
   fx.flash(com, visRadius(a) * 4, [255, 210, 150], 0.7);
   toast(note + (clumped > 0 ? ' — knots of it flew off' : '') +
     (brought > 0.02 ? ' — and its water with it' : ''));
@@ -4972,6 +5005,10 @@ function shatter(a, b, vImp) {
   refreshVisual(a);
   // The survivor wears the hit. This one is a big mark — it was nearly destroyed.
   addScar(a, hitDir, rnd(0.55, 1.1), inbound);
+  // and is left as hot as any world that took a hit that size: molten all over, after a planet
+  const heat = impactHeatOf(a, b, vImp, vEsc);
+  a.impactHeat = Math.max(a.impactHeat || 0, heat);
+  if (heat >= 0.5) meltAll(a);
 
   /* What is left splits three ways: a few big solid fragments, a handful of
      selectable knots that are mostly still vapour, and the fine gas already
@@ -7259,6 +7296,7 @@ const TSU_VERT = `
   attribute float aLand;
   uniform vec3 uN;
   uniform float uR, uW, uH, uBack;
+  uniform float uDeep, uTop;      // a giant impact's wave: how far it drowns the land, and over what height
   varying float vCrest, vFlood, vLand;
   varying vec3 vNrm;
   float ring(float ang, float r) {
@@ -7278,7 +7316,9 @@ const TSU_VERT = `
     vFlood = aLand * smoothstep(0.0, uW * 2.0, uR - ang);
     vLand = aLand;
     vNrm = p;
-    vec4 mv = modelViewMatrix * vec4(position * (1.0 + uH * max(vCrest, -0.4)), 1.0);
+    // behind a giant wave the sea stands over the highest mountains
+    vec3 P = normalize(position) * mix(length(position), uTop, vFlood * uDeep);
+    vec4 mv = modelViewMatrix * vec4(P * (1.0 + uH * max(vCrest, -0.4)), 1.0);
     gl_Position = projectionMatrix * mv;
     #include <logdepthbuf_vertex>
   }`;
@@ -7286,7 +7326,7 @@ const TSU_FRAG = `
   #include <common>
   #include <logdepthbuf_pars_fragment>
   uniform vec3 uL, uSea;
-  uniform float uFade, uDrain;
+  uniform float uFade, uDrain, uDeep;
   varying float vCrest, vFlood, vLand;
   varying vec3 vNrm;
   void main() {
@@ -7300,10 +7340,10 @@ const TSU_FRAG = `
     vec3 foam = vec3(0.95, 0.98, 1.0);
     vec3 col = c > 0.0 ? mix(uSea * 1.6, foam, smoothstep(0.35 - vLand * 0.2, 0.9, c)) : uSea * 0.55;
     // the sheet of muddy sea water left lying over the land
-    vec3 sheet = mix(uSea * 1.3, vec3(0.32, 0.30, 0.24), 0.35);
+    vec3 sheet = mix(mix(uSea * 1.3, vec3(0.32, 0.30, 0.24), 0.35), uSea * 1.15, uDeep * 0.7);
     float a = clamp(wave * 1.7, 0.0, 1.0);
     vec3 outc = mix(sheet, col, a);
-    gl_FragColor = vec4(outc * lit, max(a, flood * 0.82) * uFade);
+    gl_FragColor = vec4(outc * lit, max(a, flood * mix(0.82, 1.0, uDeep)) * uFade);
   }`;
 
 const tsunamis = [];
@@ -7316,14 +7356,17 @@ function floodGeometry(b) {
   const seaR = seaRadius(b);
   const land = new Float32Array(pos.count);
   const v = new THREE.Vector3();
+  let top = 0;
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i);
     const r = v.length();
+    top = Math.max(top, r);
     land[i] = r > seaR * 1.0005 ? 1 : 0;
     v.multiplyScalar(Math.max(r, seaR) * 1.004 / Math.max(r, 1e-9));
     pos.setXYZ(i, v.x, v.y, v.z);
   }
   g.setAttribute('aLand', new THREE.BufferAttribute(land, 1));
+  g.userData.top = Math.max(top, seaR) * 1.006;     // over the highest peak
   return g;
 }
 
@@ -7340,17 +7383,21 @@ function startTsunami(b, worldDir, size, vRel) {
     uniforms: {
       uN: { value: n.clone() }, uR: { value: 0 }, uW: { value: 0.05 }, uH: { value: 0 }, uBack: { value: 0 },
       uL: { value: new THREE.Vector3(1, 0, 0) }, uSea: { value: waterColour(b).clone() },
-      uFade: { value: 1 }, uDrain: { value: 1 }
+      uFade: { value: 1 }, uDrain: { value: 1 },
+      // A planet-sized impactor's wave is kilometres high: it goes right over
+      // every continent instead of lapping at the coasts.
+      uDeep: { value: clamp((size - 0.3) / 0.3, 0, 1) }, uTop: { value: 1 }
     },
     vertexShader: TSU_VERT, fragmentShader: TSU_FRAG, transparent: true, depthWrite: false
   });
   const mesh = new THREE.Mesh(floodGeometry(b), mat);
+  mat.uniforms.uTop.value = mesh.geometry.userData.top;
   mesh.renderOrder = 2;
   p.surf.add(mesh);                     // a child of the ground, so it turns with the world
   // a bigger, faster hit raises a bigger wave
   const speed = vRel ? vRel.length() / KMS : 10;
   const h = clamp(size * 0.04 * Math.sqrt(clamp(speed / 15, 0.3, 4)), 0.01, 0.07);
-  tsunamis.push({ b, mesh, t: 0, h, host: p.surf });
+  tsunamis.push({ b, mesh, t: 0, h, host: p.surf, deep: mat.uniforms.uDeep.value > 0.5 });
   waterSpray(b, worldDir, size, h);
   if (!b.tsuToast || sim.time - b.tsuToast > 30) {
     b.tsuToast = sim.time;
@@ -7371,7 +7418,12 @@ const _tsL = new THREE.Vector3();
 function updateTsunamis(dt) {
   for (let i = tsunamis.length - 1; i >= 0; i--) {
     const w = tsunamis[i], b = w.b;
-    if (!b.alive || !b.parts || b.parts.surf !== w.host || w.mesh.parent !== w.host) { endTsunami(w); continue; }
+    if (!b.alive || !b.parts || !b.parts.surf) { endTsunami(w); continue; }
+    // the world's mesh was rebuilt (the impactor finished merging): the wave rides on, on the new one
+    if (b.parts.surf !== w.host || w.mesh.parent !== w.host) {
+      if (w.mesh.parent) w.mesh.parent.remove(w.mesh);
+      w.host = b.parts.surf; w.host.add(w.mesh);
+    }
     w.t += dt;
     if (w.t >= TSU_SECONDS) { endTsunami(w); continue; }
     const u = w.mesh.material.uniforms;
@@ -7383,7 +7435,7 @@ function updateTsunamis(dt) {
     // lower as the ring spreads round a bigger circle, and weaker every lap
     u.uH.value = w.h * Math.max(0, 1 - lap * 0.45) / (1 + 3 * Math.sin(Math.min(u.uR.value, Math.PI / 2)));
     // the flood stands while the waves go round, then drains away
-    u.uDrain.value = clamp(1 - (w.t - TSU_LAP * 1.6) / (TSU_SECONDS - TSU_LAP * 1.6), 0, 1);
+    u.uDrain.value = w.deep ? 1 : clamp(1 - (w.t - TSU_LAP * 1.6) / (TSU_SECONDS - TSU_LAP * 1.6), 0, 1);
     u.uFade.value = clamp(w.t * 30, 0, 1);
     const star = nearestStar(b);
     if (star) u.uL.value.copy(localOnBody(b, _tsL.copy(star.p).sub(b.p)));
@@ -8092,7 +8144,7 @@ function ensureAtmo(b) {
  * pull, thinner across it. The surface turns through the bulge, as the real
  * one does. Off with the Tidal forces setting, and while you stand on it.
  */
-const STRETCH_MAX = 1.4;                  // never more than 2.4 times as long as it is round
+const STRETCH_MAX = 0.6;                  // never more than 1.6 times as long as it is round
 const _tsD = new THREE.Vector3(), _tsBest = new THREE.Vector3(), _tsS = new THREE.Matrix4();
 const _tsQ = new THREE.Quaternion(), _tsE = new THREE.Euler();
 function tidalStretch(b, px) {
@@ -8109,7 +8161,16 @@ function tidalStretch(b, px) {
       const q = o.m / Math.pow(d2, 1.5);                      // M/d^3: the tide it raises
       if (q > best) { best = q; _tsBest.copy(_tsD); }
     }
-    if (best > 0) e = Math.min(3.75 * best / b.m * R * R * R * settings.stretchBoost * settings.gravity, STRETCH_MAX);
+    if (best > 0) {
+      const q = 3.75 * best / b.m * R * R * R * settings.stretchBoost * settings.gravity;
+      /* The fluid formula is for small bulges; past that, rock does not keep
+         flowing like water, and a world in contact is torn, not drawn out. So
+         the stretch levels off instead of climbing to a sausage. */
+      e = Math.min(q / (1 + q * 1.5), STRETCH_MAX);
+    }
+    // Sinking into another world takes under an hour: far too quick for a
+    // planet to change shape (and it is being buried, not pulled).
+    if (b.sink) e = 0;
   }
   // ease in and out, so a body sweeping past does not snap between shapes
   b.stretch = lerp(b.stretch || 0, e, 0.25);
@@ -9663,7 +9724,7 @@ function localOnBody(b, worldDir) {
  * Record a mark where `worldDir` points, sized as a fraction of the body's own
  * radius. Held on the body, so it survives a rebuild and a save.
  */
-function addScar(b, worldDir, size, vRel) {
+function addScar(b, worldDir, size, vRel, waveSize) {
   if (!b.alive || b.kind !== 'body') return null;
   const def = TYPES[b.type];
   // Nothing that has no surface to scar: a star's photosphere heals in minutes
@@ -9682,7 +9743,7 @@ function addScar(b, worldDir, size, vRel) {
   while (b.scars.length > MAX_SCARS) b.scars.shift();
   if (b.parts) buildScars(b);
   // a real hit (it came with a speed) on a world with open sea raises a tsunami
-  if (vRel) startTsunami(b, worldDir, mark.s, vRel);
+  if (vRel) startTsunami(b, worldDir, waveSize || mark.s, vRel);
   // Handed back so a crater that is still being dug can go on growing.
   return b.scars.indexOf(mark) >= 0 ? mark : null;
 }
@@ -15061,6 +15122,7 @@ const _tmpC = new THREE.Color();
 const FROST = new THREE.Color(0.72, 0.82, 0.95);
 /* What a living world fades to when it stops being one: dust. */
 const DEAD = new THREE.Color(0.60, 0.53, 0.44);
+const CRUST = new THREE.Color(0.30, 0.27, 0.25);   // fresh dark basalt, after a magma ocean
 
 function refreshStarCache() {
   sim.starCache.length = 0;
@@ -15265,7 +15327,9 @@ function updateVisuals(realDt, simDt) {
         u.uColor.value.setRGB(A.col[0] / 255, A.col[1] / 255, A.col[2] / 255)
           .lerp(_tmpC.setRGB(hc[0] / 255, hc[1] / 255, hc[2] / 255), clamp(h * 1.3, 0, 1));
         u.uStrength.value = 0.75 * air * atmoGlow(A);
-        u.uGlow.value = h * 1.4 * Math.max(air, 0.25);
+        // (dimmed over a magma ocean: a bright halo would bleach the melt under it to beige)
+        u.uGlow.value = h * 1.4 * Math.max(air, 0.25) * (1 - 0.8 * smoothstep(clamp((h - 0.3) / 0.3, 0, 1)));
+        u.uStrength.value *= 1 - 0.7 * smoothstep(clamp((h - 0.3) / 0.3, 0, 1));
       }
       if (p.cloud) {
         p.cloud.material.opacity = clamp(air * (1 - h * 1.6), 0, 1);
@@ -15326,9 +15390,15 @@ function updateVisuals(realDt, simDt) {
 
     // ---- a world's appearance responds to how hot it is
     if (b.glowPulse) b.glowPulse = Math.max(0, b.glowPulse - realDt * 0.4);
-    // Heat from an impact soaks away over a month or two of simulated time
-    // (and never takes longer than half a minute on screen).
-    if (b.impactHeat && !b.sink) b.impactHeat = Math.max(0, b.impactHeat - Math.max(simDt / 50, realDt / 30));
+    /* Heat from an impact soaks away on the game clock, as slowly as it really
+       would: a small hit's glow in a month or so, but a world melted all over
+       by a planet-sized one is a magma ocean that takes centuries to crust over
+       (about 750 years from white-hot). No shortcut on screen: speed the clock up. */
+    if (b.impactHeat && !b.sink) {
+      const h = b.impactHeat;
+      b.impactHeat = Math.max(0, h - simDt / (30 + 365.25 * 3000 * h * h * h));
+    }
+    if (b.magmaOcean) magmaOcean(b);
     // life slowly returns after an impact
     if (b.lifeHit != null && b.lifeHit < 1) b.lifeHit = Math.min(1, b.lifeHit + simDt / LIFE_RECOVER);
     // Air blown off by an impact is slowly breathed back out by volcanoes.
@@ -15349,7 +15419,26 @@ function updateVisuals(realDt, simDt) {
          of that — a whole surface of molten rock — so the heat also goes on as
          a shell of churning melt, added on top: white-hot, then yellow, orange
          and out. */
-      if (h > 0.01 && !tiny) {
+      /* Hot enough and the whole surface is molten: a solid skin of lava over
+         everything — continents, sea and clouds — not a glow laid on top. */
+      const molten = smoothstep(clamp((h - 0.3) / 0.3, 0, 1));
+      if (molten > 0.01 && !tiny) {
+        if (!p.magmaShell) {
+          p.magmaShell = new THREE.Mesh(SPHERE, new THREE.MeshBasicMaterial({
+            map: cachedTexture('lava', lavaTexture), transparent: true, depthWrite: false }));
+          p.magmaShell.renderOrder = 8;
+          b.obj.add(p.magmaShell);
+        }
+        // churning yellow-orange melt with dark veins, never a blank white ball
+        const hc = ramp(HEAT_RAMP, h * 0.5);
+        // (the texture is pale grey: squared colour keeps the melt a deep orange through it)
+        p.magmaShell.material.color.setRGB(Math.pow(hc[0] / 255, 2), Math.pow(hc[1] / 255, 2.2), Math.pow(hc[2] / 255, 2.4));
+        p.magmaShell.material.opacity = molten;
+        p.magmaShell.scale.setScalar(r * (Math.max(1 + reliefTop(b.type), b.water > 0 ? seaRadius(b) : 1) + 0.02));
+        p.magmaShell.rotation.y = b.rot;
+        p.magmaShell.visible = true;
+      } else if (p.magmaShell) p.magmaShell.visible = false;
+      if (h > 0.01 && !tiny && molten < 0.6) {
         if (!p.heatShell) {
           p.heatShell = new THREE.Mesh(SPHERE, new THREE.MeshBasicMaterial({
             map: cachedTexture('lava', lavaTexture), transparent: true, depthWrite: false,
@@ -15357,7 +15446,8 @@ function updateVisuals(realDt, simDt) {
           p.heatShell.renderOrder = 9;          // after the sea and the clouds, or they paint over it
           b.obj.add(p.heatShell);
         }
-        const hc = ramp(HEAT_RAMP, h), boost = 0.5 + 1.6 * h;
+        // (over a magma ocean this is only a faint shimmer, or it bleaches the melt to white)
+        const hc = ramp(HEAT_RAMP, h), boost = (0.5 + 1.6 * h) * (1 - 0.8 * molten);
         p.heatShell.material.color.setRGB(hc[0] / 255 * boost, hc[1] / 255 * boost, hc[2] / 255 * boost);
         // above the highest ground and the sea, or the oceans stay dark under it
         p.heatShell.scale.setScalar(r * (Math.max(1 + reliefTop(b.type), b.water > 0 ? seaRadius(b) : 1) + 0.03));
@@ -15368,6 +15458,12 @@ function updateVisuals(realDt, simDt) {
       mat.color.copy(b.baseColor).lerp(FROST, cold);
       // A world that was born living and is now losing it goes brown first.
       if (b.terra < 1 && isLivingSurf(def)) mat.color.lerp(DEAD, (1 - b.terra) * 0.85);
+      // A world remade by a magma ocean has a new crust: none of its old lands
+      if (b.resurfaced) {
+        const crust = cachedTexture('lava', lavaTexture);
+        if (mat.map !== crust) { mat.map = crust; mat.needsUpdate = true; }
+        mat.color.copy(CRUST);
+      }
     }
 
     // ---- the living layer fading in or out over a terraformed world
